@@ -1,0 +1,405 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="ToDooo.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:helpers="using:ToDooo.Helpers"
+    xmlns:models="using:ToDooo.Models"
+    Title="ToDooo">
+
+    <Grid x:Name="Root" Background="Transparent">
+        <Border
+            CornerRadius="{StaticResource CardCornerRadius}"
+            Background="{StaticResource CardBrush}"
+            BorderBrush="{StaticResource CardStrokeBrush}"
+            BorderThickness="1">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!--  顶栏：中性图标 + 标题，去掉强调色方块  -->
+                <Grid Height="50" Padding="14,0,8,0" ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Grid
+                        x:Name="DragRegion"
+                        Grid.Column="0"
+                        Grid.ColumnSpan="2"
+                        Background="Transparent"
+                        PointerCaptureLost="DragRegion_PointerCaptureLost"
+                        PointerMoved="DragRegion_PointerMoved"
+                        PointerPressed="DragRegion_PointerPressed"
+                        PointerReleased="DragRegion_PointerReleased">
+                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                            <Border
+                                Width="22"
+                                Height="22"
+                                CornerRadius="7"
+                                Background="{StaticResource LayerFillSecondaryBrush}"
+                                BorderBrush="{StaticResource LayerStrokeBrush}"
+                                BorderThickness="1">
+                                <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
+                            </Border>
+                            <TextBlock
+                                Text="待办"
+                                FontSize="15"
+                                FontWeight="SemiBold"
+                                Foreground="{StaticResource TextPrimaryBrush}"
+                                VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Grid>
+                    <Button
+                        x:Name="PinButton"
+                        Grid.Column="2"
+                        Style="{StaticResource FlatIconButtonStyle}"
+                        Click="PinButton_Click"
+                        ToolTipService.ToolTip="钉在桌面 / 浮于最前">
+                        <FontIcon x:Name="PinGlyph" Glyph="&#xE718;" FontSize="14" />
+                    </Button>
+                    <Button
+                        x:Name="MoreButton"
+                        Grid.Column="3"
+                        Style="{StaticResource FlatIconButtonStyle}"
+                        ToolTipService.ToolTip="更多">
+                        <FontIcon Glyph="&#xE712;" FontSize="14" />
+                        <Button.Flyout>
+                            <MenuFlyout Opening="MoreFlyout_Opening">
+                                <ToggleMenuFlyoutItem x:Name="StartupMenuItem" Text="开机自启" Click="StartupMenuItem_Click" />
+                                <MenuFlyoutSeparator />
+                                <MenuFlyoutItem Text="退出 ToDooo" Click="ExitMenuItem_Click" />
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
+                </Grid>
+
+                <!--  分段筛选条（DeskBox Segmented）  -->
+                <Border
+                    Grid.Row="1"
+                    Margin="12,0,12,8"
+                    Padding="3"
+                    Background="{StaticResource SegmentBarBrush}"
+                    BorderBrush="{StaticResource LayerStrokeBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource SegmentCornerRadius}">
+                    <Grid ColumnSpacing="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Button
+                            x:Name="AllFilterButton"
+                            Grid.Column="0"
+                            Style="{StaticResource SegmentButtonStyle}"
+                            Click="AllFilter_Click"
+                            ToolTipService.ToolTip="显示全部待办">
+                            <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                <TextBlock Text="全部" FontSize="11" VerticalAlignment="Center" />
+                                <TextBlock
+                                    Text="{x:Bind ViewModel.AllCount, Mode=OneWay}"
+                                    FontSize="12"
+                                    FontWeight="SemiBold"
+                                    VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <Button
+                            x:Name="ActiveStat"
+                            Grid.Column="1"
+                            Style="{StaticResource StatButtonStyle}"
+                            Click="ActiveFilter_Click">
+                            <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                <TextBlock Text="进行中" FontSize="11" VerticalAlignment="Center" />
+                                <TextBlock
+                                    Text="{x:Bind ViewModel.ActiveCount, Mode=OneWay}"
+                                    FontSize="12"
+                                    FontWeight="SemiBold"
+                                    VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <Button
+                            x:Name="ImportantStat"
+                            Grid.Column="2"
+                            Style="{StaticResource StatButtonStyle}"
+                            Click="ImportantFilter_Click">
+                            <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                <TextBlock Text="重要" FontSize="11" VerticalAlignment="Center" />
+                                <TextBlock
+                                    Text="{x:Bind ViewModel.ImportantCount, Mode=OneWay}"
+                                    FontSize="12"
+                                    FontWeight="SemiBold"
+                                    VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <Button
+                            x:Name="DoneStat"
+                            Grid.Column="3"
+                            Style="{StaticResource StatButtonStyle}"
+                            Click="DoneFilter_Click">
+                            <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                <TextBlock Text="已完成" FontSize="11" VerticalAlignment="Center" />
+                                <TextBlock
+                                    Text="{x:Bind ViewModel.DoneCount, Mode=OneWay}"
+                                    FontSize="12"
+                                    FontWeight="SemiBold"
+                                    VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+                </Border>
+
+                <!--  颜色筛选：14x6 短横条  -->
+                <StackPanel
+                    x:Name="TagPanel"
+                    Grid.Row="2"
+                    Padding="14,0,14,8"
+                    Orientation="Horizontal"
+                    Spacing="2" />
+
+                <!--  添加入口：与任务卡片同一张卡  -->
+                <Grid Grid.Row="3" Height="46" Margin="12,0,12,8">
+                    <Button
+                        x:Name="AddButton"
+                        Style="{StaticResource AddButtonStyle}"
+                        Click="AddButton_Click">
+                        <Grid ColumnSpacing="4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="32" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <FontIcon
+                                Grid.Column="0"
+                                Glyph="&#xE710;"
+                                FontSize="13"
+                                HorizontalAlignment="Center"
+                                Foreground="{StaticResource TextSecondaryBrush}" />
+                            <TextBlock
+                                Grid.Column="1"
+                                Text="添加待办"
+                                FontSize="13"
+                                VerticalAlignment="Center" />
+                        </Grid>
+                    </Button>
+                    <Border
+                        x:Name="AddEditor"
+                        Visibility="Collapsed"
+                        CornerRadius="{StaticResource ItemCornerRadius}"
+                        Background="{StaticResource ItemCardBrush}"
+                        BorderBrush="{StaticResource LayerStrokeBrush}"
+                        BorderThickness="1">
+                        <TextBox
+                            x:Name="AddTextBox"
+                            Padding="10,0"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            FontSize="13"
+                            VerticalContentAlignment="Center"
+                            PlaceholderText="输入待办，回车保存，Esc 取消"
+                            KeyDown="AddTextBox_KeyDown"
+                            LostFocus="AddTextBox_LostFocus" />
+                    </Border>
+                </Grid>
+
+                <!--  卡片式列表  -->
+                <Grid Grid.Row="4">
+                    <ListView
+                        x:Name="TodoList"
+                        Padding="10,0,10,0"
+                        AllowDrop="True"
+                        CanDragItems="True"
+                        CanReorderItems="True"
+                        DragItemsCompleted="TodoList_DragItemsCompleted"
+                        IsItemClickEnabled="False"
+                        ItemsSource="{x:Bind ViewModel.Items, Mode=OneWay}"
+                        SelectionMode="None"
+                        ScrollViewer.VerticalScrollBarVisibility="Hidden">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="models:TodoItem">
+                                <Border
+                                    Style="{StaticResource TodoCardBorderStyle}"
+                                    PointerEntered="TodoCard_PointerEntered"
+                                    PointerExited="TodoCard_PointerExited">
+                                    <Border.ContextFlyout>
+                                        <MenuFlyout Opening="RowFlyout_Opening">
+                                            <MenuFlyoutItem Text="编辑…" Click="RowEdit_Click" />
+                                            <MenuFlyoutItem Text="标记为重要" Click="RowImportant_Click" />
+                                            <MenuFlyoutSeparator />
+                                            <MenuFlyoutItem Text="删除" Click="RowDelete_Click" />
+                                        </MenuFlyout>
+                                    </Border.ContextFlyout>
+                                    <Grid ColumnSpacing="2">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="32" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <Button
+                                            Style="{StaticResource DoneCheckStyle}"
+                                            Click="DoneToggle_Click"
+                                            VerticalAlignment="Center"
+                                            ToolTipService.ToolTip="标记完成">
+                                            <Grid Width="20" Height="20">
+                                                <Border
+                                                    Width="18"
+                                                    Height="18"
+                                                    HorizontalAlignment="Center"
+                                                    VerticalAlignment="Center"
+                                                    Background="{x:Bind helpers:Bind.CheckFill(IsDone), Mode=OneWay}"
+                                                    BorderBrush="{x:Bind helpers:Bind.CheckBorder(IsDone), Mode=OneWay}"
+                                                    BorderThickness="1.5"
+                                                    CornerRadius="4" />
+                                                <FontIcon
+                                                    Glyph="&#xE73E;"
+                                                    FontSize="10"
+                                                    Foreground="{StaticResource CheckGlyphBrush}"
+                                                    HorizontalAlignment="Center"
+                                                    VerticalAlignment="Center"
+                                                    Opacity="{x:Bind helpers:Bind.CheckOpacity(IsDone), Mode=OneWay}" />
+                                            </Grid>
+                                        </Button>
+
+                                        <Border
+                                            Grid.Column="1"
+                                            Width="3"
+                                            Height="20"
+                                            Margin="0,0,5,0"
+                                            VerticalAlignment="Center"
+                                            Background="{x:Bind helpers:Bind.TagBrush(TagIndex), Mode=OneWay}"
+                                            CornerRadius="1.5"
+                                            Visibility="{x:Bind helpers:Bind.HasTag(TagIndex), Mode=OneWay}" />
+
+                                        <StackPanel
+                                            Grid.Column="2"
+                                            Spacing="3"
+                                            VerticalAlignment="Center"
+                                            Opacity="{x:Bind helpers:Bind.DoneOpacity(IsDone), Mode=OneWay}">
+                                            <TextBlock
+                                                Text="{x:Bind Title, Mode=OneWay}"
+                                                FontSize="13"
+                                                MaxLines="2"
+                                                TextTrimming="CharacterEllipsis"
+                                                TextWrapping="Wrap"
+                                                Foreground="{x:Bind helpers:Bind.TitleBrush(IsDone), Mode=OneWay}"
+                                                TextDecorations="{x:Bind helpers:Bind.Deco(IsDone), Mode=OneWay}" />
+                                            <StackPanel
+                                                Orientation="Horizontal"
+                                                Spacing="6"
+                                                Visibility="{x:Bind helpers:Bind.Visible(DueText), Mode=OneWay}">
+                                                <FontIcon
+                                                    Glyph="&#xE787;"
+                                                    FontSize="10"
+                                                    VerticalAlignment="Center"
+                                                    Foreground="{x:Bind helpers:Bind.DueBrush(IsOverdue), Mode=OneWay}" />
+                                                <TextBlock
+                                                    Text="{x:Bind DueText, Mode=OneWay}"
+                                                    FontSize="11"
+                                                    TextTrimming="CharacterEllipsis"
+                                                    Foreground="{x:Bind helpers:Bind.DueBrush(IsOverdue), Mode=OneWay}" />
+                                                <FontIcon
+                                                    Glyph="&#xE735;"
+                                                    FontSize="10"
+                                                    VerticalAlignment="Center"
+                                                    Foreground="{StaticResource AccentBrush}"
+                                                    Visibility="{x:Bind helpers:Bind.VisibleWhen(IsImportant), Mode=OneWay}" />
+                                            </StackPanel>
+                                        </StackPanel>
+
+                                        <!--  悬停浮出的快捷操作（DeskBox 卡片右侧）  -->
+                                        <Border
+                                            Grid.ColumnSpan="3"
+                                            Tag="ItemActions"
+                                            Padding="2"
+                                            HorizontalAlignment="Right"
+                                            VerticalAlignment="Center"
+                                            Background="{StaticResource OverlaySurfaceBrush}"
+                                            BorderBrush="{StaticResource LayerStrokeBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="5"
+                                            Canvas.ZIndex="2"
+                                            IsHitTestVisible="False"
+                                            Opacity="0">
+                                            <StackPanel Orientation="Horizontal" Spacing="1">
+                                                <Button
+                                                    Style="{StaticResource CardActionButtonStyle}"
+                                                    Click="QuickImportant_Click"
+                                                    ToolTipService.ToolTip="切换重要标记">
+                                                    <FontIcon Glyph="&#xE735;" FontSize="12" Foreground="{StaticResource AccentBrush}" />
+                                                </Button>
+                                                <Button
+                                                    Style="{StaticResource CardActionButtonStyle}"
+                                                    Click="QuickEdit_Click"
+                                                    ToolTipService.ToolTip="编辑待办">
+                                                    <FontIcon Glyph="&#xE70F;" FontSize="12" />
+                                                </Button>
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+
+                    <!--  空状态  -->
+                    <StackPanel
+                        Margin="0,-24,0,0"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="6"
+                        IsHitTestVisible="False"
+                        Visibility="{x:Bind helpers:Bind.VisibleWhen(ViewModel.IsEmpty), Mode=OneWay}">
+                        <FontIcon
+                            Glyph="&#xE73E;"
+                            FontSize="28"
+                            HorizontalAlignment="Center"
+                            Foreground="{StaticResource TextMutedBrush}"
+                            Opacity="0.6" />
+                        <TextBlock
+                            Text="还没有待办"
+                            FontSize="14"
+                            FontWeight="SemiBold"
+                            HorizontalAlignment="Center"
+                            Foreground="{StaticResource TextSecondaryBrush}" />
+                        <TextBlock
+                            Text="点击上方卡片，记下第一件要做的事"
+                            FontSize="12"
+                            HorizontalAlignment="Center"
+                            Foreground="{StaticResource TextMutedBrush}" />
+                    </StackPanel>
+                </Grid>
+
+                <!--  底栏：剩余数量 + 清除已完成  -->
+                <Grid Grid.Row="5" Padding="14,2,10,10" ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock
+                        Grid.Column="0"
+                        Text="{x:Bind ViewModel.FooterText, Mode=OneWay}"
+                        FontSize="11"
+                        VerticalAlignment="Center"
+                        Foreground="{StaticResource TextMutedBrush}" />
+                    <Button
+                        x:Name="ClearCompletedButton"
+                        Grid.Column="1"
+                        HorizontalAlignment="Right"
+                        Click="ClearCompleted_Click"
+                        Content="清除已完成"
+                        IsEnabled="{x:Bind ViewModel.HasCompleted, Mode=OneWay}"
+                        Style="{StaticResource LinkButtonStyle}" />
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

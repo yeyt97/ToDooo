@@ -8,166 +8,17 @@
     <!--
         独立窗口而不是 ContentDialog：
         ContentDialog 被限制在主窗口客户区里，主窗口一窄就挤成一条、内容显示不全，
-        也没法用窗口级亚克力。这里做成同款磨砂的小窗口，位置跟着主窗口居中。
+        也没法用窗口级亚克力。
     -->
     <Grid
         x:Name="Root"
         Background="Transparent"
         KeyboardAcceleratorPlacementMode="Hidden">
         <Grid.Resources>
-            <Style x:Key="FieldLabel" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="11" />
-                <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
-            </Style>
-
-            <!--  开关的「开」用 App 的强调色，和保存按钮、重要星标是同一支蓝  -->
-            <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="#4D8FE3" />
-            <SolidColorBrush x:Key="ToggleSwitchFillOnPointerOver" Color="#5C9BEA" />
-            <SolidColorBrush x:Key="ToggleSwitchFillOnPressed" Color="#3F7FD0" />
-            <SolidColorBrush x:Key="ToggleSwitchStrokeOn" Color="Transparent" />
-
-            <Style x:Key="DialogButton" TargetType="Button">
-                <Setter Property="Height" Value="32" />
-                <Setter Property="MinWidth" Value="76" />
-                <Setter Property="Padding" Value="14,0" />
-                <Setter Property="FontSize" Value="12" />
-                <Setter Property="Background" Value="{StaticResource ItemCardBrush}" />
+            <Style x:Key="LabelText" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="13" />
                 <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
-                <Setter Property="Template">
-                    <Setter.Value>
-                        <ControlTemplate TargetType="Button">
-                            <Grid x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="6">
-                                <VisualStateManager.VisualStateGroups>
-                                    <VisualStateGroup x:Name="CommonStates">
-                                        <VisualState x:Name="Normal" />
-                                        <VisualState x:Name="PointerOver">
-                                            <VisualState.Setters>
-                                                <Setter Target="Root.Background" Value="{StaticResource ItemCardHoverBrush}" />
-                                                <Setter Target="Content.Foreground" Value="{StaticResource TextPrimaryBrush}" />
-                                            </VisualState.Setters>
-                                        </VisualState>
-                                        <VisualState x:Name="Pressed">
-                                            <VisualState.Setters>
-                                                <Setter Target="Root.Background" Value="{StaticResource PressedBrush}" />
-                                            </VisualState.Setters>
-                                        </VisualState>
-                                        <VisualState x:Name="Disabled">
-                                            <VisualState.Setters>
-                                                <Setter Target="Root.Opacity" Value="0.35" />
-                                            </VisualState.Setters>
-                                        </VisualState>
-                                    </VisualStateGroup>
-                                </VisualStateManager.VisualStateGroups>
-                                <ContentPresenter
-                                    x:Name="Content"
-                                    Padding="{TemplateBinding Padding}"
-                                    HorizontalAlignment="Center"
-                                    VerticalAlignment="Center"
-                                    Content="{TemplateBinding Content}"
-                                    FontSize="{TemplateBinding FontSize}"
-                                    Foreground="{TemplateBinding Foreground}" />
-                            </Grid>
-                        </ControlTemplate>
-                    </Setter.Value>
-                </Setter>
-            </Style>
-
-            <Style x:Key="DialogPrimaryButton" TargetType="Button">
-                <Setter Property="Height" Value="32" />
-                <Setter Property="MinWidth" Value="88" />
-                <Setter Property="Padding" Value="14,0" />
-                <Setter Property="FontSize" Value="12" />
-                <Setter Property="Background" Value="{StaticResource AccentBrush}" />
-                <Setter Property="Foreground" Value="#FFFFFF" />
-                <Setter Property="Template">
-                    <Setter.Value>
-                        <ControlTemplate TargetType="Button">
-                            <Grid
-                                x:Name="Root"
-                                Background="{TemplateBinding Background}"
-                                CornerRadius="6">
-                                <VisualStateManager.VisualStateGroups>
-                                    <VisualStateGroup x:Name="CommonStates">
-                                        <VisualState x:Name="Normal" />
-                                        <VisualState x:Name="PointerOver">
-                                            <VisualState.Setters>
-                                                <Setter Target="Root.Opacity" Value="0.86" />
-                                            </VisualState.Setters>
-                                        </VisualState>
-                                        <VisualState x:Name="Pressed">
-                                            <VisualState.Setters>
-                                                <Setter Target="Root.Opacity" Value="0.72" />
-                                            </VisualState.Setters>
-                                        </VisualState>
-                                        <VisualState x:Name="Disabled">
-                                            <VisualState.Setters>
-                                                <Setter Target="Root.Opacity" Value="0.35" />
-                                            </VisualState.Setters>
-                                        </VisualState>
-                                    </VisualStateGroup>
-                                </VisualStateManager.VisualStateGroups>
-                                <ContentPresenter
-                                    Padding="{TemplateBinding Padding}"
-                                    HorizontalAlignment="Center"
-                                    VerticalAlignment="Center"
-                                    Content="{TemplateBinding Content}"
-                                    FontSize="{TemplateBinding FontSize}"
-                                    Foreground="{TemplateBinding Foreground}" />
-                            </Grid>
-                        </ControlTemplate>
-                    </Setter.Value>
-                </Setter>
-            </Style>
-
-            <!--  通用胶囊开关：重要、截止时间都用它，勾上后描边变色  -->
-            <Style x:Key="PillToggle" TargetType="ToggleButton">
-                <Setter Property="Height" Value="32" />
-                <Setter Property="Padding" Value="12,0" />
-                <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
-                <Setter Property="Template">
-                    <Setter.Value>
-                        <ControlTemplate TargetType="ToggleButton">
-                            <Grid
-                                x:Name="Root"
-                                Padding="{TemplateBinding Padding}"
-                                Background="{StaticResource ItemCardBrush}"
-                                BorderBrush="{StaticResource ItemCardStrokeBrush}"
-                                BorderThickness="1"
-                                CornerRadius="6">
-                                <VisualStateManager.VisualStateGroups>
-                                    <VisualStateGroup x:Name="CommonStates">
-                                        <VisualState x:Name="Normal" />
-                                        <VisualState x:Name="PointerOver">
-                                            <VisualState.Setters>
-                                                <Setter Target="Root.Background" Value="{StaticResource ItemCardHoverBrush}" />
-                                            </VisualState.Setters>
-                                        </VisualState>
-                                        <VisualState x:Name="Pressed">
-                                            <VisualState.Setters>
-                                                <Setter Target="Root.Background" Value="{StaticResource PressedBrush}" />
-                                            </VisualState.Setters>
-                                        </VisualState>
-                                        <VisualState x:Name="Disabled" />
-                                    </VisualStateGroup>
-                                    <VisualStateGroup x:Name="CheckStates">
-                                        <VisualState x:Name="Unchecked" />
-                                        <VisualState x:Name="Indeterminate" />
-                                        <VisualState x:Name="Checked">
-                                            <VisualState.Setters>
-                                                <Setter Target="Root.BorderBrush" Value="{StaticResource AccentBrush}" />
-                                            </VisualState.Setters>
-                                        </VisualState>
-                                    </VisualStateGroup>
-                                </VisualStateManager.VisualStateGroups>
-                                <ContentPresenter
-                                    HorizontalAlignment="Center"
-                                    VerticalAlignment="Center"
-                                    Content="{TemplateBinding Content}"
-                                    Foreground="{TemplateBinding Foreground}" />
-                            </Grid>
-                        </ControlTemplate>
-                    </Setter.Value>
-                </Setter>
+                <Setter Property="VerticalAlignment" Value="Center" />
             </Style>
         </Grid.Resources>
 
@@ -185,158 +36,168 @@
                 Modifiers="Control" />
         </Grid.KeyboardAccelerators>
 
-        <!--  自绘标题栏：同时是窗口拖动区（系统标题按钮叠在右侧）  -->
+        <!--  自绘标题栏：同时是窗口拖动区，系统关闭按钮叠在右侧  -->
         <Grid
             x:Name="HeaderBar"
-            Height="42"
+            Height="44"
             Padding="18,0,12,0"
             Background="Transparent">
             <TextBlock
                 x:Name="HeaderTitle"
                 VerticalAlignment="Center"
-                FontSize="13"
+                FontSize="14"
                 FontWeight="SemiBold"
                 Foreground="{StaticResource TextPrimaryBrush}" />
         </Grid>
 
         <ScrollViewer
             Grid.Row="1"
-            Padding="18,2,18,0"
+            Padding="18,2,18,6"
             VerticalScrollBarVisibility="Auto"
             VerticalScrollMode="Auto">
-            <StackPanel Spacing="18">
+            <StackPanel Spacing="12">
 
-                <!--  标题：卡片外观，和主界面的添加框同一套  -->
+                <!--  标题  -->
                 <TextBox
                     x:Name="TitleBox"
+                    MinHeight="40"
                     MaxLength="120"
-                    FontSize="13"
-                    Padding="10,8"
-                    Background="{StaticResource ItemCardBrush}"
-                    BorderBrush="{StaticResource ItemCardStrokeBrush}"
-                    BorderThickness="1"
+                    Padding="10,6"
+                    VerticalContentAlignment="Center"
+                    FontSize="14"
                     CornerRadius="6"
                     KeyDown="TitleBox_KeyDown"
                     PlaceholderText="要做什么？"
                     TextWrapping="Wrap" />
 
-                <!--  截止时间：先是个开关，打开才出现日期与时间，避免默认把表单撑满  -->
-                <StackPanel Spacing="8">
-                    <Grid MinHeight="32">
-                        <TextBlock
-                            VerticalAlignment="Center"
-                            Style="{StaticResource FieldLabel}"
-                            Text="截止时间" />
-                        <ToggleSwitch
-                            x:Name="DueToggle"
-                            MinWidth="0"
-                            VerticalAlignment="Center"
-                            HorizontalAlignment="Right"
-                            OffContent=""
-                            OnContent=""
-                            Toggled="DueToggle_Toggled" />
-                    </Grid>
+                <!--  分组 1：截止时间 + 重复  -->
+                <Border
+                    Padding="14,10,14,12"
+                    Background="{StaticResource ItemCardBrush}"
+                    BorderBrush="{StaticResource ItemCardStrokeBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8">
+                    <StackPanel Spacing="10">
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Style="{StaticResource LabelText}" Text="截止时间" />
+                            <ToggleSwitch
+                                x:Name="DueToggle"
+                                Grid.Column="1"
+                                MinWidth="0"
+                                OffContent=""
+                                OnContent=""
+                                Toggled="DueToggle_Toggled" />
+                        </Grid>
 
-                    <!--  日期和时间并排：日期吃剩余宽度，时间定长，两边都不至于被拉得过长  -->
-                    <Grid
-                        x:Name="DueSection"
-                        ColumnSpacing="8"
-                        Visibility="Collapsed">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <CalendarDatePicker
-                            x:Name="DueDate"
-                            HorizontalAlignment="Stretch"
-                            PlaceholderText="选择日期" />
-                        <!--
-                            WinUI 的 TimePicker 每列有 ~110 的宽度下限，压窄就会把分钟列裁掉，
-                            所以这里用两个下拉自己拼「时:分」，长度可控又不会裁。
-                        -->
                         <StackPanel
-                            Grid.Column="1"
-                            VerticalAlignment="Center"
-                            Orientation="Horizontal"
-                            Spacing="4">
-                            <ComboBox
-                                x:Name="HourBox"
-                                Width="72"
-                                Height="34"
-                                HorizontalContentAlignment="Center"
-                                MaxDropDownHeight="240" />
-                            <TextBlock
-                                VerticalAlignment="Center"
-                                FontSize="13"
-                                Foreground="{StaticResource TextMutedBrush}"
-                                Text=":" />
-                            <ComboBox
-                                x:Name="MinuteBox"
-                                Width="72"
-                                Height="34"
-                                HorizontalContentAlignment="Center"
-                                MaxDropDownHeight="240" />
-                        </StackPanel>
-                    </Grid>
-                </StackPanel>
-
-                <Grid ColumnSpacing="12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
-                    <StackPanel Spacing="6">
-                        <TextBlock Style="{StaticResource FieldLabel}" Text="重复" />
-                        <ComboBox
-                            x:Name="RecurrenceBox"
-                            HorizontalAlignment="Stretch"
-                            SelectedIndex="0">
-                            <ComboBoxItem Content="不重复" />
-                            <ComboBoxItem Content="每天" />
-                            <ComboBoxItem Content="每周" />
-                            <ComboBoxItem Content="每月" />
-                        </ComboBox>
-                    </StackPanel>
-
-                    <StackPanel Grid.Column="1" Spacing="6">
-                        <TextBlock
-                            HorizontalAlignment="Right"
-                            Style="{StaticResource FieldLabel}"
-                            Text="重要" />
-                        <ToggleButton
-                            x:Name="ImportantToggle"
-                            Checked="ImportantToggle_Changed"
-                            Style="{StaticResource PillToggle}"
-                            Unchecked="ImportantToggle_Changed">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <FontIcon
-                                    x:Name="ImportantIcon"
-                                    FontSize="12"
-                                    Glyph="&#xE734;" />
+                            x:Name="DueSection"
+                            Spacing="10"
+                            Visibility="Collapsed">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
                                 <TextBlock
-                                    x:Name="ImportantText"
-                                    VerticalAlignment="Center"
-                                    FontSize="12"
-                                    Text="标记" />
-                            </StackPanel>
-                        </ToggleButton>
-                    </StackPanel>
-                </Grid>
+                                    Width="40"
+                                    Style="{StaticResource LabelText}"
+                                    Text="日期" />
+                                <CalendarDatePicker
+                                    x:Name="DueDate"
+                                    Grid.Column="1"
+                                    HorizontalAlignment="Stretch"
+                                    CornerRadius="6"
+                                    PlaceholderText="选择日期" />
+                            </Grid>
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock
+                                    Width="40"
+                                    Style="{StaticResource LabelText}"
+                                    Text="时间" />
+                                <!--  原生 TimePicker：24 小时制、5 分钟一档  -->
+                                <TimePicker
+                                    x:Name="DueTime"
+                                    Grid.Column="1"
+                                    HorizontalAlignment="Stretch"
+                                    ClockIdentifier="24HourClock"
+                                    MinuteIncrement="5"
+                                    CornerRadius="6" />
+                            </Grid>
+                        </StackPanel>
 
-                <StackPanel Spacing="8">
-                    <TextBlock Style="{StaticResource FieldLabel}" Text="标签" />
-                    <StackPanel
-                        x:Name="TagPanel"
-                        Orientation="Horizontal"
-                        Spacing="6" />
-                </StackPanel>
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Style="{StaticResource LabelText}" Text="重复" />
+                            <ComboBox
+                                x:Name="RecurrenceBox"
+                                Grid.Column="1"
+                                Width="150"
+                                SelectedIndex="0">
+                                <ComboBoxItem Content="不重复" />
+                                <ComboBoxItem Content="每天" />
+                                <ComboBoxItem Content="每周" />
+                                <ComboBoxItem Content="每月" />
+                            </ComboBox>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!--  分组 2：重要 + 标签  -->
+                <Border
+                    Padding="14,10,14,12"
+                    Background="{StaticResource ItemCardBrush}"
+                    BorderBrush="{StaticResource ItemCardStrokeBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8">
+                    <StackPanel Spacing="10">
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Style="{StaticResource LabelText}" Text="标记为重要" />
+                            <ToggleSwitch
+                                x:Name="ImportantToggle"
+                                Grid.Column="1"
+                                MinWidth="0"
+                                OffContent=""
+                                OnContent="" />
+                        </Grid>
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                Width="40"
+                                Style="{StaticResource LabelText}"
+                                Text="标签" />
+                            <StackPanel
+                                x:Name="TagPanel"
+                                Grid.Column="1"
+                                Orientation="Horizontal"
+                                Spacing="6" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
             </StackPanel>
         </ScrollViewer>
 
+        <!--  底部按钮：取消走系统次级样式，保存用系统强调色  -->
         <Grid
             Grid.Row="2"
-            Padding="18,12,18,16"
+            Padding="18,10,18,16"
             ColumnSpacing="8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
@@ -345,15 +206,16 @@
             </Grid.ColumnDefinitions>
             <Button
                 Grid.Column="1"
+                MinWidth="88"
                 Click="CancelButton_Click"
-                Content="取消"
-                Style="{StaticResource DialogButton}" />
+                Content="取消" />
             <Button
                 x:Name="SaveButton"
                 Grid.Column="2"
+                MinWidth="88"
                 Click="SaveButton_Click"
                 Content="保存"
-                Style="{StaticResource DialogPrimaryButton}" />
+                Style="{StaticResource AccentButtonStyle}" />
         </Grid>
     </Grid>
 </Window>

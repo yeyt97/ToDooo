@@ -18,7 +18,7 @@
     <SolidColorBrush x:Key="OverdueBrush" Color="#F2C94C" />
     <SolidColorBrush x:Key="HoverBrush" Color="#14FFFFFF" />
     <SolidColorBrush x:Key="PressedBrush" Color="#20FFFFFF" />
-    <SolidColorBrush x:Key="AccentBrush" Color="#4D8FE3" />
+    <SolidColorBrush x:Key="AccentBrush" Color="{ThemeResource SystemAccentColor}" />
     <SolidColorBrush x:Key="TransparentBrush" Color="Transparent" />
 
     <!-- 半透明层次 -->
@@ -50,8 +50,8 @@
     </LinearGradientBrush>
 
     <LinearGradientBrush x:Key="AccentGradientBrush" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#0063B1" Offset="0" />
-        <GradientStop Color="#4D8FE3" Offset="1" />
+        <GradientStop Color="{ThemeResource SystemAccentColorLight2}" Offset="0" />
+        <GradientStop Color="{ThemeResource SystemAccentColor}" Offset="1" />
     </LinearGradientBrush>
 
     <!-- 列表项自身完全透明，圆角与背景交给 DataTemplate 里的任务卡片 -->

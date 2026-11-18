@@ -300,9 +300,71 @@ public sealed partial class MainWindow : Window
     {
         _tray = new TrayIcon(_hwnd);
         _tray.ShowRequested += ShowFromTray;
-        _tray.ExitRequested += ExitApp;
-        _tray.StartupToggled += enabled => StartupService.SetEnabled(enabled);
+        _tray.MenuRequested += ShowTrayMenu;
         _tray.Add();
+    }
+
+    /// <summary>托盘右键菜单：用 WinUI MenuFlyout，跟窗口同一套暗色圆角菜单样式。</summary>
+    public void ShowTrayMenu()
+    {
+        // 内容树还没挂上 XamlRoot 时（启动瞬间）飞来托盘消息，直接跳过，避免 ShowAt 抛异常。
+        if (Root.XamlRoot is null)
+        {
+            return;
+        }
+
+        NativeMethods.SetForegroundWindow(_hwnd);
+
+        NativeMethods.GetCursorPos(out var cursor);
+        NativeMethods.ScreenToClient(_hwnd, ref cursor);
+        var scale = NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
+
+        var flyout = new MenuFlyout();
+
+        var showItem = new MenuFlyoutItem
+        {
+            Text = "显示待办",
+            Icon = new FontIcon { Glyph = "" },
+        };
+        showItem.Click += (_, _) => ShowFromTray();
+
+        var addItem = new MenuFlyoutItem
+        {
+            Text = "添加待办",
+            Icon = new FontIcon { Glyph = "" },
+        };
+        addItem.Click += (_, _) =>
+        {
+            ShowFromTray();
+            _ = AddDetailedAsync();
+        };
+
+        var startupItem = new ToggleMenuFlyoutItem
+        {
+            Text = "开机自启",
+            IsChecked = StartupService.IsEnabled,
+            Icon = new FontIcon { Glyph = "" },
+        };
+        startupItem.Click += (_, _) => StartupService.SetEnabled(startupItem.IsChecked);
+
+        var exitItem = new MenuFlyoutItem
+        {
+            Text = "退出 ToDooo",
+            Icon = new FontIcon { Glyph = "" },
+        };
+        exitItem.Click += (_, _) => ExitApp();
+
+        flyout.Items.Add(showItem);
+        flyout.Items.Add(addItem);
+        flyout.Items.Add(new MenuFlyoutSeparator());
+        flyout.Items.Add(startupItem);
+        flyout.Items.Add(new MenuFlyoutSeparator());
+        flyout.Items.Add(exitItem);
+
+        flyout.ShowAt(Root, new FlyoutShowOptions
+        {
+            Position = new Windows.Foundation.Point(cursor.X / scale, cursor.Y / scale),
+        });
     }
 
     private void ExitApp()
@@ -752,9 +814,10 @@ public sealed partial class MainWindow : Window
             AddTextBox.Text = string.Empty;
             UpdateFilterVisuals();
             UpdateTagVisuals();
-        }
 
-        FocusAddBox();
+            // 保存后才把焦点收回添加框；取消时不去抢焦点，免得主窗口被提起来闪一下。
+            FocusAddBox();
+        }
     }
 
     /// <summary>

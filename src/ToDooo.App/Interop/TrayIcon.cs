@@ -18,9 +18,7 @@ public sealed class TrayIcon : IDisposable
 
     public event Action? ShowRequested;
 
-    public event Action? ExitRequested;
-
-    public event Action<bool>? StartupToggled;
+    public event Action? MenuRequested;
 
     public void Add()
     {
@@ -68,7 +66,7 @@ public sealed class TrayIcon : IDisposable
                 break;
             case NativeMethods.WM_CONTEXTMENU:
             case NativeMethods.WM_RBUTTONUP:
-                ShowMenu();
+                MenuRequested?.Invoke();
                 break;
         }
     }
@@ -87,40 +85,6 @@ public sealed class TrayIcon : IDisposable
         _data.uTimeoutOrVersion = 5000;
         NativeMethods.Shell_NotifyIconW(NativeMethods.NIM_MODIFY, ref _data);
         _data.uFlags = NativeMethods.NIF_MESSAGE | NativeMethods.NIF_ICON | NativeMethods.NIF_TIP;
-    }
-
-    private void ShowMenu()
-    {
-        NativeMethods.SetForegroundWindow(_hwnd);
-        NativeMethods.GetCursorPos(out var point);
-
-        var menu = NativeMethods.CreatePopupMenu();
-
-        // 不用 MF_CHECKED：勾选状态会给整张菜单加一条勾选列，勾上/取消之间菜单宽度和文字位置都会变一次，
-        // 看起来就是「点一下位置跳一下」。状态直接写进文案（开/关同为全角，宽度恒定），
-        // 菜单本身保持纯文字项，和 DeskBox 的托盘菜单一个路子。
-        var startupItem = StartupService.IsEnabled ? "开机自启 · 已开启" : "开机自启 · 已关闭";
-        NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 1, startupItem);
-        NativeMethods.AppendMenuW(menu, NativeMethods.MF_SEPARATOR, 0, null);
-        NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 2, "退出");
-
-        var command = NativeMethods.TrackPopupMenuEx(
-            menu,
-            NativeMethods.TPM_RETURNCMD | NativeMethods.TPM_RIGHTBUTTON | NativeMethods.TPM_NONOTIFY,
-            point.X, point.Y, _hwnd, IntPtr.Zero);
-
-        NativeMethods.DestroyMenu(menu);
-        NativeMethods.PostMessageW(_hwnd, NativeMethods.WM_NULL, IntPtr.Zero, IntPtr.Zero);
-
-        switch (command)
-        {
-            case 1:
-                StartupToggled?.Invoke(!StartupService.IsEnabled);
-                break;
-            case 2:
-                ExitRequested?.Invoke();
-                break;
-        }
     }
 
     public void Dispose()

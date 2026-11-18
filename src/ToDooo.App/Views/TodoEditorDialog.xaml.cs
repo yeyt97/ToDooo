@@ -23,16 +23,18 @@ public sealed partial class TodoEditorDialog : Window
     private const int LogicalWidth = 420;
 
     // 截止时间收起/展开是两种高度，窗口跟着长，别留一大片空白。
-    private const int CollapsedHeight = 340;
-    private const int ExpandedHeight = 382;
+    private const int CollapsedHeight = 392;
+    private const int ExpandedHeight = 486;
 
-    private readonly TaskCompletionSource<bool> _result = new();
+    // 让后续逻辑排在关窗之后的下一轮消息里跑，别卡在关窗过程中重入 UI。
+    private readonly TaskCompletionSource<bool> _result = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly List<Border> _tagButtons = new();
     private readonly IntPtr _hwnd;
     private readonly AppWindow _appWindow;
     private DesktopAcrylicController? _acrylic;
     private int _tagIndex = -1;
     private bool _finished;
+    private bool _saved;
 
     public TodoEditorDialog() : this(string.Empty)
     {
@@ -54,11 +56,9 @@ public sealed partial class TodoEditorDialog : Window
         TitleBox.Text = initialTitle ?? string.Empty;
 
         // 新建时选了日期就带当前时刻，避免默认落到 00:00 立刻逾期。
-        BuildTimeSelectors(DateTime.Now);
-
+        DueTime.SelectedTime = RoundToFiveMinutes(DateTime.Now.TimeOfDay);
         BuildTagButtons();
         UpdateTagVisuals();
-        UpdateImportantVisuals();
         ApplyDueVisibility();
 
         Closed += OnClosed;
@@ -73,14 +73,13 @@ public sealed partial class TodoEditorDialog : Window
         {
             DueToggle.IsOn = true;
             DueDate.Date = new DateTimeOffset(due.Date);
-            SetTime(due);
+            DueTime.SelectedTime = due.TimeOfDay;
         }
 
         RecurrenceBox.SelectedIndex = (int)item.Recurrence;
-        ImportantToggle.IsChecked = item.IsImportant;
+        ImportantToggle.IsOn = item.IsImportant;
         _tagIndex = item.TagIndex;
         UpdateTagVisuals();
-        UpdateImportantVisuals();
         ApplyDueVisibility();
     }
 
@@ -99,15 +98,13 @@ public sealed partial class TodoEditorDialog : Window
                 return null;
             }
 
-            return date.Date
-                .AddHours(Math.Max(0, HourBox.SelectedIndex))
-                .AddMinutes(Math.Max(0, MinuteBox.SelectedIndex) * 5);
+            return date.Date + (DueTime.SelectedTime ?? TimeSpan.Zero);
         }
     }
 
     public TodoRecurrence Recurrence => (TodoRecurrence)Math.Max(0, RecurrenceBox.SelectedIndex);
 
-    public bool IsImportant => ImportantToggle.IsChecked == true;
+    public bool IsImportant => ImportantToggle.IsOn;
 
     public int TagIndex => _tagIndex;
 
@@ -188,8 +185,15 @@ public sealed partial class TodoEditorDialog : Window
     private void OnClosed(object sender, WindowEventArgs args)
     {
         _finished = true;
-        _result.TrySetResult(false);
-        _acrylic?.Dispose();
+
+        // 结果在这里统一给出：窗口已经关掉了，调用方再继续。
+        // 之前在点按钮时就把结果抛出去，调用方会立刻抢焦点、刷主界面，
+        // 而窗口还没真正消失，看起来就是「点取消时闪一下」。
+        _result.TrySetResult(_saved);
+
+        // 不要在 Closed 里 Dispose 亚克力控制器：窗口的合成目标正在销毁，
+        // 这时释放会让进程直接挂掉（0xc000027b，CoreMessagingXP 里崩）。
+        // 控制器交给 GC 回收即可，弹窗开得很少，这点驻留无所谓。
         _acrylic = null;
     }
 
@@ -233,12 +237,13 @@ public sealed partial class TodoEditorDialog : Window
             return;
         }
 
+        // 先隐藏再关：WinUI 关窗瞬间合成目标会先变黑一帧（点取消肉眼可见「闪一下」），
+        // 隐藏后窗口不再参与合成，黑帧就看不到了。结果仍在 Closed 里给。
+        _saved = saved;
         _finished = true;
-        _result.TrySetResult(saved);
-        Close();
+        _appWindow.Hide();
+        DispatcherQueue.TryEnqueue(Close);
     }
-
-    private void ImportantToggle_Changed(object sender, RoutedEventArgs e) => UpdateImportantVisuals();
 
     private void DueToggle_Toggled(object sender, RoutedEventArgs e) => ApplyDueVisibility();
 
@@ -261,38 +266,10 @@ public sealed partial class TodoEditorDialog : Window
             (int)Math.Round((on ? ExpandedHeight : CollapsedHeight) * scale)));
     }
 
-    private void UpdateImportantVisuals()
+    private static TimeSpan RoundToFiveMinutes(TimeSpan value)
     {
-        var on = ImportantToggle.IsChecked == true;
-        ImportantIcon.Glyph = on ? "\uE735" : "\uE734";
-        ImportantIcon.Foreground = (Brush)Application.Current.Resources[on ? "AccentBrush" : "TextMutedBrush"];
-        ImportantText.Text = on ? "重要" : "标记";
-        ImportantText.Foreground = (Brush)Application.Current.Resources[
-            on ? "TextPrimaryBrush" : "TextSecondaryBrush"];
-    }
-
-    private void BuildTimeSelectors(DateTime seed)
-    {
-        for (var hour = 0; hour < 24; hour++)
-        {
-            HourBox.Items.Add(hour.ToString("00"));
-        }
-
-        // 5 分钟一档，和原来 TimePicker 的 MinuteIncrement 保持一致。
-        for (var minute = 0; minute < 60; minute += 5)
-        {
-            MinuteBox.Items.Add(minute.ToString("00"));
-        }
-
-        // 预填当前时刻，就近吸附到 5 分钟档。
-        HourBox.SelectedIndex = seed.Hour;
-        MinuteBox.SelectedIndex = seed.Minute / 5;
-    }
-
-    private void SetTime(DateTime value)
-    {
-        HourBox.SelectedIndex = value.Hour;
-        MinuteBox.SelectedIndex = value.Minute / 5;
+        var minutes = (int)Math.Round(value.TotalMinutes / 5.0) * 5;
+        return TimeSpan.FromMinutes(minutes % (24 * 60));
     }
 
     private void BuildTagButtons()
@@ -307,9 +284,9 @@ public sealed partial class TodoEditorDialog : Window
 
             AddTagButton(i, new Border
             {
-                Width = 16,
-                Height = 6,
-                CornerRadius = new CornerRadius(3),
+                Width = 14,
+                Height = 14,
+                CornerRadius = new CornerRadius(7),
                 Background = new SolidColorBrush(color),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
@@ -330,12 +307,12 @@ public sealed partial class TodoEditorDialog : Window
     {
         var host = new Border
         {
-            Width = 30,
-            Height = 24,
-            CornerRadius = new CornerRadius(6),
-            BorderThickness = new Thickness(1.5),
+            Width = 26,
+            Height = 26,
+            CornerRadius = new CornerRadius(13),
+            BorderThickness = new Thickness(2),
             BorderBrush = new SolidColorBrush(Colors.Transparent),
-            Background = new SolidColorBrush(Color.FromArgb(0x0D, 0xFF, 0xFF, 0xFF)),
+            Background = new SolidColorBrush(Colors.Transparent),
             Child = content,
             Tag = index,
         };
@@ -357,8 +334,13 @@ public sealed partial class TodoEditorDialog : Window
         for (var i = 0; i < _tagButtons.Count; i++)
         {
             var index = i == _tagButtons.Count - 1 ? -1 : i;
-            ((SolidColorBrush)_tagButtons[i].BorderBrush).Color = _tagIndex == index
-                ? Color.FromArgb(255, 0xFF, 0xFF, 0xFF)
+            var selected = _tagIndex == index;
+            // 选中用一圈亮描边 + 淡底色：系统强调色可能是灰的，只靠配色看不出选没选。
+            ((SolidColorBrush)_tagButtons[i].BorderBrush).Color = selected
+                ? Color.FromArgb(255, 0xE9, 0xEC, 0xF0)
+                : Color.FromArgb(0, 0, 0, 0);
+            ((SolidColorBrush)_tagButtons[i].Background).Color = selected
+                ? Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF)
                 : Color.FromArgb(0, 0, 0, 0);
         }
     }

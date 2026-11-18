@@ -944,7 +944,16 @@ public sealed partial class MainWindow : Window
             return false;
         }
 
-        ViewModel.Add(title);
+        // 标题里带日期/时间就顺手识别：明天 10 点开会 → 截止明天 10:00，标题只留"开会"。
+        if (ToDooo.Helpers.NaturalDateParser.TryParse(title, DateTime.Now, out var due, out var cleaned))
+        {
+            ViewModel.AddItem(new TodoItem { Title = cleaned, DueAt = due });
+        }
+        else
+        {
+            ViewModel.Add(title);
+        }
+
         AddTextBox.Text = string.Empty;
         UpdateFilterVisuals();
         UpdateTagVisuals();
@@ -969,8 +978,12 @@ public sealed partial class MainWindow : Window
     private async Task AddDetailedAsync()
     {
         // 把输入框里已经敲好的草稿带进详细新建，取消时原样保留。
+        // 草稿里的日期/时间也一并识别好，弹窗里直接预填，用户可以再改。
         var draft = AddTextBox.Text;
-        var dialog = new TodoEditorDialog(draft);
+        var initialDue = ToDooo.Helpers.NaturalDateParser.TryParse(draft, DateTime.Now, out var parsedDue, out var cleanedDraft)
+            ? parsedDue
+            : (DateTime?)null;
+        var dialog = new TodoEditorDialog(initialDue is null ? draft : cleanedDraft, initialDue);
 
         if (await ShowEditorAsync(dialog))
         {

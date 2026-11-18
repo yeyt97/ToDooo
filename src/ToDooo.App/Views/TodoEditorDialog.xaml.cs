@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using ToDooo.Helpers;
 using ToDooo.Interop;
 using ToDooo.Models;
 using ToDooo.ViewModels;
@@ -34,14 +35,16 @@ public sealed partial class TodoEditorDialog : Window
     private DesktopAcrylicController? _acrylic;
     private int _tagIndex = -1;
     private bool _finished;
+    private bool _ready;
+    private bool _dueTouched;
     private bool _saved;
 
     public TodoEditorDialog() : this(string.Empty)
     {
     }
 
-    /// <summary>新建：把添加框里已经敲好的草稿带过来。</summary>
-    public TodoEditorDialog(string initialTitle)
+    /// <summary>新建：把添加框里已经敲好的草稿带过来；草稿里识别到的日期直接预填。</summary>
+    public TodoEditorDialog(string initialTitle, DateTime? initialDue = null)
     {
         InitializeComponent();
 
@@ -57,9 +60,18 @@ public sealed partial class TodoEditorDialog : Window
 
         // 新建时选了日期就带当前时刻，避免默认落到 00:00 立刻逾期。
         DueTime.SelectedTime = RoundToFiveMinutes(DateTime.Now.TimeOfDay);
+
+        if (initialDue is { } due)
+        {
+            DueDate.Date = new DateTimeOffset(due.Date);
+            DueTime.SelectedTime = due.TimeOfDay;
+            DueToggle.IsOn = true;
+        }
+
         BuildTagButtons();
         UpdateTagVisuals();
         ApplyDueVisibility();
+        _ready = true;
 
         Closed += OnClosed;
     }
@@ -237,6 +249,16 @@ public sealed partial class TodoEditorDialog : Window
             return;
         }
 
+        // 没手动开过截止时间的话，保存时再从标题里识别一次日期/时间。
+        if (saved && !_dueTouched && !DueToggle.IsOn && !_finished &&
+            NaturalDateParser.TryParse(TitleBox.Text, DateTime.Now, out var due, out var cleaned))
+        {
+            TitleBox.Text = cleaned;
+            DueDate.Date = new DateTimeOffset(due.Date);
+            DueTime.SelectedTime = due.TimeOfDay;
+            DueToggle.IsOn = true;
+        }
+
         // 先隐藏再关：WinUI 关窗瞬间合成目标会先变黑一帧（点取消肉眼可见「闪一下」），
         // 隐藏后窗口不再参与合成，黑帧就看不到了。结果仍在 Closed 里给。
         _saved = saved;
@@ -245,7 +267,15 @@ public sealed partial class TodoEditorDialog : Window
         DispatcherQueue.TryEnqueue(Close);
     }
 
-    private void DueToggle_Toggled(object sender, RoutedEventArgs e) => ApplyDueVisibility();
+    private void DueToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_ready)
+        {
+            _dueTouched = true;
+        }
+
+        ApplyDueVisibility();
+    }
 
     // 打开才显示日期/时间，同时把窗口高度换成展开态，收起时不留空白。
     private void ApplyDueVisibility()

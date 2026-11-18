@@ -21,6 +21,7 @@
     <Compile Include="..\..\src\ToDooo.App\Models\TodoItem.cs" Link="Linked\Models\TodoItem.cs" />
     <Compile Include="..\..\src\ToDooo.App\ViewModels\MainViewModel.cs" Link="Linked\ViewModels\MainViewModel.cs" />
     <Compile Include="..\..\src\ToDooo.App\Services\TodoRepository.cs" Link="Linked\Services\TodoRepository.cs" />
+    <Compile Include="..\..\src\ToDooo.App\Helpers\NaturalDateParser.cs" Link="Linked\Helpers\NaturalDateParser.cs" />
   </ItemGroup>
 
 </Project>

@@ -1,7 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Shapes;
 using ToDooo.Models;
 using ToDooo.ViewModels;
 using Windows.UI;
@@ -21,8 +20,16 @@ public sealed partial class TodoEditorDialog : ContentDialog
         BorderBrush = new SolidColorBrush(Color.FromArgb(0x20, 0xFF, 0xFF, 0xFF));
         BorderThickness = new Thickness(1);
         CornerRadius = new CornerRadius(8);
+        // 新建时选了日期就带当前时刻，避免默认落到 00:00 立刻逾期。
+        DueTime.Time = DateTime.Now.TimeOfDay;
         BuildTagButtons();
         UpdateTagVisuals();
+    }
+
+    /// <summary>从添加框的草稿新建，把已输入的内容预填进标题。</summary>
+    public TodoEditorDialog(string initialTitle) : this()
+    {
+        TitleBox.Text = initialTitle ?? string.Empty;
     }
 
     public TodoEditorDialog(TodoItem item) : this()
@@ -71,24 +78,25 @@ public sealed partial class TodoEditorDialog : ContentDialog
                 Convert.ToByte(MainViewModel.TagColors[i].Substring(3, 2), 16),
                 Convert.ToByte(MainViewModel.TagColors[i].Substring(5, 2), 16));
 
-            var dot = new Ellipse
+            var swatch = new Border
             {
-                Width = 10,
-                Height = 10,
-                Fill = new SolidColorBrush(color),
+                Width = 16,
+                Height = 6,
+                CornerRadius = new CornerRadius(3),
+                Background = new SolidColorBrush(color),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
             };
 
             var border = new Border
             {
-                Width = 26,
+                Width = 30,
                 Height = 26,
-                CornerRadius = new CornerRadius(13),
+                CornerRadius = new CornerRadius(6),
                 BorderThickness = new Thickness(2),
                 BorderBrush = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0)),
                 Background = new SolidColorBrush(Color.FromArgb(0x0D, 255, 255, 255)),
-                Child = dot,
+                Child = swatch,
                 Tag = i,
             };
 
@@ -105,9 +113,9 @@ public sealed partial class TodoEditorDialog : ContentDialog
 
         var none = new Border
         {
-            Width = 26,
+            Width = 30,
             Height = 26,
-            CornerRadius = new CornerRadius(13),
+            CornerRadius = new CornerRadius(6),
             BorderThickness = new Thickness(2),
             BorderBrush = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0)),
             Background = new SolidColorBrush(Color.FromArgb(24, 255, 255, 255)),

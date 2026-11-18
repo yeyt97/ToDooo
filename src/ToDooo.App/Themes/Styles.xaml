@@ -6,7 +6,8 @@
     <!-- DeskBox-inspired neutral slate palette.
          Widget 本体是深色亚克力，内容靠「半透明层次」而不是强调色区分：
          窗口底 -> 分段条 -> 任务卡片 -> 悬停层，逐级提亮。 -->
-    <CornerRadius x:Key="CardCornerRadius">10</CornerRadius>
+    <!-- 与 Windows 11 窗口自身的圆角半径(≈8)对齐，避免系统圆角和卡片圆角叠成「双层厚角」。 -->
+    <CornerRadius x:Key="CardCornerRadius">8</CornerRadius>
     <CornerRadius x:Key="ItemCornerRadius">6</CornerRadius>
     <CornerRadius x:Key="SegmentCornerRadius">8</CornerRadius>
 
@@ -35,16 +36,17 @@
     <SolidColorBrush x:Key="CheckGlyphBrush" Color="#262B33" />
     <SolidColorBrush x:Key="CheckBorderBrush" Color="#7A828E" />
 
+    <!-- 半透明：窗口级亚克力需要能透过 XAML 根层，否则磨砂会被完全盖住。 -->
     <LinearGradientBrush x:Key="CardBrush" StartPoint="0,0" EndPoint="0.35,1">
-        <GradientStop Color="#2E343D" Offset="0" />
-        <GradientStop Color="#2A3038" Offset="0.55" />
-        <GradientStop Color="#262B33" Offset="1" />
+        <GradientStop Color="#5E2E343D" Offset="0" />
+        <GradientStop Color="#542A3038" Offset="0.55" />
+        <GradientStop Color="#5E262B33" Offset="1" />
     </LinearGradientBrush>
 
     <LinearGradientBrush x:Key="CardStrokeBrush" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#24FFFFFF" Offset="0" />
-        <GradientStop Color="#12FFFFFF" Offset="0.5" />
-        <GradientStop Color="#20FFFFFF" Offset="1" />
+        <GradientStop Color="#18FFFFFF" Offset="0" />
+        <GradientStop Color="#0AFFFFFF" Offset="0.5" />
+        <GradientStop Color="#14FFFFFF" Offset="1" />
     </LinearGradientBrush>
 
     <LinearGradientBrush x:Key="AccentGradientBrush" StartPoint="0,0" EndPoint="1,1">
@@ -148,6 +150,40 @@
     <Style x:Key="StatButtonStyle" TargetType="Button" BasedOn="{StaticResource SegmentButtonStyle}" />
 
     <!-- 添加入口与任务卡片共用同一张「卡片」外观 -->
+    <!-- 添加框专用：原生 TextBox 的占位文字不吃 VerticalContentAlignment，
+         拉高后会贴顶。这里用极简模板把编辑区钉在垂直中心，占位文字由外层 TextBlock 承担。 -->
+    <Style x:Key="AddTextBoxStyle" TargetType="TextBox">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <Grid Background="Transparent">
+                        <TextBlock
+                            x:Name="PlaceholderTextContentPresenter"
+                            Visibility="Collapsed"
+                            IsHitTestVisible="False" />
+                        <ScrollViewer
+                            x:Name="ContentElement"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Stretch"
+                            HorizontalScrollMode="Disabled"
+                            HorizontalScrollBarVisibility="Disabled"
+                            VerticalScrollMode="Disabled"
+                            VerticalScrollBarVisibility="Disabled"
+                            IsTabStop="False"
+                            ZoomMode="Disabled" />
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style x:Key="AddButtonStyle" TargetType="Button">
         <Setter Property="Background" Value="{StaticResource ItemCardBrush}" />
         <Setter Property="BorderThickness" Value="0" />
@@ -373,20 +409,110 @@
         </Setter>
     </Style>
 
-    <Style x:Key="DoneCheckStyle" TargetType="Button">
-        <Setter Property="Width" Value="22" />
-        <Setter Property="Height" Value="22" />
+    <!-- 系统 CheckBox 三态资源：未勾选 / 不确定都画成空框，勾选画成中性填充 + 深色勾。
+         之前只覆盖了 Checked 系列，Indeterminate(null) 会用系统默认的「浅底 + 黑色横杠」，
+         在列表重建、模板复用的瞬间闪出来，鼠标悬停触发状态刷新后又消失。 -->
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUnchecked" Color="#7A828E" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUncheckedPointerOver" Color="#C9D0D8" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUncheckedPressed" Color="#EDEFF2" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillUnchecked" Color="Transparent" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillUncheckedPointerOver" Color="Transparent" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillUncheckedPressed" Color="Transparent" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="#EDEFF2" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="#EDEFF2" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="#D8DBE0" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="#D8DBE0" />
+    <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundChecked" Color="#262B33" />
+    <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundCheckedPointerOver" Color="#262B33" />
+    <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundCheckedPressed" Color="#262B33" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillIndeterminate" Color="Transparent" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeIndeterminate" Color="#7A828E" />
+    <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundIndeterminate" Color="Transparent" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillIndeterminatePointerOver" Color="Transparent" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeIndeterminatePointerOver" Color="#C9D0D8" />
+    <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundIndeterminatePointerOver" Color="Transparent" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillIndeterminatePressed" Color="Transparent" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeIndeterminatePressed" Color="#EDEFF2" />
+    <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundIndeterminatePressed" Color="Transparent" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillIndeterminateDisabled" Color="Transparent" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeIndeterminateDisabled" Color="#7A828E" />
+    <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundIndeterminateDisabled" Color="Transparent" />
+
+    <!-- 完成框保留原生 CheckBox 的点击 / IsChecked 语义，但视觉完全自绘：
+         Indeterminate 与 Unchecked 共用同一个空框，任何时序下都不会出现黑色横线。 -->
+    <Style x:Key="TodoCompletionCheckBoxStyle" TargetType="CheckBox">
+        <Setter Property="Width" Value="20" />
+        <Setter Property="Height" Value="20" />
+        <Setter Property="MinWidth" Value="20" />
+        <Setter Property="MinHeight" Value="20" />
         <Setter Property="Padding" Value="0" />
-        <Setter Property="Background" Value="Transparent" />
-        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Margin" Value="0" />
+        <Setter Property="IsThreeState" Value="False" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="VerticalAlignment" Value="Center" />
         <Setter Property="Template">
             <Setter.Value>
-                <ControlTemplate TargetType="Button">
-                    <Grid Background="Transparent">
-                        <ContentPresenter
+                <ControlTemplate TargetType="CheckBox">
+                    <Grid x:Name="Root" Width="20" Height="20" Background="Transparent">
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="HoverRing.Opacity" Value="1" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="HoverRing.Opacity" Value="1" />
+                                        <Setter Target="Root.Opacity" Value="0.8" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="Root.Opacity" Value="0.4" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                            <VisualStateGroup x:Name="CheckStates">
+                                <VisualState x:Name="Unchecked" />
+                                <VisualState x:Name="Indeterminate" />
+                                <VisualState x:Name="Checked">
+                                    <VisualState.Setters>
+                                        <Setter Target="Box.Background" Value="{StaticResource NeutralCheckFillBrush}" />
+                                        <Setter Target="Box.BorderBrush" Value="Transparent" />
+                                        <Setter Target="Check.Opacity" Value="1" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                        <Border
+                            x:Name="HoverRing"
+                            Width="20"
+                            Height="20"
+                            CornerRadius="6"
+                            Background="{StaticResource HoverBrush}"
+                            Opacity="0" />
+                        <Border
+                            x:Name="Box"
+                            Width="18"
+                            Height="18"
+                            CornerRadius="4"
+                            BorderThickness="1.5"
+                            BorderBrush="{StaticResource CheckBorderBrush}"
+                            Background="Transparent"
                             HorizontalAlignment="Center"
-                            VerticalAlignment="Center"
-                            Content="{TemplateBinding Content}" />
+                            VerticalAlignment="Center" />
+                        <FontIcon
+                            x:Name="Check"
+                            Glyph="&#xE73E;"
+                            FontSize="10"
+                            Foreground="{StaticResource CheckGlyphBrush}"
+                            Opacity="0"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center" />
                     </Grid>
                 </ControlTemplate>
             </Setter.Value>

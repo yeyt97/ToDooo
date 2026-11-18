@@ -69,13 +69,20 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
 
-        var item = new TodoItem
-        {
-            Title = title,
-            SortOrder = NextTopOrder(),
-            CreatedAt = DateTime.Now,
-        };
+        AddItem(new TodoItem { Title = title });
+    }
 
+    /// <summary>详细新建：标题之外还可带截止时间、重复、重要与标签。</summary>
+    public void AddItem(TodoItem item)
+    {
+        item.Title = item.Title.Trim();
+        if (item.Title.Length == 0)
+        {
+            return;
+        }
+
+        item.SortOrder = NextTopOrder();
+        item.CreatedAt = DateTime.Now;
         _repository.Add(item);
         _all.Add(item);
         Filter = TodoFilter.All;
@@ -108,7 +115,17 @@ public sealed partial class MainViewModel : ObservableObject
     {
         item.IsImportant = !item.IsImportant;
         _repository.Update(item);
-        ApplyFilter();
+
+        // 只有「重要」视图里取消标记才会让条目离开列表。其余情况原地刷新计数即可，
+        // 避免重建整个列表把悬停操作浮层一起冲掉，导致点击后看不到星形变化。
+        if (Filter == TodoFilter.Important && !item.IsImportant)
+        {
+            ApplyFilter();
+        }
+        else
+        {
+            RefreshCounts();
+        }
     }
 
     public void Delete(TodoItem item)
@@ -246,6 +263,11 @@ public sealed partial class MainViewModel : ObservableObject
             }
         }
 
+        RefreshCounts();
+    }
+
+    private void RefreshCounts()
+    {
         ActiveCount = _all.Count(item => !item.IsDone);
         ImportantCount = _all.Count(item => item.IsImportant && !item.IsDone);
         DoneCount = _all.Count(item => item.IsDone);

@@ -16,6 +16,8 @@ public static class Bind
     private static readonly SolidColorBrush CheckBorderBrush = new(Color.FromArgb(255, 0x7A, 0x82, 0x8E));
     // DeskBox 的原生复选框用中性主文本色填充，勾用背景色，不用强调色。
     private static readonly SolidColorBrush CheckFillBrush = new(Color.FromArgb(255, 0xED, 0xEF, 0xF2));
+    private static readonly SolidColorBrush ImportantBrush = new(Color.FromArgb(255, 0x4D, 0x8F, 0xE3));
+    private static readonly SolidColorBrush IdleImportantBrush = new(Color.FromArgb(255, 0x93, 0x9D, 0xA9));
     private static readonly SolidColorBrush[] TagBrushes = BuildTagBrushes();
 
     private static SolidColorBrush[] BuildTagBrushes()
@@ -62,4 +64,13 @@ public static class Bind
     public static double DoneOpacity(bool done) => done ? 0.55 : 1.0;
 
     public static double DueOpacity(bool done) => done ? 0.5 : 1.0;
+
+    // DeskBox 同款：重要用实心星 E735，普通用空心星 E734，且只有重要的才高亮。
+    public static string ImportantGlyph(bool important) => important ? "\uE735" : "\uE734";
+
+    public static Brush ImportantForeground(bool important) =>
+        important ? ImportantBrush : IdleImportantBrush;
+
+    // 行尾星标：标记了重要就常亮，没标记的默认藏起来、靠悬停浮现。
+    public static double ImportantOpacity(bool important) => important ? 1.0 : 0.0;
 }

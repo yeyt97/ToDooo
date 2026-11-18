@@ -7,7 +7,8 @@
     xmlns:models="using:ToDooo.Models"
     Title="ToDooo">
 
-    <Grid x:Name="Root" Background="Transparent">
+    <!-- 所有行/列都用 Auto 与 * ，窗口缩放时列表区自动吃掉剩余高度；最小尺寸同时由 Win32 层约束 -->
+    <Grid x:Name="Root" Background="Transparent" MinWidth="320" MinHeight="360">
         <Border
             CornerRadius="{StaticResource CardCornerRadius}"
             Background="{StaticResource CardBrush}"
@@ -28,7 +29,6 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <Grid
@@ -59,16 +59,8 @@
                         </StackPanel>
                     </Grid>
                     <Button
-                        x:Name="PinButton"
-                        Grid.Column="2"
-                        Style="{StaticResource FlatIconButtonStyle}"
-                        Click="PinButton_Click"
-                        ToolTipService.ToolTip="钉在桌面 / 浮于最前">
-                        <FontIcon x:Name="PinGlyph" Glyph="&#xE718;" FontSize="14" />
-                    </Button>
-                    <Button
                         x:Name="MoreButton"
-                        Grid.Column="3"
+                        Grid.Column="2"
                         Style="{StaticResource FlatIconButtonStyle}"
                         ToolTipService.ToolTip="更多">
                         <FontIcon Glyph="&#xE712;" FontSize="14" />
@@ -166,60 +158,71 @@
                     Orientation="Horizontal"
                     Spacing="2" />
 
-                <!--  添加入口：与任务卡片同一张卡  -->
-                <Grid Grid.Row="3" Height="46" Margin="12,0,12,8">
-                    <Button
-                        x:Name="AddButton"
-                        Style="{StaticResource AddButtonStyle}"
-                        Click="AddButton_Click">
-                        <Grid ColumnSpacing="4">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="32" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <FontIcon
-                                Grid.Column="0"
-                                Glyph="&#xE710;"
-                                FontSize="13"
-                                HorizontalAlignment="Center"
-                                Foreground="{StaticResource TextSecondaryBrush}" />
-                            <TextBlock
-                                Grid.Column="1"
-                                Text="添加待办"
-                                FontSize="13"
-                                VerticalAlignment="Center" />
-                        </Grid>
-                    </Button>
+                <!--  添加入口：常驻输入框，回车或离焦即提交；右侧清除 + 详细新建  -->
+                <Grid
+                    x:Name="AddBar"
+                    Grid.Row="3"
+                    Height="46"
+                    Margin="12,0,12,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="34" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
                     <Border
-                        x:Name="AddEditor"
-                        Visibility="Collapsed"
-                        CornerRadius="{StaticResource ItemCornerRadius}"
+                        Grid.ColumnSpan="4"
                         Background="{StaticResource ItemCardBrush}"
-                        BorderBrush="{StaticResource LayerStrokeBrush}"
-                        BorderThickness="1">
-                        <TextBox
-                            x:Name="AddTextBox"
-                            Padding="10,0"
-                            Background="Transparent"
-                            BorderThickness="0"
-                            FontSize="13"
-                            VerticalContentAlignment="Center"
-                            PlaceholderText="输入待办，回车保存，Esc 取消"
-                            KeyDown="AddTextBox_KeyDown"
-                            LostFocus="AddTextBox_LostFocus" />
-                    </Border>
+                        BorderBrush="{StaticResource ItemCardStrokeBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{StaticResource ItemCornerRadius}" />
+                    <FontIcon
+                        Grid.Column="0"
+                        Glyph="&#xE710;"
+                        FontSize="13"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Foreground="{StaticResource TextSecondaryBrush}" />
+                    <TextBox
+                        x:Name="AddTextBox"
+                        Grid.Column="1"
+                        Height="46"
+                        Style="{StaticResource AddTextBoxStyle}"
+                        TextChanged="AddTextBox_TextChanged"
+                        KeyDown="AddTextBox_KeyDown"
+                        LostFocus="AddTextBox_LostFocus" />
+                    <Button
+                        x:Name="ClearAddButton"
+                        Grid.Column="2"
+                        Margin="0,0,2,0"
+                        Visibility="Collapsed"
+                        Style="{StaticResource CardActionButtonStyle}"
+                        Click="ClearAddButton_Click"
+                        ToolTipService.ToolTip="清除输入">
+                        <FontIcon Glyph="&#xE711;" FontSize="12" />
+                    </Button>
+                    <Button
+                        x:Name="AddDetailButton"
+                        Grid.Column="3"
+                        Margin="0,0,6,0"
+                        Style="{StaticResource CardActionButtonStyle}"
+                        Click="AddDetailButton_Click"
+                        ToolTipService.ToolTip="详细添加（可设置时间、重复、标签）">
+                        <FontIcon Glyph="&#xE787;" FontSize="13" />
+                    </Button>
                 </Grid>
 
                 <!--  卡片式列表  -->
                 <Grid Grid.Row="4">
                     <ListView
                         x:Name="TodoList"
-                        Padding="10,0,10,0"
+                        Padding="12,0,12,0"
                         AllowDrop="True"
                         CanDragItems="True"
                         CanReorderItems="True"
                         DragItemsCompleted="TodoList_DragItemsCompleted"
-                        IsItemClickEnabled="False"
+                        IsItemClickEnabled="True"
+                        ItemClick="TodoList_ItemClick"
                         ItemsSource="{x:Bind ViewModel.Items, Mode=OneWay}"
                         SelectionMode="None"
                         ScrollViewer.VerticalScrollBarVisibility="Hidden">
@@ -242,32 +245,17 @@
                                             <ColumnDefinition Width="32" />
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
 
-                                        <Button
-                                            Style="{StaticResource DoneCheckStyle}"
-                                            Click="DoneToggle_Click"
+                                        <CheckBox
+                                            Grid.Column="0"
+                                            Style="{StaticResource TodoCompletionCheckBoxStyle}"
+                                            IsChecked="{x:Bind IsDone, Mode=OneWay}"
+                                            Click="DoneCheckBox_Click"
+                                            Loaded="DoneCheckBox_Loaded"
                                             VerticalAlignment="Center"
-                                            ToolTipService.ToolTip="标记完成">
-                                            <Grid Width="20" Height="20">
-                                                <Border
-                                                    Width="18"
-                                                    Height="18"
-                                                    HorizontalAlignment="Center"
-                                                    VerticalAlignment="Center"
-                                                    Background="{x:Bind helpers:Bind.CheckFill(IsDone), Mode=OneWay}"
-                                                    BorderBrush="{x:Bind helpers:Bind.CheckBorder(IsDone), Mode=OneWay}"
-                                                    BorderThickness="1.5"
-                                                    CornerRadius="4" />
-                                                <FontIcon
-                                                    Glyph="&#xE73E;"
-                                                    FontSize="10"
-                                                    Foreground="{StaticResource CheckGlyphBrush}"
-                                                    HorizontalAlignment="Center"
-                                                    VerticalAlignment="Center"
-                                                    Opacity="{x:Bind helpers:Bind.CheckOpacity(IsDone), Mode=OneWay}" />
-                                            </Grid>
-                                        </Button>
+                                            ToolTipService.ToolTip="标记完成" />
 
                                         <Border
                                             Grid.Column="1"
@@ -306,44 +294,29 @@
                                                     FontSize="11"
                                                     TextTrimming="CharacterEllipsis"
                                                     Foreground="{x:Bind helpers:Bind.DueBrush(IsOverdue), Mode=OneWay}" />
-                                                <FontIcon
-                                                    Glyph="&#xE735;"
-                                                    FontSize="10"
-                                                    VerticalAlignment="Center"
-                                                    Foreground="{StaticResource AccentBrush}"
-                                                    Visibility="{x:Bind helpers:Bind.VisibleWhen(IsImportant), Mode=OneWay}" />
                                             </StackPanel>
                                         </StackPanel>
 
-                                        <!--  悬停浮出的快捷操作（DeskBox 卡片右侧）  -->
-                                        <Border
-                                            Grid.ColumnSpan="3"
+                                        <!--
+                                            行尾重要开关：无底板、无描边，就是一个图标按钮。
+                                            未标记时悬停才浮现，标记后常亮（Opacity / IsHitTestVisible 跟 IsImportant 走）。
+                                        -->
+                                        <Button
+                                            Grid.Column="3"
                                             Tag="ItemActions"
-                                            Padding="2"
-                                            HorizontalAlignment="Right"
+                                            Style="{StaticResource CardActionButtonStyle}"
+                                            Click="QuickImportant_Click"
                                             VerticalAlignment="Center"
-                                            Background="{StaticResource OverlaySurfaceBrush}"
-                                            BorderBrush="{StaticResource LayerStrokeBrush}"
-                                            BorderThickness="1"
-                                            CornerRadius="5"
-                                            Canvas.ZIndex="2"
-                                            IsHitTestVisible="False"
-                                            Opacity="0">
-                                            <StackPanel Orientation="Horizontal" Spacing="1">
-                                                <Button
-                                                    Style="{StaticResource CardActionButtonStyle}"
-                                                    Click="QuickImportant_Click"
-                                                    ToolTipService.ToolTip="切换重要标记">
-                                                    <FontIcon Glyph="&#xE735;" FontSize="12" Foreground="{StaticResource AccentBrush}" />
-                                                </Button>
-                                                <Button
-                                                    Style="{StaticResource CardActionButtonStyle}"
-                                                    Click="QuickEdit_Click"
-                                                    ToolTipService.ToolTip="编辑待办">
-                                                    <FontIcon Glyph="&#xE70F;" FontSize="12" />
-                                                </Button>
-                                            </StackPanel>
-                                        </Border>
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            IsHitTestVisible="{x:Bind IsImportant, Mode=OneWay}"
+                                            Opacity="{x:Bind helpers:Bind.ImportantOpacity(IsImportant), Mode=OneWay}"
+                                            ToolTipService.ToolTip="标记为重要">
+                                            <FontIcon
+                                                Glyph="{x:Bind helpers:Bind.ImportantGlyph(IsImportant), Mode=OneWay}"
+                                                FontSize="13"
+                                                Foreground="{x:Bind helpers:Bind.ImportantForeground(IsImportant), Mode=OneWay}" />
+                                        </Button>
                                     </Grid>
                                 </Border>
                             </DataTemplate>
@@ -371,8 +344,11 @@
                             HorizontalAlignment="Center"
                             Foreground="{StaticResource TextSecondaryBrush}" />
                         <TextBlock
-                            Text="点击上方卡片，记下第一件要做的事"
+                            Text="回车或离焦即保存 · 点右侧日历设置时间 · 点任务编辑详情"
                             FontSize="12"
+                            MaxWidth="320"
+                            TextAlignment="Center"
+                            TextWrapping="Wrap"
                             HorizontalAlignment="Center"
                             Foreground="{StaticResource TextMutedBrush}" />
                     </StackPanel>
@@ -397,9 +373,11 @@
                         Click="ClearCompleted_Click"
                         Content="清除已完成"
                         IsEnabled="{x:Bind ViewModel.HasCompleted, Mode=OneWay}"
-                        Style="{StaticResource LinkButtonStyle}" />
+                        Style="{StaticResource LinkButtonStyle}"
+                        ToolTipService.ToolTip="删除所有已完成的待办，不可撤销" />
                 </Grid>
             </Grid>
         </Border>
+
     </Grid>
 </Window>

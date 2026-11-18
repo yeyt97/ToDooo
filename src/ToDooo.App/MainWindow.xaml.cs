@@ -58,7 +58,9 @@ public sealed partial class MainWindow : Window
         ConfigureWindow();
         BuildTagDots();
         UpdateFilterVisuals();
-        UpdatePinVisual();
+
+        // XAML 的 LostFocus 在窗口整体失活时不会触发，这里补一次全局失焦提交。
+        Activated += MainWindow_Activated;
 
         _reminder = new ReminderService(repository, notifier, Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread())
         {
@@ -86,7 +88,6 @@ public sealed partial class MainWindow : Window
             ApplyPin(true, persist: false);
         }
 
-        UpdatePinVisual();
         CreateTray();
         _reminder.Start();
     }
@@ -112,10 +113,15 @@ public sealed partial class MainWindow : Window
 
         if (_appWindow.Presenter is OverlappedPresenter presenter)
         {
-            presenter.IsResizable = false;
+            // 有系统尺寸边框：窗口外轮廓的圆角、边缘缩放都交给系统处理，
+            // 无边框的 popup 窗口在 Win11 上不裁圆角、还会露出系统默认的白边。
+            // XAML 侧圆角已对齐到 8，和系统圆角重合。
+            presenter.SetBorderAndTitleBar(true, false);
+            presenter.IsResizable = true;
             presenter.IsMaximizable = false;
             presenter.IsMinimizable = false;
-            presenter.SetBorderAndTitleBar(false, false);
+            presenter.PreferredMinimumWidth = 320;
+            presenter.PreferredMinimumHeight = 360;
         }
 
         ApplyAcrylicMaterial();
@@ -125,11 +131,8 @@ public sealed partial class MainWindow : Window
         exStyle &= ~NativeMethods.WS_EX_APPWINDOW;
         NativeMethods.SetWindowLongPtr(_hwnd, NativeMethods.GWL_EXSTYLE, new IntPtr(exStyle));
 
-        var style = NativeMethods.GetWindowLongPtr(_hwnd, NativeMethods.GWL_STYLE).ToInt64();
-        style &= ~(NativeMethods.WS_MINIMIZEBOX | NativeMethods.WS_MAXIMIZEBOX
-            | NativeMethods.WS_THICKFRAME | NativeMethods.WS_DLGFRAME
-            | NativeMethods.WS_CAPTION | NativeMethods.WS_BORDER);
-        NativeMethods.SetWindowLongPtr(_hwnd, NativeMethods.GWL_STYLE, new IntPtr(style));
+        // 不再手动剥掉 WS_THICKFRAME：那会让上面的 IsResizable 失效、边缘拖不动。
+        // 最小化/最大化按钮已由 OverlappedPresenter 关掉，这里只处理扩展样式。
 
         ApplyCornerMask();
         var dark = 1;
@@ -161,8 +164,9 @@ public sealed partial class MainWindow : Window
         {
             Kind = DesktopAcrylicKind.Base,
             TintColor = Color.FromArgb(255, 0x2A, 0x30, 0x38),
-            TintOpacity = 0.65f,
-            LuminosityOpacity = 0.6f,
+            // tint 太厚会把模糊的桌面纹理糊成一片纯色，调到能透出磨砂颗粒感。
+            TintOpacity = 0.42f,
+            LuminosityOpacity = 0.64f,
             FallbackColor = Color.FromArgb(255, 0x20, 0x25, 0x2C),
         };
         _acrylic.AddSystemBackdropTarget(
@@ -200,6 +204,12 @@ public sealed partial class MainWindow : Window
         var round = NativeMethods.DWMWCP_ROUND;
         NativeMethods.DwmSetWindowAttribute(
             _hwnd, NativeMethods.DWMWA_WINDOW_CORNER_PREFERENCE, ref round, sizeof(int));
+
+        // 关掉系统绘制的窗口边框：Win11 深色主题下它是一条浅色线，
+        // 叠在 XAML 卡片描边外面看着就是「一圈白边」。
+        var noBorder = NativeMethods.DWMWA_COLOR_NONE;
+        NativeMethods.DwmSetWindowAttribute(
+            _hwnd, NativeMethods.DWMWA_BORDER_COLOR, ref noBorder, sizeof(int));
     }
 
     private void BedToDesktop()
@@ -254,20 +264,12 @@ public sealed partial class MainWindow : Window
         }
 
         ApplyCornerMask();
-        UpdatePinVisual();
 
         if (persist)
         {
             _settings.Current.PinnedToDesktop = _pinned;
             _settings.Save();
         }
-    }
-
-    private void UpdatePinVisual()
-    {
-        PinGlyph.Foreground = new SolidColorBrush(
-            _pinned ? Color.FromArgb(255, 77, 143, 227) : Color.FromArgb(255, 147, 157, 169));
-        PinButton.Opacity = _pinned ? 1 : 0.85;
     }
 
     private void SavePosition()
@@ -277,9 +279,18 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        NativeMethods.GetWindowRect(_hwnd, out var rect);
+        if (!NativeMethods.GetWindowRect(_hwnd, out var rect))
+        {
+            return;
+        }
+
+        var scale = NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
         _settings.Current.WindowX = rect.Left;
         _settings.Current.WindowY = rect.Top;
+        // 缩放后的尺寸也要持久化，PositionWindow() 会按 DPI 还原；否则重启又回到旧的固定大小。
+        // 设置项存的是逻辑像素，所以这里要把物理像素除回去。
+        _settings.Current.WindowWidth = Math.Max(320, (int)Math.Round((rect.Right - rect.Left) / scale));
+        _settings.Current.WindowHeight = Math.Max(360, (int)Math.Round((rect.Bottom - rect.Top) / scale));
         _settings.Save();
     }
 
@@ -290,7 +301,7 @@ public sealed partial class MainWindow : Window
         _tray.AddRequested += () =>
         {
             ShowFromTray();
-            ShowAddEditor();
+            FocusAddBox();
         };
         _tray.ExitRequested += ExitApp;
         _tray.StartupToggled += enabled => StartupService.SetEnabled(enabled);
@@ -327,6 +338,12 @@ public sealed partial class MainWindow : Window
                 {
                     _dispatcher.TryEnqueue(BedToDesktop);
                 }
+                else
+                {
+                    // WA_INACTIVE = 0：真正的窗口级失焦（点了别的程序、桌面）。
+                    // XAML 的 LostFocus 在这种场景下不触发，只能在这里补一次草稿提交。
+                    _dispatcher.TryEnqueue(() => CommitAddDraft());
+                }
 
                 break;
 
@@ -342,20 +359,48 @@ public sealed partial class MainWindow : Window
 
                 break;
 
+            case NativeMethods.WM_NCHITTEST:
+                return HitTestResizeBorder(hWnd, msg, wParam, lParam);
+
             case NativeMethods.WM_WINDOWPOSCHANGING:
-                // Show Desktop 等外壳操作会试图把窗口隐藏/最小化，钉住时直接拦掉。
-                if (_pinned)
+            {
+                var pos = System.Runtime.InteropServices.Marshal.PtrToStructure<NativeMethods.WINDOWPOS>(lParam);
+                var changed = false;
+
+                // 最小尺寸：避免缩到内容被压坏，与 XAML Root 的 MinWidth/MinHeight 保持一致。
+                if ((pos.flags & NativeMethods.SWP_NOSIZE) == 0 && pos.cx > 0 && pos.cy > 0)
                 {
-                    var pos = System.Runtime.InteropServices.Marshal.PtrToStructure<NativeMethods.WINDOWPOS>(lParam);
-                    if ((pos.flags & NativeMethods.SWP_HIDEWINDOW) != 0)
+                    var scale = NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
+                    var minWidth = (int)Math.Round(320 * scale);
+                    var minHeight = (int)Math.Round(360 * scale);
+                    if (pos.cx < minWidth)
                     {
-                        pos.flags &= ~NativeMethods.SWP_HIDEWINDOW;
-                        pos.flags |= NativeMethods.SWP_SHOWWINDOW;
-                        System.Runtime.InteropServices.Marshal.StructureToPtr(pos, lParam, false);
+                        pos.cx = minWidth;
+                        changed = true;
+                    }
+
+                    if (pos.cy < minHeight)
+                    {
+                        pos.cy = minHeight;
+                        changed = true;
                     }
                 }
 
+                // Show Desktop 等外壳操作会试图把窗口隐藏/最小化，钉住时直接拦掉。
+                if (_pinned && (pos.flags & NativeMethods.SWP_HIDEWINDOW) != 0)
+                {
+                    pos.flags &= ~NativeMethods.SWP_HIDEWINDOW;
+                    pos.flags |= NativeMethods.SWP_SHOWWINDOW;
+                    changed = true;
+                }
+
+                if (changed)
+                {
+                    System.Runtime.InteropServices.Marshal.StructureToPtr(pos, lParam, false);
+                }
+
                 break;
+            }
 
             case NativeMethods.WM_EXITSIZEMOVE:
                 SavePosition();
@@ -374,6 +419,45 @@ public sealed partial class MainWindow : Window
         }
 
         return NativeMethods.DefSubclassProc(hWnd, msg, wParam, lParam);
+    }
+
+    /// <summary>
+    /// 无标题栏窗口的系统尺寸边框命中区很窄，这里再给客户区最外圈 6px 做一次边缘/角落判定，
+    /// 保证四条边和四个角都能拖动缩放；非边缘区域交回系统原来的命中结果。
+    /// </summary>
+    private IntPtr HitTestResizeBorder(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
+    {
+        var hit = NativeMethods.DefSubclassProc(hWnd, msg, wParam, lParam);
+        if (hit.ToInt64() != NativeMethods.HTCLIENT ||
+            !NativeMethods.GetWindowRect(_hwnd, out var rect))
+        {
+            return hit;
+        }
+
+        // lParam 低/高 16 位是鼠标的屏幕坐标，副屏可能为负，用 short 还原符号。
+        var x = (short)(lParam.ToInt64() & 0xFFFF);
+        var y = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
+        const int edge = 6;
+
+        var left = x - rect.Left < edge;
+        var right = rect.Right - x <= edge;
+        var top = y - rect.Top < edge;
+        var bottom = rect.Bottom - y <= edge;
+
+        var code = (left, right, top, bottom) switch
+        {
+            (true, _, true, _) => NativeMethods.HTTOPLEFT,
+            (_, true, true, _) => NativeMethods.HTTOPRIGHT,
+            (true, _, _, true) => NativeMethods.HTBOTTOMLEFT,
+            (_, true, _, true) => NativeMethods.HTBOTTOMRIGHT,
+            (true, _, _, _) => NativeMethods.HTLEFT,
+            (_, true, _, _) => NativeMethods.HTRIGHT,
+            (_, _, true, _) => NativeMethods.HTTOP,
+            (_, _, _, true) => NativeMethods.HTBOTTOM,
+            _ => NativeMethods.HTCLIENT,
+        };
+
+        return code == NativeMethods.HTCLIENT ? hit : new IntPtr(code);
     }
 
     private void DragRegion_PointerPressed(object sender, PointerRoutedEventArgs e)
@@ -511,6 +595,11 @@ public sealed partial class MainWindow : Window
         SetStatVisual(ActiveStat, ViewModel.Filter == TodoFilter.Active);
         SetStatVisual(ImportantStat, ViewModel.Filter == TodoFilter.Important);
         SetStatVisual(DoneStat, ViewModel.Filter == TodoFilter.Done);
+
+        // 批量删除只在「已完成」视图里出现，避免在其他视图误触。
+        ClearCompletedButton.Visibility = ViewModel.Filter == TodoFilter.Done
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     // 分段筛选的选中态是一块中性高亮，而不是强调色或透明度差异。
@@ -545,66 +634,161 @@ public sealed partial class MainWindow : Window
         UpdateFilterVisuals();
     }
 
-    private void AddButton_Click(object sender, RoutedEventArgs e) => ShowAddEditor();
+    private void FocusAddBox() => AddTextBox.Focus(FocusState.Programmatic);
 
-    private void ShowAddEditor()
+    private void AddTextBox_TextChanged(object sender, TextChangedEventArgs e)
     {
-        AddButton.Visibility = Visibility.Collapsed;
-        AddEditor.Visibility = Visibility.Visible;
-        AddTextBox.Focus(FocusState.Programmatic);
+        var hasText = !string.IsNullOrEmpty(AddTextBox.Text);
+        ClearAddButton.Visibility = hasText ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private void CloseAddEditor()
+    private void ClearAddButton_Click(object sender, RoutedEventArgs e)
     {
         AddTextBox.Text = string.Empty;
-        AddEditor.Visibility = Visibility.Collapsed;
-        AddButton.Visibility = Visibility.Visible;
+        FocusAddBox();
     }
 
     private void AddTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (e.Key == VirtualKey.Enter)
         {
-            var title = AddTextBox.Text;
-            if (!string.IsNullOrWhiteSpace(title))
+            if (CommitAddDraft())
             {
-                ViewModel.Add(title);
-                AddTextBox.Text = string.Empty;
-                UpdateFilterVisuals();
-                UpdateTagVisuals();
-                if (ViewModel.Items.Count > 0)
+                // 输入框常驻，列表重建/滚动都可能抢走焦点；两帧后把焦点还回来以便连续添加。
+                _dispatcher.TryEnqueue(() =>
                 {
-                    TodoList.ScrollIntoView(ViewModel.Items[0]);
-                }
+                    if (ViewModel.Items.Count > 0)
+                    {
+                        TodoList.ScrollIntoView(ViewModel.Items[0]);
+                    }
+
+                    _dispatcher.TryEnqueue(() => AddTextBox.Focus(FocusState.Programmatic));
+                });
             }
 
             e.Handled = true;
         }
         else if (e.Key == VirtualKey.Escape)
         {
-            CloseAddEditor();
+            AddTextBox.Text = string.Empty;
             e.Handled = true;
         }
     }
 
-    private void AddTextBox_LostFocus(object sender, RoutedEventArgs e)
+    // 窗口失活（切到别的程序、点桌面）时 TextBox 不会触发 LostFocus，得靠这里补。
+    private void MainWindow_Activated(object sender, WindowActivatedEventArgs e)
     {
-        if (string.IsNullOrWhiteSpace(AddTextBox.Text))
+        if (e.WindowActivationState == WindowActivationState.Deactivated)
         {
-            CloseAddEditor();
+            CommitAddDraft();
         }
     }
 
-    private void DoneToggle_Click(object sender, RoutedEventArgs e)
+    // 离焦即提交：点列表、点窗口别处、切走窗口，敲了一半的草稿都不会再悄悄丢掉。
+    private void AddTextBox_LostFocus(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement { DataContext: TodoItem item })
+        // 点「清除」「详细添加」造成的离焦不算提交：
+        // 前者是要丢弃草稿，后者要把草稿带进对话框，先提交就会重复添加两次。
+        // 口径放宽到整个输入条：焦点只是跑到同一条里的按钮上，就还没离开这个「添加动作」。
+        var focused = FocusManager.GetFocusedElement(Root.XamlRoot) as DependencyObject;
+        if (focused is not null && IsWithin(focused, AddBar))
         {
-            ViewModel.SetDone(item, !item.IsDone);
+            return;
+        }
+
+        CommitAddDraft();
+    }
+
+    // 回车和离焦共用的一套提交逻辑；返回是否真的加了一条。
+    private bool CommitAddDraft()
+    {
+        var title = AddTextBox.Text;
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            return false;
+        }
+
+        ViewModel.Add(title);
+        AddTextBox.Text = string.Empty;
+        UpdateFilterVisuals();
+        UpdateTagVisuals();
+        return true;
+    }
+
+    private static bool IsWithin(DependencyObject node, DependencyObject ancestor)
+    {
+        for (DependencyObject? current = node; current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (ReferenceEquals(current, ancestor))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void AddDetailButton_Click(object sender, RoutedEventArgs e) => _ = AddDetailedAsync();
+
+    private async Task AddDetailedAsync()
+    {
+        // 把输入框里已经敲好的草稿带进详细新建，取消时原样保留。
+        var draft = AddTextBox.Text;
+        var dialog = new TodoEditorDialog(draft)
+        {
+            Title = "新建待办",
+            XamlRoot = Root.XamlRoot,
+            RequestedTheme = ElementTheme.Dark,
+        };
+
+        var result = await dialog.ShowAsync();
+        if (result == ContentDialogResult.Primary && dialog.TodoTitle.Length > 0)
+        {
+            ViewModel.AddItem(new TodoItem
+            {
+                Title = dialog.TodoTitle,
+                DueAt = dialog.DueAt,
+                Recurrence = dialog.Recurrence,
+                IsImportant = dialog.IsImportant,
+                TagIndex = dialog.TagIndex,
+            });
+            AddTextBox.Text = string.Empty;
+            UpdateFilterVisuals();
+            UpdateTagVisuals();
+        }
+
+        FocusAddBox();
+    }
+
+    private void TodoList_ItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is TodoItem item)
+        {
+            _ = EditItemAsync(item);
+        }
+    }
+
+    // DataTemplate 刚生成时 x:Bind 可能还没求值，IsChecked 会短暂停在 null（三态）。
+    private void DoneCheckBox_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is CheckBox { DataContext: TodoItem item } box)
+        {
+            box.IsChecked = item.IsDone;
+        }
+    }
+
+    private void DoneCheckBox_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is CheckBox { DataContext: TodoItem item } box)
+        {
+            ViewModel.SetDone(item, box.IsChecked == true);
+            // SetDone 会重建筛选视图，先把当前控件状态锁回数据值，避免模板复用时状态漂移。
+            box.IsChecked = item.IsDone;
             UpdateFilterVisuals();
         }
     }
 
-    // 卡片悬停：提亮卡片并浮出快捷操作，和 DeskBox 的行为一致。
+    // 卡片悬停：提亮卡片，并让未标记重要的行浮出星标按钮（已标记的本来就在亮着）。
     private void TodoCard_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
         if (sender is not Border card)
@@ -613,10 +797,10 @@ public sealed partial class MainWindow : Window
         }
 
         card.Background = (Brush)Application.Current.Resources["ItemCardHoverBrush"];
-        if (FindTaggedChild<Border>(card, "ItemActions") is { } host)
+        if (FindTaggedChild<Button>(card, "ItemActions") is { } star)
         {
-            host.Opacity = 1;
-            host.IsHitTestVisible = true;
+            star.Opacity = 1;
+            star.IsHitTestVisible = true;
         }
     }
 
@@ -628,10 +812,13 @@ public sealed partial class MainWindow : Window
         }
 
         card.ClearValue(Border.BackgroundProperty);
-        if (FindTaggedChild<Border>(card, "ItemActions") is { } host)
+
+        // 标记了重要的行，星标留在原位常亮；没标记的收回悬停态。
+        if (FindTaggedChild<Button>(card, "ItemActions") is { } star)
         {
-            host.Opacity = 0;
-            host.IsHitTestVisible = false;
+            var pinned = star.DataContext is TodoItem { IsImportant: true };
+            star.Opacity = pinned ? 1 : 0;
+            star.IsHitTestVisible = pinned;
         }
     }
 
@@ -655,20 +842,30 @@ public sealed partial class MainWindow : Window
         return null;
     }
 
+    // 星标按钮每次被模板复用时不用额外处理：Opacity / IsHitTestVisible 都绑在 IsImportant 上，
+    // 上下文菜单里标记重要后也能立刻亮起，不依赖悬停。
+
     private void QuickImportant_Click(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { DataContext: TodoItem item })
         {
             ViewModel.ToggleImportant(item);
             UpdateFilterVisuals();
-        }
-    }
 
-    private void QuickEdit_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is FrameworkElement { DataContext: TodoItem item })
-        {
-            _ = EditItemAsync(item);
+            // 不等绑定/列表刷新，直接给当前按钮一个即时反馈。
+            if (sender is Button star)
+            {
+                // 指针就在这一行上，标记与否都先保持可见，移出时由 PointerExited 收回去。
+                star.Opacity = 1;
+                star.IsHitTestVisible = true;
+
+                if (star.Content is FontIcon icon)
+                {
+                    icon.Glyph = item.IsImportant ? "\uE735" : "\uE734";
+                    icon.Foreground = (Brush)Application.Current.Resources[
+                        item.IsImportant ? "AccentBrush" : "TextMutedBrush"];
+                }
+            }
         }
     }
 
@@ -740,16 +937,6 @@ public sealed partial class MainWindow : Window
     {
         var ordered = ViewModel.Items.ToList();
         DispatcherQueue.TryEnqueue(() => ViewModel.PersistReorder(ordered));
-    }
-
-    private void PinButton_Click(object sender, RoutedEventArgs e)
-    {
-        ApplyPin(!_pinned, persist: true);
-        if (!_pinned)
-        {
-            Activate();
-            NativeMethods.SetForegroundWindow(_hwnd);
-        }
     }
 
     private void MoreFlyout_Opening(object sender, object e)

@@ -20,6 +20,52 @@
                 <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
                 <Setter Property="VerticalAlignment" Value="Center" />
             </Style>
+
+            <!--  标签色点：可聚焦按钮，选中态靠亮描边 + 淡底色  -->
+            <Style x:Key="TagRingButton" TargetType="Button">
+                <Setter Property="Width" Value="28" />
+                <Setter Property="Height" Value="28" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Grid
+                                x:Name="Root"
+                                Background="Transparent"
+                                CornerRadius="14">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <VisualState.Setters>
+                                                <Setter Target="Root.Background" Value="{StaticResource HoverBrush}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <VisualState.Setters>
+                                                <Setter Target="Root.Background" Value="{StaticResource PressedBrush}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled" />
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                                <Border
+                                    Width="26"
+                                    Height="26"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="2"
+                                    CornerRadius="13">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
         </Grid.Resources>
 
         <Grid.RowDefinitions>
@@ -87,6 +133,7 @@
                             <ToggleSwitch
                                 x:Name="DueToggle"
                                 Grid.Column="1"
+                                AutomationProperties.Name="启用截止时间"
                                 MinWidth="0"
                                 OffContent=""
                                 OnContent=""
@@ -109,6 +156,7 @@
                                 <CalendarDatePicker
                                     x:Name="DueDate"
                                     Grid.Column="1"
+                                    AutomationProperties.Name="截止日期"
                                     HorizontalAlignment="Stretch"
                                     CornerRadius="6"
                                     PlaceholderText="选择日期" />
@@ -126,7 +174,9 @@
                                 <TimePicker
                                     x:Name="DueTime"
                                     Grid.Column="1"
-                                    HorizontalAlignment="Stretch"
+                                    Width="190"
+                                    HorizontalAlignment="Left"
+                                    AutomationProperties.Name="截止时间"
                                     ClockIdentifier="24HourClock"
                                     MinuteIncrement="5"
                                     CornerRadius="6" />
@@ -142,6 +192,7 @@
                             <ComboBox
                                 x:Name="RecurrenceBox"
                                 Grid.Column="1"
+                                AutomationProperties.Name="重复方式"
                                 Width="150"
                                 SelectedIndex="0">
                                 <ComboBoxItem Content="不重复" />
@@ -170,6 +221,7 @@
                             <ToggleSwitch
                                 x:Name="ImportantToggle"
                                 Grid.Column="1"
+                                AutomationProperties.Name="标记为重要"
                                 MinWidth="0"
                                 OffContent=""
                                 OnContent="" />
@@ -213,9 +265,14 @@
                 x:Name="SaveButton"
                 Grid.Column="2"
                 MinWidth="88"
+                AutomationProperties.Name="保存"
                 Click="SaveButton_Click"
-                Content="保存"
-                Style="{StaticResource AccentButtonStyle}" />
+                Style="{StaticResource AccentButtonStyle}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon Glyph="&#xE73E;" FontSize="12" />
+                    <TextBlock Text="保存" />
+                </StackPanel>
+            </Button>
         </Grid>
     </Grid>
 </Window>

@@ -21,6 +21,7 @@ internal static class NativeMethods
     public const int WM_NCHITTEST = 0x0084;
     public const int WM_NCLBUTTONDBLCLK = 0x00A3;
     public const int WM_SYSCOMMAND = 0x0112;
+    public const int WM_CLOSE = 0x0010;
     public const int WM_ACTIVATE = 0x0006;
     public const int WM_MOUSEACTIVATE = 0x0021;
     public const int MA_NOACTIVATE = 3;

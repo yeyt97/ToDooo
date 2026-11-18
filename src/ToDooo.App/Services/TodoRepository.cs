@@ -110,6 +110,32 @@ public sealed class TodoRepository
         command.ExecuteNonQuery();
     }
 
+    /// <summary>拖动排序后批量写回 sort_order：单连接 + 单事务，避免逐条开连接。</summary>
+    public void UpdateOrders(IEnumerable<TodoItem> items)
+    {
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction();
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "UPDATE todos SET sort_order = $order WHERE id = $id";
+        var orderParameter = command.Parameters.Add("$order", SqliteType.Real);
+        var idParameter = command.Parameters.Add("$id", SqliteType.Integer);
+
+        foreach (var item in items)
+        {
+            if (item.Id <= 0)
+            {
+                continue;
+            }
+
+            orderParameter.Value = item.SortOrder;
+            idParameter.Value = item.Id;
+            command.ExecuteNonQuery();
+        }
+
+        transaction.Commit();
+    }
+
     public void ClearCompleted()
     {
         using var connection = Open();

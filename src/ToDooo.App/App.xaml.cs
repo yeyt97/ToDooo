@@ -11,6 +11,7 @@ public partial class App : Application
 {
     private DispatcherQueue? _dispatcher;
     private MainWindow? _window;
+    private readonly Windows.UI.ViewManagement.UISettings _uiSettings = new();
 
     public App()
     {
@@ -34,6 +35,8 @@ public partial class App : Application
         AppPaths.Ensure();
 
         EnableDarkWin32Menus();
+        ApplySystemAccent();
+        _uiSettings.ColorValuesChanged += (_, _) => _dispatcher?.TryEnqueue(ApplySystemAccent);
 
         Repository = new TodoRepository(AppPaths.DatabasePath);
         Repository.Initialize();
@@ -45,6 +48,27 @@ public partial class App : Application
         Notifier.Fallback = _window.ShowBalloon;
         _window.Activate();
         _window.Startup();
+    }
+
+    /// <summary>
+    /// 把系统强调色写进 AccentBrush / AccentGradientBrush 这两个共享实例：
+    /// 就地改颜色而不是换资源，已经引用它们的控件会跟着变，系统里改强调色也不用重启。
+    /// </summary>
+    private void ApplySystemAccent()
+    {
+        var accent = _uiSettings.GetColorValue(Windows.UI.ViewManagement.UIColorType.Accent);
+        if (Application.Current.Resources["AccentBrush"] is Microsoft.UI.Xaml.Media.SolidColorBrush brush)
+        {
+            brush.Color = accent;
+        }
+
+        if (Application.Current.Resources["AccentGradientBrush"] is Microsoft.UI.Xaml.Media.LinearGradientBrush gradient &&
+            gradient.GradientStops.Count >= 2)
+        {
+            gradient.GradientStops[0].Color =
+                _uiSettings.GetColorValue(Windows.UI.ViewManagement.UIColorType.AccentLight2);
+            gradient.GradientStops[1].Color = accent;
+        }
     }
 
     // Win32 弹出菜单（托盘右键菜单）跟随 App 的深色主题。

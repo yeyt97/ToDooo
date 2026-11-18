@@ -41,6 +41,8 @@
     <PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>
     <PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">True</PublishReadyToRun>
     <PublishTrimmed>False</PublishTrimmed>
+    <!-- MVVM Toolkit 对 WinRT 的 AOT 提示：本项目不做 AOT，屏蔽这类噪音警告 -->
+    <NoWarn>$(NoWarn);MVVMTK0045</NoWarn>
     <WindowsAppSDKSelfContained Condition="'$(Configuration)' == 'Release'">true</WindowsAppSDKSelfContained>
     <SelfContained Condition="'$(Configuration)' == 'Release'">true</SelfContained>
   </PropertyGroup>

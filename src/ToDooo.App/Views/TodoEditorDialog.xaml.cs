@@ -28,7 +28,7 @@ public sealed partial class TodoEditorDialog : Window
 
     // 让后续逻辑排在关窗之后的下一轮消息里跑，别卡在关窗过程中重入 UI。
     private readonly TaskCompletionSource<bool> _result = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly List<Border> _tagButtons = new();
+    private readonly List<Button> _tagButtons = new();
     private readonly IntPtr _hwnd;
     private readonly AppWindow _appWindow;
     private DesktopAcrylicController? _acrylic;
@@ -305,21 +305,21 @@ public sealed partial class TodoEditorDialog : Window
 
     private void AddTagButton(int index, UIElement content)
     {
-        var host = new Border
+        var host = new Button
         {
-            Width = 26,
-            Height = 26,
-            CornerRadius = new CornerRadius(13),
-            BorderThickness = new Thickness(2),
+            Style = (Style)Root.Resources["TagRingButton"],
+            Content = content,
+            Tag = index,
             BorderBrush = new SolidColorBrush(Colors.Transparent),
             Background = new SolidColorBrush(Colors.Transparent),
-            Child = content,
-            Tag = index,
         };
 
-        host.Tapped += (s, _) =>
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+            host, index < 0 ? "清除标签" : $"标签 {index + 1}");
+
+        host.Click += (s, _) =>
         {
-            var tag = (int)((Border)s!).Tag;
+            var tag = (int)((Button)s!).Tag;
             // 点已选中的色条等于取消标签，和主界面顶部的标签筛选一个手感。
             _tagIndex = tag < 0 || _tagIndex == tag ? -1 : tag;
             UpdateTagVisuals();

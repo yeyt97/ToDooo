@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="11.0.0" />
+  </ItemGroup>
+
+  <!-- 直接链接被测源码：模型 / 视图模型 / 仓储都不依赖 WinUI，无需引用 UI 工程 -->
+  <ItemGroup>
+    <Compile Include="..\..\src\ToDooo.App\Models\TodoItem.cs" Link="Linked\Models\TodoItem.cs" />
+    <Compile Include="..\..\src\ToDooo.App\ViewModels\MainViewModel.cs" Link="Linked\ViewModels\MainViewModel.cs" />
+    <Compile Include="..\..\src\ToDooo.App\Services\TodoRepository.cs" Link="Linked\Services\TodoRepository.cs" />
+  </ItemGroup>
+
+</Project>

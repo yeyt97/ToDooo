@@ -46,7 +46,17 @@ public sealed partial class MainViewModel : ObservableObject
 
     public int SelectedTag { get; private set; } = -1;
 
+    private string _searchQuery = string.Empty;
+
+    public string SearchQuery => _searchQuery;
+
     public bool IsEmpty => Items.Count == 0;
+
+    public string EmptyTitle => _searchQuery.Length > 0 ? "没有找到匹配的待办" : "还没有待办";
+
+    public string EmptyDescription => _searchQuery.Length > 0
+        ? "换个关键词，或清空搜索看全部"
+        : "回车或离焦即保存 · 点右侧日历设置时间 · 点任务编辑详情";
 
     public bool HasCompleted => DoneCount > 0;
 
@@ -136,18 +146,40 @@ public sealed partial class MainViewModel : ObservableObject
         RefreshCounts();
     }
 
-    public void Delete(TodoItem item)
+    public TodoItem Delete(TodoItem item)
     {
         _repository.Delete(item.Id);
         _all.Remove(item);
         Items.Remove(item);
         RefreshCounts();
+        return item;
     }
 
-    public void ClearCompleted()
+    /// <summary>清空已完成并返回被删的条目，供界面做「撤销」。</summary>
+    public List<TodoItem> ClearCompleted()
     {
+        var removed = _all.Where(item => item.IsDone).ToList();
+        if (removed.Count == 0)
+        {
+            return removed;
+        }
+
         _repository.ClearCompleted();
         _all.RemoveAll(item => item.IsDone);
+        ApplyFilter();
+        return removed;
+    }
+
+    /// <summary>撤销删除：重新落库（分配新 Id），排序位置和其余字段原样保留。</summary>
+    public void Restore(IEnumerable<TodoItem> items)
+    {
+        foreach (var item in items)
+        {
+            item.Id = 0;
+            _repository.Add(item);
+            _all.Add(item);
+        }
+
         ApplyFilter();
     }
 
@@ -182,6 +214,19 @@ public sealed partial class MainViewModel : ObservableObject
         RefreshCounts();
     }
 
+    public void SetSearch(string? query)
+    {
+        var next = (query ?? string.Empty).Trim();
+        if (next == _searchQuery)
+        {
+            return;
+        }
+
+        _searchQuery = next;
+        OnPropertyChanged(nameof(SearchQuery));
+        ApplyFilter();
+    }
+
     public void SetFilter(TodoFilter filter)
     {
         Filter = Filter == filter && filter != TodoFilter.All ? TodoFilter.All : filter;
@@ -214,8 +259,10 @@ public sealed partial class MainViewModel : ObservableObject
         for (var i = 0; i < _all.Count; i++)
         {
             _all[i].SortOrder = i;
-            _repository.Update(_all[i]);
         }
+
+        // 一次拖动只写一次库（单事务批量更新），条目多的时候也不会卡。
+        _repository.UpdateOrders(_all);
     }
 
     public void RefreshTime()
@@ -322,12 +369,20 @@ public sealed partial class MainViewModel : ObservableObject
         ImportantCount = _all.Count(item => item.IsImportant && !item.IsDone);
         DoneCount = _all.Count(item => item.IsDone);
         OnPropertyChanged(nameof(IsEmpty));
+        OnPropertyChanged(nameof(EmptyTitle));
+        OnPropertyChanged(nameof(EmptyDescription));
         OnPropertyChanged(nameof(HasCompleted));
         OnPropertyChanged(nameof(AllCount));
     }
 
     private bool Matches(TodoItem item)
     {
+        if (_searchQuery.Length > 0 &&
+            !item.Title.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
         if (SelectedTag >= 0 && item.TagIndex != SelectedTag)
         {
             return false;

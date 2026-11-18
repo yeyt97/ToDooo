@@ -37,6 +37,7 @@ public sealed partial class MainWindow : Window
     private bool _pinned;
     private bool _reparenting;
     private bool _started;
+    private bool _exiting;
     private bool _dragging;
     private bool _suppressAddCommit;
     private TodoEditorDialog? _editor;
@@ -91,6 +92,7 @@ public sealed partial class MainWindow : Window
         }
 
         CreateTray();
+        StartupService.EnsureMatchesCurrentProcess();
         _reminder.Start();
     }
 
@@ -188,16 +190,30 @@ public sealed partial class MainWindow : Window
         var scale = NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
         var width = (int)Math.Round(_settings.Current.WindowWidth * scale);
         var height = (int)Math.Round(_settings.Current.WindowHeight * scale);
-        var area = DisplayArea.GetFromWindowId(_appWindow.Id, DisplayAreaFallback.Primary).WorkArea;
 
-        var x = _settings.Current.WindowX ?? area.X + area.Width - width - (int)(24 * scale);
-        var y = _settings.Current.WindowY ?? area.Y + area.Height - height - (int)(28 * scale);
+        var fallback = DisplayArea.GetFromWindowId(_appWindow.Id, DisplayAreaFallback.Primary).WorkArea;
+        var x = _settings.Current.WindowX ?? fallback.X + fallback.Width - width - (int)(24 * scale);
+        var y = _settings.Current.WindowY ?? fallback.Y + fallback.Height - height - (int)(28 * scale);
+
+        // 按保存位置所在的显示器夹取：放到副屏的小组件重启后不会被拉回主屏。
+        var area = DisplayArea.GetFromPoint(new PointInt32(x, y), DisplayAreaFallback.Nearest).WorkArea;
         x = Math.Clamp(x, area.X, area.X + Math.Max(0, area.Width - width));
         y = Math.Clamp(y, area.Y, area.Y + Math.Max(0, area.Height - height));
 
         NativeMethods.SetWindowPos(
             _hwnd, IntPtr.Zero, x, y, width, height,
             NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
+
+        // 落到目标显示器后 DPI 可能变了（两个屏缩放不同），用新 DPI 重算一次尺寸。
+        var landedScale = NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
+        if (Math.Abs(landedScale - scale) > 0.001)
+        {
+            NativeMethods.SetWindowPos(
+                _hwnd, IntPtr.Zero, 0, 0,
+                (int)Math.Round(_settings.Current.WindowWidth * landedScale),
+                (int)Math.Round(_settings.Current.WindowHeight * landedScale),
+                NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
+        }
     }
 
     private void ApplyCornerMask()
@@ -367,8 +383,154 @@ public sealed partial class MainWindow : Window
         });
     }
 
+    private List<TodoItem>? _undoItems;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _undoTimer;
+
+    private void ShowUndo(string message, List<TodoItem> items)
+    {
+        _undoItems = items;
+        UndoText.Text = message;
+        UndoBar.Visibility = Visibility.Visible;
+
+        _undoTimer ??= _dispatcher.CreateTimer();
+        _undoTimer.Stop();
+        _undoTimer.Interval = TimeSpan.FromSeconds(6);
+
+        void OnTick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
+        {
+            sender.Tick -= OnTick;
+            HideUndo();
+        }
+
+        _undoTimer.Tick += OnTick;
+        _undoTimer.Start();
+    }
+
+    private void HideUndo()
+    {
+        _undoTimer?.Stop();
+        _undoItems = null;
+        UndoBar.Visibility = Visibility.Collapsed;
+    }
+
+    private void UndoButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_undoItems is { Count: > 0 } items)
+        {
+            ViewModel.Restore(items);
+            UpdateFilterVisuals();
+            UpdateTagVisuals();
+        }
+
+        HideUndo();
+    }
+
+    private void SearchButton_Click(object sender, RoutedEventArgs e) => ToggleSearch();
+
+    private void ToggleSearch()
+    {
+        if (SearchBar.Visibility == Visibility.Visible)
+        {
+            SearchBox.Text = string.Empty;
+            ViewModel.SetSearch(string.Empty);
+            SearchBar.Visibility = Visibility.Collapsed;
+            FocusAddBox();
+        }
+        else
+        {
+            SearchBar.Visibility = Visibility.Visible;
+            SearchBox.Focus(FocusState.Programmatic);
+        }
+    }
+
+    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
+        => ViewModel.SetSearch(SearchBox.Text);
+
+    private void SearchBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == VirtualKey.Escape)
+        {
+            e.Handled = true;
+            ToggleSearch();
+        }
+    }
+
+    private void NewTodoAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        FocusAddBox();
+    }
+
+    private void SearchAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        ToggleSearch();
+    }
+
+    private void FilterAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        ViewModel.SetFilter(sender.Key switch
+        {
+            VirtualKey.Number1 => TodoFilter.All,
+            VirtualKey.Number2 => TodoFilter.Active,
+            VirtualKey.Number3 => TodoFilter.Important,
+            VirtualKey.Number4 => TodoFilter.Done,
+            _ => TodoFilter.All,
+        });
+        UpdateFilterVisuals();
+    }
+
+    private async void ExportMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var picker = new Windows.Storage.Pickers.FileSavePicker
+            {
+                SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary,
+                SuggestedFileName = $"ToDooo-{DateTime.Now:yyyyMMdd}",
+            };
+            picker.FileTypeChoices.Add("JSON", new List<string> { ".json" });
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, _hwnd);
+
+            var file = await picker.PickSaveFileAsync();
+            if (file is null)
+            {
+                return;
+            }
+
+            var items = ViewModel.AllItems.Select(item => new
+            {
+                item.Title,
+                item.IsDone,
+                item.IsImportant,
+                DueAt = item.DueAt?.ToString("yyyy-MM-dd'T'HH:mm:ss"),
+                Recurrence = item.Recurrence.ToString(),
+                item.TagIndex,
+                item.SortOrder,
+                CreatedAt = item.CreatedAt.ToString("yyyy-MM-dd'T'HH:mm:ss"),
+                CompletedAt = item.CompletedAt?.ToString("yyyy-MM-dd'T'HH:mm:ss"),
+            });
+
+            var json = System.Text.Json.JsonSerializer.Serialize(
+                items, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            await Windows.Storage.FileIO.WriteTextAsync(file, json);
+            ShowBalloon("已导出", file.Name);
+        }
+        catch
+        {
+            ShowBalloon("导出失败", "换个位置再试试");
+        }
+    }
+
     private void ExitApp()
     {
+        if (_exiting)
+        {
+            return;
+        }
+
+        _exiting = true;
         SavePosition();
         _tray?.Dispose();
         _reminder.Dispose();
@@ -381,6 +543,15 @@ public sealed partial class MainWindow : Window
         {
             case NativeMethods.WM_TRAY:
                 _tray?.HandleMessage(lParam);
+                return IntPtr.Zero;
+
+            case NativeMethods.WM_CLOSE:
+                if (_exiting)
+                {
+                    break; // 退出流程里放行，别再拦一次
+                }
+
+                ExitApp();
                 return IntPtr.Zero;
 
             case NativeMethods.WM_SYSCOMMAND:
@@ -960,8 +1131,12 @@ public sealed partial class MainWindow : Window
 
     private void ClearCompleted_Click(object sender, RoutedEventArgs e)
     {
-        ViewModel.ClearCompleted();
+        var removed = ViewModel.ClearCompleted();
         UpdateFilterVisuals();
+        if (removed.Count > 0)
+        {
+            ShowUndo($"已清除 {removed.Count} 条已完成", removed);
+        }
     }
 
     private TodoItem? _menuItem;
@@ -1002,6 +1177,7 @@ public sealed partial class MainWindow : Window
         {
             ViewModel.Delete(item);
             UpdateFilterVisuals();
+            ShowUndo($"已删除「{item.Title}」", new List<TodoItem> { item });
         }
     }
 
@@ -1025,8 +1201,12 @@ public sealed partial class MainWindow : Window
 
     private void MoreFlyout_Opening(object sender, object e)
     {
+        PinMenuItem.IsChecked = _pinned;
         StartupMenuItem.IsChecked = StartupService.IsEnabled;
     }
+
+    private void PinMenuItem_Click(object sender, RoutedEventArgs e)
+        => ApplyPin(PinMenuItem.IsChecked, persist: true);
 
     private void StartupMenuItem_Click(object sender, RoutedEventArgs e)
     {

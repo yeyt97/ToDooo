@@ -9,6 +9,7 @@ public sealed class ReminderService : IDisposable
     private readonly Notifier _notifier;
     private readonly DispatcherQueue _dispatcher;
     private DispatcherQueueTimer? _timer;
+    private bool _firstTick = true;
 
     public ReminderService(TodoRepository repository, Notifier notifier, DispatcherQueue dispatcher)
     {
@@ -42,6 +43,7 @@ public sealed class ReminderService : IDisposable
         }
 
         var now = DateTime.Now;
+        var missed = new List<TodoItem>();
         foreach (var item in Source())
         {
             item.RaiseDerived();
@@ -59,11 +61,24 @@ public sealed class ReminderService : IDisposable
             item.DueNotified = true;
             _repository.Update(item);
 
-            // 超过一小时才发现的到期项只做标记，避免开机后集中轰炸
+            // 超过一小时才发现的到期项不逐条弹，攒起来在开机后汇总一条。
             if ((now - due).TotalHours <= 1)
             {
                 _notifier.Show("待办到期", $"{item.Title}（截止 {due:HH:mm}）");
             }
+            else
+            {
+                missed.Add(item);
+            }
         }
+
+        if (_firstTick && missed.Count > 0)
+        {
+            var titles = string.Join("、", missed.Take(3).Select(item => item.Title));
+            var suffix = missed.Count > 3 ? $" 等 {missed.Count} 条" : string.Empty;
+            _notifier.Show("有已到期的待办", $"{titles}{suffix}");
+        }
+
+        _firstTick = false;
     }
 }

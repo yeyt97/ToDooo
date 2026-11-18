@@ -20,6 +20,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
@@ -29,6 +30,7 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <Grid
@@ -59,14 +61,27 @@
                         </StackPanel>
                     </Grid>
                     <Button
-                        x:Name="MoreButton"
+                        x:Name="SearchButton"
                         Grid.Column="2"
+                        AutomationProperties.Name="搜索"
+                        Style="{StaticResource FlatIconButtonStyle}"
+                        Click="SearchButton_Click"
+                        ToolTipService.ToolTip="搜索（Ctrl+F）">
+                        <FontIcon Glyph="&#xE721;" FontSize="14" />
+                    </Button>
+                    <Button
+                        x:Name="MoreButton"
+                        Grid.Column="3"
+                        AutomationProperties.Name="更多"
                         Style="{StaticResource FlatIconButtonStyle}"
                         ToolTipService.ToolTip="更多">
                         <FontIcon Glyph="&#xE712;" FontSize="14" />
                         <Button.Flyout>
                             <MenuFlyout Opening="MoreFlyout_Opening">
+                                <ToggleMenuFlyoutItem x:Name="PinMenuItem" Text="钉在桌面" Click="PinMenuItem_Click" />
                                 <ToggleMenuFlyoutItem x:Name="StartupMenuItem" Text="开机自启" Click="StartupMenuItem_Click" />
+                                <MenuFlyoutSeparator />
+                                <MenuFlyoutItem Text="导出数据…" Click="ExportMenuItem_Click" />
                                 <MenuFlyoutSeparator />
                                 <MenuFlyoutItem Text="退出 ToDooo" Click="ExitMenuItem_Click" />
                             </MenuFlyout>
@@ -150,10 +165,44 @@
                     </Grid>
                 </Border>
 
+                <!--  搜索条：Ctrl+F 展开，Esc 关闭  -->
+                <Grid
+                    x:Name="SearchBar"
+                    Grid.Row="2"
+                    Height="34"
+                    Margin="12,0,12,8"
+                    Visibility="Collapsed">
+                    <Border
+                        Background="{StaticResource ItemCardBrush}"
+                        BorderBrush="{StaticResource ItemCardStrokeBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{StaticResource ItemCornerRadius}" />
+                    <Grid Padding="10,0" ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon
+                            Glyph="&#xE721;"
+                            FontSize="12"
+                            VerticalAlignment="Center"
+                            Foreground="{StaticResource TextMutedBrush}" />
+                        <TextBox
+                            x:Name="SearchBox"
+                            Grid.Column="1"
+                            Height="34"
+                            AutomationProperties.Name="搜索待办"
+                            KeyDown="SearchBox_KeyDown"
+                            PlaceholderText="搜索待办"
+                            Style="{StaticResource AddTextBoxStyle}"
+                            TextChanged="SearchBox_TextChanged" />
+                    </Grid>
+                </Grid>
+
                 <!--  颜色筛选：14x6 短横条  -->
                 <StackPanel
                     x:Name="TagPanel"
-                    Grid.Row="2"
+                    Grid.Row="3"
                     Padding="14,0,14,8"
                     Orientation="Horizontal"
                     Spacing="2" />
@@ -161,7 +210,7 @@
                 <!--  添加入口：常驻输入框，回车或离焦即提交；右侧清除 + 详细新建  -->
                 <Grid
                     x:Name="AddBar"
-                    Grid.Row="3"
+                    Grid.Row="4"
                     Height="46"
                     Margin="12,0,12,8">
                     <Grid.ColumnDefinitions>
@@ -194,6 +243,7 @@
                     <Button
                         x:Name="ClearAddButton"
                         Grid.Column="2"
+                        AutomationProperties.Name="清除输入"
                         Margin="0,0,2,0"
                         Visibility="Collapsed"
                         Style="{StaticResource CardActionButtonStyle}"
@@ -204,6 +254,7 @@
                     <Button
                         x:Name="AddDetailButton"
                         Grid.Column="3"
+                        AutomationProperties.Name="详细添加"
                         Margin="0,0,6,0"
                         Style="{StaticResource CardActionButtonStyle}"
                         Click="AddDetailButton_Click"
@@ -213,7 +264,7 @@
                 </Grid>
 
                 <!--  卡片式列表  -->
-                <Grid Grid.Row="4">
+                <Grid Grid.Row="5">
                     <ListView
                         x:Name="TodoList"
                         Padding="12,0,12,0"
@@ -250,6 +301,7 @@
 
                                         <CheckBox
                                             Grid.Column="0"
+                                            AutomationProperties.Name="标记完成"
                                             Style="{StaticResource TodoCompletionCheckBoxStyle}"
                                             IsChecked="{x:Bind IsDone, Mode=OneWay}"
                                             Click="DoneCheckBox_Click"
@@ -303,6 +355,7 @@
                                         -->
                                         <Button
                                             Grid.Column="3"
+                                            AutomationProperties.Name="标记为重要"
                                             Tag="ItemActions"
                                             Style="{StaticResource CardActionButtonStyle}"
                                             Click="QuickImportant_Click"
@@ -338,13 +391,13 @@
                             Foreground="{StaticResource TextMutedBrush}"
                             Opacity="0.6" />
                         <TextBlock
-                            Text="还没有待办"
+                            Text="{x:Bind ViewModel.EmptyTitle, Mode=OneWay}"
                             FontSize="14"
                             FontWeight="SemiBold"
                             HorizontalAlignment="Center"
                             Foreground="{StaticResource TextSecondaryBrush}" />
                         <TextBlock
-                            Text="回车或离焦即保存 · 点右侧日历设置时间 · 点任务编辑详情"
+                            Text="{x:Bind ViewModel.EmptyDescription, Mode=OneWay}"
                             FontSize="12"
                             MaxWidth="320"
                             TextAlignment="Center"
@@ -355,7 +408,7 @@
                 </Grid>
 
                 <!--  底栏：清除已完成  -->
-                <Grid Grid.Row="5" Padding="14,2,10,10">
+                <Grid Grid.Row="6" Padding="14,2,10,10">
                     <Button
                         x:Name="ClearCompletedButton"
                         HorizontalAlignment="Right"
@@ -368,5 +421,62 @@
             </Grid>
         </Border>
 
+        <!--  删除/清空后的撤销条，6 秒后自动消失  -->
+        <Border
+            x:Name="UndoBar"
+            Grid.RowSpan="7"
+            Margin="12,0,12,10"
+            Padding="12,8,10,8"
+            VerticalAlignment="Bottom"
+            Background="{StaticResource OverlaySurfaceBrush}"
+            BorderBrush="{StaticResource LayerStrokeBrush}"
+            BorderThickness="1"
+            CornerRadius="8"
+            Visibility="Collapsed">
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock
+                    x:Name="UndoText"
+                    VerticalAlignment="Center"
+                    FontSize="12"
+                    Foreground="{StaticResource TextPrimaryBrush}"
+                    TextTrimming="CharacterEllipsis" />
+                <Button
+                    Grid.Column="1"
+                    Content="撤销"
+                    Click="UndoButton_Click"
+                    Style="{StaticResource LinkButtonStyle}" />
+            </Grid>
+        </Border>
+
+        <Grid.KeyboardAccelerators>
+            <KeyboardAccelerator
+                Key="N"
+                Invoked="NewTodoAccelerator_Invoked"
+                Modifiers="Control" />
+            <KeyboardAccelerator
+                Key="F"
+                Invoked="SearchAccelerator_Invoked"
+                Modifiers="Control" />
+            <KeyboardAccelerator
+                Key="Number1"
+                Invoked="FilterAccelerator_Invoked"
+                Modifiers="Control" />
+            <KeyboardAccelerator
+                Key="Number2"
+                Invoked="FilterAccelerator_Invoked"
+                Modifiers="Control" />
+            <KeyboardAccelerator
+                Key="Number3"
+                Invoked="FilterAccelerator_Invoked"
+                Modifiers="Control" />
+            <KeyboardAccelerator
+                Key="Number4"
+                Invoked="FilterAccelerator_Invoked"
+                Modifiers="Control" />
+        </Grid.KeyboardAccelerators>
     </Grid>
 </Window>

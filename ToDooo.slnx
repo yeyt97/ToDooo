@@ -3,4 +3,7 @@
   <Folder Name="/src/ToDooo.App/">
     <Project Path="src/ToDooo.App/ToDooo.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ToDooo.Tests/ToDooo.Tests.csproj" />
+  </Folder>
 </Solution>

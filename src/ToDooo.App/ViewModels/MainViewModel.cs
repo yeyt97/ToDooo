@@ -52,8 +52,6 @@ public sealed partial class MainViewModel : ObservableObject
 
     public int AllCount => _all.Count;
 
-    public string FooterText => ActiveCount > 0 ? $"还剩 {ActiveCount} 项" : "全部完成";
-
     public void Load()
     {
         _all.Clear();
@@ -85,9 +83,22 @@ public sealed partial class MainViewModel : ObservableObject
         item.CreatedAt = DateTime.Now;
         _repository.Add(item);
         _all.Add(item);
+
+        // 新建会把视图切回「全部」，只有原本就不在「全部」视图时才需要重建。
+        var viewChanged = Filter != TodoFilter.All || SelectedTag != -1;
         Filter = TodoFilter.All;
         SelectedTag = -1;
-        ApplyFilter();
+
+        if (viewChanged)
+        {
+            ApplyFilter();
+            return;
+        }
+
+        // 已经显示全部：把新条目按排序位置插进去就好。
+        // 不要走 Clear + 重新填充——那会让 ListView 拆掉所有容器重建，列表闪一下、滚动位置也归零。
+        SyncVisible(item);
+        RefreshCounts();
     }
 
     public void SetDone(TodoItem item, bool done)
@@ -106,9 +117,12 @@ public sealed partial class MainViewModel : ObservableObject
             var next = item.CreateNextOccurrence(AdvanceDue(item));
             _repository.Add(next);
             _all.Add(next);
+            SyncVisible(next);
         }
 
-        ApplyFilter();
+        // 原地增删这一条即可：勾选完成不该把整个列表重建一遍。
+        SyncVisible(item);
+        RefreshCounts();
     }
 
     public void ToggleImportant(TodoItem item)
@@ -116,23 +130,18 @@ public sealed partial class MainViewModel : ObservableObject
         item.IsImportant = !item.IsImportant;
         _repository.Update(item);
 
-        // 只有「重要」视图里取消标记才会让条目离开列表。其余情况原地刷新计数即可，
-        // 避免重建整个列表把悬停操作浮层一起冲掉，导致点击后看不到星形变化。
-        if (Filter == TodoFilter.Important && !item.IsImportant)
-        {
-            ApplyFilter();
-        }
-        else
-        {
-            RefreshCounts();
-        }
+        // 只有「重要」视图里取消标记才会让条目离开列表，交给 SyncVisible 单独摘掉那一行，
+        // 其余情况列表不动，避免重建把悬停状态一起冲掉。
+        SyncVisible(item);
+        RefreshCounts();
     }
 
     public void Delete(TodoItem item)
     {
         _repository.Delete(item.Id);
         _all.Remove(item);
-        ApplyFilter();
+        Items.Remove(item);
+        RefreshCounts();
     }
 
     public void ClearCompleted()
@@ -167,7 +176,10 @@ public sealed partial class MainViewModel : ObservableObject
         item.IsImportant = important;
         item.TagIndex = tagIndex;
         _repository.Update(item);
-        ApplyFilter();
+
+        // 编辑只可能让这一条变显或变隐（标签/重要变化），按需增删一行，不重建列表。
+        SyncVisible(item);
+        RefreshCounts();
     }
 
     public void SetFilter(TodoFilter filter)
@@ -266,6 +278,44 @@ public sealed partial class MainViewModel : ObservableObject
         RefreshCounts();
     }
 
+    /// <summary>
+    /// 只针对单个条目做增量更新：该显示的按顺序插进去，不该显示的就摘掉。
+    /// 相比 ApplyFilter 的 Clear + 重新填充，列表不会整片重建，也就不会闪。
+    /// </summary>
+    private void SyncVisible(TodoItem item)
+    {
+        var index = Items.IndexOf(item);
+        var shouldShow = Matches(item);
+
+        if (shouldShow && index < 0)
+        {
+            Items.Insert(IndexFor(item), item);
+        }
+        else if (!shouldShow && index >= 0)
+        {
+            Items.RemoveAt(index);
+        }
+    }
+
+    // 按 ApplyFilter 用的同一套排序键（SortOrder，其次 Id）算插入位置。
+    private int IndexFor(TodoItem item)
+    {
+        for (var i = 0; i < Items.Count; i++)
+        {
+            var other = Items[i];
+            var before = item.SortOrder != other.SortOrder
+                ? item.SortOrder < other.SortOrder
+                : item.Id.CompareTo(other.Id) < 0;
+
+            if (before)
+            {
+                return i;
+            }
+        }
+
+        return Items.Count;
+    }
+
     private void RefreshCounts()
     {
         ActiveCount = _all.Count(item => !item.IsDone);
@@ -274,7 +324,6 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(IsEmpty));
         OnPropertyChanged(nameof(HasCompleted));
         OnPropertyChanged(nameof(AllCount));
-        OnPropertyChanged(nameof(FooterText));
     }
 
     private bool Matches(TodoItem item)

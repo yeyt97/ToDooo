@@ -18,8 +18,6 @@ public sealed class TrayIcon : IDisposable
 
     public event Action? ShowRequested;
 
-    public event Action? AddRequested;
-
     public event Action? ExitRequested;
 
     public event Action<bool>? StartupToggled;
@@ -97,14 +95,14 @@ public sealed class TrayIcon : IDisposable
         NativeMethods.GetCursorPos(out var point);
 
         var menu = NativeMethods.CreatePopupMenu();
-        NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 1, "显示待办");
-        NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 2, "添加待办");
+
+        // 不用 MF_CHECKED：勾选状态会给整张菜单加一条勾选列，勾上/取消之间菜单宽度和文字位置都会变一次，
+        // 看起来就是「点一下位置跳一下」。状态直接写进文案（开/关同为全角，宽度恒定），
+        // 菜单本身保持纯文字项，和 DeskBox 的托盘菜单一个路子。
+        var startupItem = StartupService.IsEnabled ? "开机自启 · 已开启" : "开机自启 · 已关闭";
+        NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 1, startupItem);
         NativeMethods.AppendMenuW(menu, NativeMethods.MF_SEPARATOR, 0, null);
-        var startupFlags = NativeMethods.MF_STRING |
-            (StartupService.IsEnabled ? NativeMethods.MF_CHECKED : 0);
-        NativeMethods.AppendMenuW(menu, startupFlags, 3, "开机自启");
-        NativeMethods.AppendMenuW(menu, NativeMethods.MF_SEPARATOR, 0, null);
-        NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 4, "退出");
+        NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 2, "退出");
 
         var command = NativeMethods.TrackPopupMenuEx(
             menu,
@@ -117,15 +115,9 @@ public sealed class TrayIcon : IDisposable
         switch (command)
         {
             case 1:
-                ShowRequested?.Invoke();
-                break;
-            case 2:
-                AddRequested?.Invoke();
-                break;
-            case 3:
                 StartupToggled?.Invoke(!StartupService.IsEnabled);
                 break;
-            case 4:
+            case 2:
                 ExitRequested?.Invoke();
                 break;
         }

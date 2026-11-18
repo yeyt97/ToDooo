@@ -233,6 +233,14 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     public static extern int TrackPopupMenuEx(IntPtr menu, uint flags, int x, int y, IntPtr hWnd, IntPtr param);
 
+    // uxtheme 的两个未公开序号：决定了进程里 Win32 弹出菜单（托盘右键菜单）用哪套视觉样式。
+    // 不调用的话菜单走经典亮色不透明样式，和 App 的深色亚克力界面完全不是一回事。
+    [DllImport("uxtheme.dll", EntryPoint = "#135")]
+    public static extern int SetPreferredAppMode(int appMode);
+
+    [DllImport("uxtheme.dll", EntryPoint = "#136")]
+    public static extern void FlushMenuThemes();
+
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
     public static extern bool Shell_NotifyIconW(uint message, ref NOTIFYICONDATAW data);
 

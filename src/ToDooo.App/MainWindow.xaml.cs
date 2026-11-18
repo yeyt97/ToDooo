@@ -38,6 +38,8 @@ public sealed partial class MainWindow : Window
     private bool _reparenting;
     private bool _started;
     private bool _dragging;
+    private bool _suppressAddCommit;
+    private TodoEditorDialog? _editor;
     private IntPtr _hostHwnd;
     private NativeMethods.POINT _dragStartCursor;
     private NativeMethods.RECT _dragStartRect;
@@ -298,11 +300,6 @@ public sealed partial class MainWindow : Window
     {
         _tray = new TrayIcon(_hwnd);
         _tray.ShowRequested += ShowFromTray;
-        _tray.AddRequested += () =>
-        {
-            ShowFromTray();
-            FocusAddBox();
-        };
         _tray.ExitRequested += ExitApp;
         _tray.StartupToggled += enabled => StartupService.SetEnabled(enabled);
         _tray.Add();
@@ -702,6 +699,12 @@ public sealed partial class MainWindow : Window
     // 回车和离焦共用的一套提交逻辑；返回是否真的加了一条。
     private bool CommitAddDraft()
     {
+        // 编辑器弹窗打开期间不提交：草稿归弹窗管，主窗口这时的「失焦」只是被弹窗抢了前台。
+        if (_suppressAddCommit)
+        {
+            return false;
+        }
+
         var title = AddTextBox.Text;
         if (string.IsNullOrWhiteSpace(title))
         {
@@ -734,15 +737,9 @@ public sealed partial class MainWindow : Window
     {
         // 把输入框里已经敲好的草稿带进详细新建，取消时原样保留。
         var draft = AddTextBox.Text;
-        var dialog = new TodoEditorDialog(draft)
-        {
-            Title = "新建待办",
-            XamlRoot = Root.XamlRoot,
-            RequestedTheme = ElementTheme.Dark,
-        };
+        var dialog = new TodoEditorDialog(draft);
 
-        var result = await dialog.ShowAsync();
-        if (result == ContentDialogResult.Primary && dialog.TodoTitle.Length > 0)
+        if (await ShowEditorAsync(dialog))
         {
             ViewModel.AddItem(new TodoItem
             {
@@ -758,6 +755,35 @@ public sealed partial class MainWindow : Window
         }
 
         FocusAddBox();
+    }
+
+    /// <summary>
+    /// 显示编辑窗口并等结果。同一时间只允许一个：已经开着就把那个提到前台，
+    /// 返回 false（本次没有新建任何东西），避免叠出好几个窗口。
+    /// </summary>
+    private async Task<bool> ShowEditorAsync(TodoEditorDialog dialog)
+    {
+        if (_editor is not null)
+        {
+            _editor.Activate();
+            return false;
+        }
+
+        _editor = dialog;
+
+        // 弹窗是独立窗口，打开时主窗口会失活；关掉这段自动提交，
+        // 否则「离焦即保存」会先把草稿存成一条，再被弹窗存第二条。
+        _suppressAddCommit = true;
+        try
+        {
+            dialog.ShowOver(_appWindow);
+            return await dialog.Result;
+        }
+        finally
+        {
+            _suppressAddCommit = false;
+            _editor = null;
+        }
     }
 
     private void TodoList_ItemClick(object sender, ItemClickEventArgs e)
@@ -918,14 +944,9 @@ public sealed partial class MainWindow : Window
 
     private async Task EditItemAsync(TodoItem item)
     {
-        var dialog = new TodoEditorDialog(item)
-        {
-            XamlRoot = Root.XamlRoot,
-            RequestedTheme = ElementTheme.Dark,
-        };
+        var dialog = new TodoEditorDialog(item);
 
-        var result = await dialog.ShowAsync();
-        if (result == ContentDialogResult.Primary && dialog.TodoTitle.Length > 0)
+        if (await ShowEditorAsync(dialog))
         {
             ViewModel.ApplyEdit(
                 item, dialog.TodoTitle, dialog.DueAt, dialog.Recurrence, dialog.IsImportant, dialog.TagIndex);

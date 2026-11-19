@@ -556,7 +556,7 @@ public sealed partial class TodoEditorDialog : Window
             var check = new CheckBox
             {
                 IsChecked = draft.Done,
-                MinWidth = 0,
+                Style = (Style)Application.Current.Resources["TodoCompletionCheckBoxStyle"],
                 Margin = new Thickness(0),
                 VerticalAlignment = VerticalAlignment.Center,
             };
@@ -569,10 +569,10 @@ public sealed partial class TodoEditorDialog : Window
             var title = new TextBox
             {
                 Text = draft.Title,
-                Background = new SolidColorBrush(Colors.Transparent),
-                BorderThickness = new Thickness(0),
-                Padding = new Thickness(4, 2, 4, 2),
-                FontSize = 13,
+                Style = (Style)Application.Current.Resources["AddTextBoxStyle"],
+                Height = 26,
+                Padding = new Thickness(4, 0, 4, 0),
+                VerticalContentAlignment = VerticalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
             };
             title.TextChanged += (_, _) =>
@@ -606,19 +606,61 @@ public sealed partial class TodoEditorDialog : Window
                 RenderSubtasks();
             };
 
+            var actions = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                VerticalAlignment = VerticalAlignment.Center,
+                Opacity = 0,
+                IsHitTestVisible = false,
+            };
+            var up = new Button
+            {
+                Content = new FontIcon { Glyph = "", FontSize = 8 },
+                Style = (Style)Application.Current.Resources["SubtaskArrowStyle"],
+            };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(up, "子任务上移");
+            up.Click += (_, _) => MoveDraft(index, -1);
+            var down = new Button
+            {
+                Content = new FontIcon { Glyph = "", FontSize = 8 },
+                Style = (Style)Application.Current.Resources["SubtaskArrowStyle"],
+            };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(down, "子任务下移");
+            down.Click += (_, _) => MoveDraft(index, 1);
+            actions.Children.Add(up);
+            actions.Children.Add(down);
+
             var row = new Grid { ColumnSpacing = 6 };
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             Grid.SetColumn(title, 1);
             Grid.SetColumn(delete, 2);
+            Grid.SetColumn(actions, 3);
             row.Children.Add(check);
             row.Children.Add(title);
             row.Children.Add(delete);
+            row.Children.Add(actions);
+            row.PointerEntered += (_, _) => { actions.Opacity = 1; actions.IsHitTestVisible = true; };
+            row.PointerExited += (_, _) => { actions.Opacity = 0; actions.IsHitTestVisible = false; };
             SubtaskPanel.Children.Add(row);
         }
 
         UpdateSubtaskCount();
+    }
+
+    private void MoveDraft(int index, int delta)
+    {
+        var target = index + delta;
+        if (index < 0 || index >= _subtaskDrafts.Count ||
+            target < 0 || target >= _subtaskDrafts.Count)
+        {
+            return;
+        }
+
+        (_subtaskDrafts[index], _subtaskDrafts[target]) = (_subtaskDrafts[target], _subtaskDrafts[index]);
+        RenderSubtasks();
     }
 
     private void UpdateSubtaskCount() =>

@@ -1605,6 +1605,37 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void SubtaskRow_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is Grid row && FindTaggedChild<StackPanel>(row, "SubtaskActions") is { } actions)
+        {
+            actions.Opacity = 1;
+            actions.IsHitTestVisible = true;
+        }
+    }
+
+    private void SubtaskRow_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is Grid row && FindTaggedChild<StackPanel>(row, "SubtaskActions") is { } actions)
+        {
+            actions.Opacity = 0;
+            actions.IsHitTestVisible = false;
+        }
+    }
+
+    private void SubtaskArrow_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: SubtaskItem subtask, Tag: string direction })
+        {
+            return;
+        }
+
+        if (sender is DependencyObject source && FindOwnerTodo(source) is { } item)
+        {
+            ViewModel.MoveSubtask(item, subtask, direction == "up" ? -1 : 1);
+        }
+    }
+
     private static TodoItem? FindOwnerTodo(DependencyObject start)
     {
         var current = start;

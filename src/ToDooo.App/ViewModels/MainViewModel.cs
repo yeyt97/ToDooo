@@ -309,6 +309,35 @@ public sealed partial class MainViewModel : ObservableObject
         item.RaiseSubtasksChanged();
     }
 
+    /// <summary>上下箭头调整子任务顺序；顺序写回 sort_order，重启后保持不变。</summary>
+    public bool MoveSubtask(TodoItem item, SubtaskItem subtask, int delta)
+    {
+        var index = item.Subtasks.IndexOf(subtask);
+        var target = index + delta;
+        if (index < 0 || target < 0 || target >= item.Subtasks.Count)
+        {
+            return false;
+        }
+
+        item.Subtasks.Move(index, target);
+        for (var i = 0; i < item.Subtasks.Count; i++)
+        {
+            var current = item.Subtasks[i];
+            if (Math.Abs(current.SortOrder - i) < 0.001)
+            {
+                continue;
+            }
+
+            current.SortOrder = i;
+            if (current.Id > 0)
+            {
+                _repository.UpdateSubtask(current);
+            }
+        }
+
+        return true;
+    }
+
     /// <summary>编辑保存时按草稿对齐子任务：已有的更新、新的补插、草稿里没有的删掉。</summary>
     public void ApplySubtasks(TodoItem item, IReadOnlyList<SubtaskDraft> drafts)
     {

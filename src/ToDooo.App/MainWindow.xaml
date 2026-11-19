@@ -413,7 +413,9 @@
                                                     <DataTemplate x:DataType="models:SubtaskItem">
                                                         <Grid
                                                             Margin="0,1"
-                                                            ColumnSpacing="4">
+                                                            ColumnSpacing="4"
+                                                            PointerEntered="SubtaskRow_PointerEntered"
+                                                            PointerExited="SubtaskRow_PointerExited">
                                                             <Grid.ContextFlyout>
                                                                 <MenuFlyout Opening="SubtaskFlyout_Opening">
                                                                     <MenuFlyoutItem Text="删除子任务" Click="SubtaskDelete_Click" />
@@ -422,6 +424,7 @@
                                                             <Grid.ColumnDefinitions>
                                                                 <ColumnDefinition Width="Auto" />
                                                                 <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
                                                             </Grid.ColumnDefinitions>
                                                             <CheckBox
                                                                 AutomationProperties.Name="子任务完成"
@@ -437,6 +440,28 @@
                                                                 TextDecorations="{x:Bind helpers:Bind.Deco(IsDone), Mode=OneWay}"
                                                                 TextWrapping="Wrap"
                                                                 Foreground="{x:Bind helpers:Bind.SubtaskBrush(IsDone), Mode=OneWay}" />
+                                                            <StackPanel
+                                                                Grid.Column="2"
+                                                                Tag="SubtaskActions"
+                                                                Orientation="Horizontal"
+                                                                VerticalAlignment="Center"
+                                                                IsHitTestVisible="False"
+                                                                Opacity="0">
+                                                                <Button
+                                                                    AutomationProperties.Name="子任务上移"
+                                                                    Tag="up"
+                                                                    Click="SubtaskArrow_Click"
+                                                                    Style="{StaticResource SubtaskArrowStyle}">
+                                                                    <FontIcon Glyph="&#xE70E;" FontSize="8" />
+                                                                </Button>
+                                                                <Button
+                                                                    AutomationProperties.Name="子任务下移"
+                                                                    Tag="down"
+                                                                    Click="SubtaskArrow_Click"
+                                                                    Style="{StaticResource SubtaskArrowStyle}">
+                                                                    <FontIcon Glyph="&#xE70D;" FontSize="8" />
+                                                                </Button>
+                                                            </StackPanel>
                                                         </Grid>
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>

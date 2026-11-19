@@ -1616,7 +1616,20 @@ public sealed partial class MainWindow : Window
 
     private void SubtaskRow_PointerExited(object sender, PointerRoutedEventArgs e)
     {
-        if (sender is Grid row && FindTaggedChild<StackPanel>(row, "SubtaskActions") is { } actions)
+        if (sender is not Grid row)
+        {
+            return;
+        }
+
+        // 从文字挪到箭头（同一行的兄弟元素）也会冒泡出 Exited，按行内坐标判断才不会被误收起来。
+        var point = e.GetCurrentPoint(row).Position;
+        if (point.X >= 0 && point.Y >= 0 &&
+            point.X <= row.ActualWidth && point.Y <= row.ActualHeight)
+        {
+            return;
+        }
+
+        if (FindTaggedChild<StackPanel>(row, "SubtaskActions") is { } actions)
         {
             actions.Opacity = 0;
             actions.IsHitTestVisible = false;

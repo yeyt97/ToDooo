@@ -643,7 +643,18 @@ public sealed partial class TodoEditorDialog : Window
             row.Children.Add(delete);
             row.Children.Add(actions);
             row.PointerEntered += (_, _) => { actions.Opacity = 1; actions.IsHitTestVisible = true; };
-            row.PointerExited += (_, _) => { actions.Opacity = 0; actions.IsHitTestVisible = false; };
+            row.PointerExited += (_, args) =>
+            {
+                var point = args.GetCurrentPoint(row).Position;
+                if (point.X >= 0 && point.Y >= 0 &&
+                    point.X <= row.ActualWidth && point.Y <= row.ActualHeight)
+                {
+                    return;
+                }
+
+                actions.Opacity = 0;
+                actions.IsHitTestVisible = false;
+            };
             SubtaskPanel.Children.Add(row);
         }
 

@@ -2014,7 +2014,7 @@ public sealed partial class MainWindow : Window
         if (e.Key == Windows.System.VirtualKey.Enter)
         {
             e.Handled = true;
-            CommitSubtaskAdd(box);
+            CommitSubtaskAdd(box, keepOpen: true);
         }
         else if (e.Key == Windows.System.VirtualKey.Escape)
         {
@@ -2031,11 +2031,11 @@ public sealed partial class MainWindow : Window
     {
         if (sender is TextBox box)
         {
-            CommitSubtaskAdd(box);
+            CommitSubtaskAdd(box, keepOpen: false);
         }
     }
 
-    private void CommitSubtaskAdd(TextBox box)
+    private void CommitSubtaskAdd(TextBox box, bool keepOpen)
     {
         if (box.DataContext is not TodoItem item)
         {
@@ -2049,8 +2049,12 @@ public sealed partial class MainWindow : Window
             box.Text = string.Empty;
         }
 
-        // 添加框只在右键触发时出现，提交或点走就收起。
-        item.SubtaskAddActive = false;
+        // 回车提交后保留输入框，方便连续加；离焦或 Esc 才收起。
+        item.SubtaskAddActive = keepOpen;
+        if (keepOpen)
+        {
+            box.Focus(FocusState.Programmatic);
+        }
     }
 
     private void RowEdit_Click(object sender, RoutedEventArgs e)

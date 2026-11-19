@@ -289,6 +289,19 @@ public sealed class TodoViewModelTests : IDisposable
     }
 
     [Fact]
+    public void Search_SubtaskMatch_ExpandsItem()
+    {
+        var item = new TodoItem { Title = "准备出差" };
+        item.Subtasks.Add(new SubtaskItem { Title = "订高铁票", SortOrder = 0 });
+        _viewModel.AddItem(item);
+
+        _viewModel.SetSearch("高铁");
+
+        Assert.Single(_viewModel.Items);
+        Assert.True(item.SubtasksExpanded);
+    }
+
+    [Fact]
     public void SmartView_FiltersByDueDate()
     {
         var today = new TodoItem { Title = "今天事", DueAt = DateTime.Now.Date.AddHours(23) };

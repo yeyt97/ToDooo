@@ -1580,6 +1580,12 @@ public sealed partial class MainWindow : Window
     // 点整行只展开/收起子任务，不再打开编辑窗口。
     private void TodoList_ItemClick(object sender, ItemClickEventArgs e)
     {
+        // 刚拖完子任务松手时，别把这次释放再当成「点行展开」。
+        if (Environment.TickCount64 - _lastSubtaskDropTicks < 400)
+        {
+            return;
+        }
+
         if (e.ClickedItem is TodoItem { HasSubtasks: true } item)
         {
             item.SubtasksExpanded = !item.SubtasksExpanded;
@@ -1607,26 +1613,39 @@ public sealed partial class MainWindow : Window
 
     private SubtaskItem? _draggedSubtask;
 
+    private const string SubtaskDragKey = "ToDoooSubtask";
+    private long _lastSubtaskDropTicks;
+
     private void SubtaskRow_DragStarting(UIElement sender, DragStartingEventArgs args)
     {
         if (sender is FrameworkElement { DataContext: SubtaskItem subtask })
         {
             _draggedSubtask = subtask;
+            args.Data.Properties[SubtaskDragKey] = true;
             args.Data.RequestedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
         }
     }
 
     private void SubtaskRow_DragOver(object sender, DragEventArgs e)
     {
-        e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
+        e.AcceptedOperation = e.DataView.Properties.ContainsKey(SubtaskDragKey)
+            ? Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move
+            : Windows.ApplicationModel.DataTransfer.DataPackageOperation.None;
         e.DragUIOverride.IsCaptionVisible = false;
         e.DragUIOverride.IsGlyphVisible = false;
+    }
+
+    private void SubtaskRow_DropCompleted(UIElement sender, DropCompletedEventArgs args)
+    {
+        _draggedSubtask = null;
+        _lastSubtaskDropTicks = Environment.TickCount64;
     }
 
     private void SubtaskRow_Drop(object sender, DragEventArgs e)
     {
         if (_draggedSubtask is not { } dragged ||
             sender is not Grid row ||
+            !e.DataView.Properties.ContainsKey(SubtaskDragKey) ||
             row.DataContext is not SubtaskItem target ||
             dragged == target ||
             FindOwnerTodo(row) is not { } item)

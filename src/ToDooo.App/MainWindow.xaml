@@ -419,7 +419,8 @@
                                                             AllowDrop="True"
                                                             DragStarting="SubtaskRow_DragStarting"
                                                             DragOver="SubtaskRow_DragOver"
-                                                            Drop="SubtaskRow_Drop">
+                                                            Drop="SubtaskRow_Drop"
+                                                            DropCompleted="SubtaskRow_DropCompleted">
                                                             <Grid.ContextFlyout>
                                                                 <MenuFlyout Opening="SubtaskFlyout_Opening">
                                                                     <MenuFlyoutItem Text="删除子任务" Click="SubtaskDelete_Click" />

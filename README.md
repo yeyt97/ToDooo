@@ -1,93 +1,58 @@
-# todo
+# ToDooo
 
+钉在桌面层的 Windows 待办小组件（WinUI 3 / .NET 11 / SQLite），数据全部保存在本机。
 
+## 功能
 
-## Getting started
+- 桌面层钉住：窗口位于应用窗口之下、桌面之上，不挡其他软件；可在右上角菜单切换为普通窗口。
+- 自然语言时间：新建时直接写“明天下午三点打网球”“周五10点汇报”，自动识别截止时间。
+- 子任务：卡片行内展开，可勾选、右键删除、拖动排序；编辑弹窗可增删改。
+- 标签与重要：颜色圆点筛选、星标标记重要。
+- 智能视图：今天 / 明天 / 本周 / 已逾期，可在设置中启用与排序。
+- 提醒：到期通知（可提前 5–60 分钟），通知与右键菜单均支持“推迟 10 分钟”。
+- 外观：跟随系统主题（实时切换）、透明度 10%–100%、自动隐藏、亚克力磨砂。
+- 其他：搜索、拖动排序、撤销条、删除与清空二次确认、开机自启、托盘菜单、JSON 导出。
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+## 环境
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+- Windows 11 22H2（22621）及以上，x64
+- .NET 11 SDK
 
-## Add your files
+## 构建与运行
 
-* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+```bash
+dotnet build src/ToDooo.App/ToDooo.csproj -c Release
+dotnet run --project src/ToDooo.App/ToDooo.csproj -c Release
+```
+
+## 测试
+
+```bash
+dotnet test tests/ToDooo.Tests/ToDooo.Tests.csproj
+```
+
+## 发布
+
+自包含单目录发布（无需安装运行时）：
+
+```bash
+dotnet publish src/ToDooo.App/ToDooo.csproj -c Release -r win-x64 -o C:/apps/ToDooo
+```
+
+便携包：把发布目录下的 `ToDooo/` 连同 `使用说明.txt` 打成 ZIP 即可，中文文件名需 UTF-8（7-Zip 加 `-mcu=on`）。
+
+## 目录
 
 ```
-cd existing_repo
-git remote add origin https://devgit.wmu.edu.cn/wmu-itc/todo.git
-git branch -M main
-git push -uf origin main
+src/ToDooo.App/       应用（WinUI 3）
+src/ToDooo.App/Models        数据模型
+src/ToDooo.App/Services      仓储、设置、提醒、主题
+src/ToDooo.App/ViewModels    列表与筛选逻辑
+src/ToDooo.App/Views         编辑弹窗、设置
+src/ToDooo.App/Interop       窗口层级、亚克力、托盘
+tests/ToDooo.Tests/   单元测试（模型 / 视图模型 / 仓储 / 日期解析）
 ```
 
-## Integrate with your tools
+## 数据
 
-* [Set up project integrations](https://devgit.wmu.edu.cn/wmu-itc/todo/-/settings/integrations)
-
-## Collaborate with your team
-
-* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
-
-## Test and Deploy
-
-Use the built-in continuous integration in GitLab.
-
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
-
-***
-
-# Editing this README
-
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
-
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+`%LocalAppData%\ToDooo`：`todo.db`（待办、子任务）与 `settings.json`（主题、透明度、视图等）。程序目录可直接覆盖升级，不影响数据。

@@ -306,7 +306,14 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         item.Subtasks.Remove(subtask);
+        if (item.Subtasks.Count == 0)
+        {
+            item.SubtasksExpanded = false;
+        }
+
         item.RaiseSubtasksChanged();
+        // 搜索命中子任务时，删掉这一条可能让整条待办不再匹配。
+        SyncVisible(item);
     }
 
     public void MoveSubtaskTo(TodoItem item, SubtaskItem subtask, int index)
@@ -391,7 +398,13 @@ public sealed partial class MainViewModel : ObservableObject
             item.Subtasks.Add(subtask);
         }
 
+        if (item.Subtasks.Count == 0)
+        {
+            item.SubtasksExpanded = false;
+        }
+
         item.RaiseSubtasksChanged();
+        SyncVisible(item);
     }
 
     public void SetSearch(string? query)
@@ -499,6 +512,13 @@ public sealed partial class MainViewModel : ObservableObject
         {
             if (Matches(item))
             {
+                // 搜索命中的是子任务时，直接把这行展开，别让人看不到命中位置。
+                if (_searchQuery.Length > 0 && item.HasSubtasks)
+                {
+                    item.SubtasksExpanded = item.Subtasks.Any(subtask =>
+                        subtask.Title.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase));
+                }
+
                 Items.Add(item);
             }
         }

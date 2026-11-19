@@ -19,6 +19,7 @@ internal static class NativeMethods
     public const long WS_EX_APPWINDOW = 0x00040000L;
 
     public const int WM_NCCALCSIZE = 0x0083;
+    public const int WM_NCLBUTTONDOWN = 0x00A1;
     public const int WM_NCHITTEST = 0x0084;
     public const int WM_NCLBUTTONDBLCLK = 0x00A3;
     public const int WM_SYSCOMMAND = 0x0112;
@@ -26,6 +27,7 @@ internal static class NativeMethods
     public const int WM_ACTIVATE = 0x0006;
     public const int WM_MOUSEACTIVATE = 0x0021;
     public const int MA_NOACTIVATE = 3;
+    public const int WM_ENTERSIZEMOVE = 0x0231;
     public const int WM_EXITSIZEMOVE = 0x0232;
     public const int WM_SETTINGCHANGE = 0x001A;
     public const int WM_WINDOWPOSCHANGING = 0x0046;
@@ -171,6 +173,12 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     public static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    public static extern bool ReleaseCapture();
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr SendMessageW(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
     [DllImport("user32.dll")]
     public static extern IntPtr SendMessageTimeoutW(

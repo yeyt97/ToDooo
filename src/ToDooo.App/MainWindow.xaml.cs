@@ -739,7 +739,7 @@ public sealed partial class MainWindow : Window
                 // 托盘菜单展开期间例外：沉底会把 flyout 一起收掉，等菜单关了再沉。
                 if ((wParam.ToInt64() & 0xFFFF) != 0)
                 {
-                    if (!_trayMenuOpen)
+                    if (!_trayMenuOpen && !_resizing && !_sizing)
                     {
                         _dispatcher.TryEnqueue(BedToDesktop);
                     }
@@ -818,7 +818,12 @@ public sealed partial class MainWindow : Window
                 break;
             }
 
+            case NativeMethods.WM_ENTERSIZEMOVE:
+                _sizing = true;
+                break;
+
             case NativeMethods.WM_EXITSIZEMOVE:
+                _sizing = false;
                 SavePosition();
                 break;
 
@@ -1182,11 +1187,66 @@ public sealed partial class MainWindow : Window
         UpdateFilterVisuals();
     }
 
+    private bool _resizing;
+    private bool _sizing;
+
     // 鼠标离开窗口时淡出，移回恢复；设置里没开就保持原样。
     private void Root_PointerEntered(object sender, PointerRoutedEventArgs e) => AnimateRootOpacity(1);
 
     private void Root_PointerExited(object sender, PointerRoutedEventArgs e) =>
         AnimateRootOpacity(_settings.Current.AutoHide ? 0.25 : 1);
+
+    // 无边框窗口在 XAML 内容层收到指针时，系统不会替我们进缩放循环；
+    // 这里按位置判断贴边，再转成非客户区拖拽，让边缘和四角都能缩放。
+    private void Root_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(Root).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        var point = e.GetCurrentPoint(Root).Position;
+        var width = Root.ActualWidth;
+        var height = Root.ActualHeight;
+        const double edge = 8;
+
+        var left = point.X < edge;
+        var right = point.X > width - edge;
+        var top = point.Y < edge;
+        var bottom = point.Y > height - edge;
+
+        var hit = (left, right, top, bottom) switch
+        {
+            (true, _, true, _) => NativeMethods.HTTOPLEFT,
+            (_, true, true, _) => NativeMethods.HTTOPRIGHT,
+            (true, _, _, true) => NativeMethods.HTBOTTOMLEFT,
+            (_, true, _, true) => NativeMethods.HTBOTTOMRIGHT,
+            (true, _, _, _) => NativeMethods.HTLEFT,
+            (_, true, _, _) => NativeMethods.HTRIGHT,
+            (_, _, true, _) => NativeMethods.HTTOP,
+            (_, _, _, true) => NativeMethods.HTBOTTOM,
+            _ => 0,
+        };
+
+        if (hit == 0)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        _resizing = true;
+        try
+        {
+            NativeMethods.ReleaseCapture();
+            NativeMethods.SendMessageW(
+                _hwnd, NativeMethods.WM_NCLBUTTONDOWN, new IntPtr(hit), IntPtr.Zero);
+        }
+        finally
+        {
+            _resizing = false;
+            SavePosition();
+        }
+    }
 
     private void AnimateRootOpacity(double target)
     {

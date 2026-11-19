@@ -461,7 +461,7 @@ public sealed partial class TodoEditorDialog : Window
         host.Click += (s, _) =>
         {
             var tag = (int)((Button)s!).Tag;
-            _tagIndex = tag < 0 ? -1 : tag;
+            _tagIndex = tag < 0 || _tagIndex == tag ? -1 : tag;
             UpdateTagVisuals();
         };
 

@@ -1011,7 +1011,8 @@ public sealed partial class MainWindow : Window
     {
         if (sender is Button { Tag: int index })
         {
-            ViewModel.SelectTag(index);
+            // 再点一次已选中的颜色即取消筛选。
+            ViewModel.SelectTag(ViewModel.SelectedTag == index ? -1 : index);
             UpdateTagVisuals();
         }
     }

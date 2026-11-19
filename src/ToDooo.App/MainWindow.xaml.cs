@@ -1655,6 +1655,7 @@ public sealed partial class MainWindow : Window
     }
 
     private SubtaskItem? _draggedSubtask;
+    private TodoItem? _draggedOwner;
     private bool _pointerOverSubtasks;
 
     // 指针在子任务区域时先禁掉外层列表的拖动，否则会变成拖动整张卡片。
@@ -1706,6 +1707,7 @@ public sealed partial class MainWindow : Window
         if (sender is FrameworkElement { DataContext: SubtaskItem subtask })
         {
             _draggedSubtask = subtask;
+            _draggedOwner = FindOwnerTodo(sender);
             _subtaskDragActive = true;
             if (sender is UIElement element)
             {
@@ -1714,6 +1716,27 @@ public sealed partial class MainWindow : Window
 
             args.Data.Properties[SubtaskDragKey] = true;
             args.Data.RequestedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
+        }
+    }
+
+    // 子任务拖动时整个窗口都接受移动，避免指针划过行间空隙时闪“禁止”图标。
+    private void Root_DragOver(object sender, DragEventArgs e)
+    {
+        if (!_subtaskDragActive)
+        {
+            return;
+        }
+
+        e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
+        e.DragUIOverride.IsCaptionVisible = false;
+        e.DragUIOverride.IsGlyphVisible = false;
+    }
+
+    private void Root_Drop(object sender, DragEventArgs e)
+    {
+        if (_draggedOwner is { } owner && _draggedSubtask is not null)
+        {
+            ViewModel.CommitSubtaskOrder(owner);
         }
     }
 
@@ -1761,6 +1784,7 @@ public sealed partial class MainWindow : Window
     {
         sender.Opacity = 1;
         _draggedSubtask = null;
+        _draggedOwner = null;
         _subtaskDragActive = false;
         _pointerOverSubtasks = false;
         _lastSubtaskDropTicks = Environment.TickCount64;

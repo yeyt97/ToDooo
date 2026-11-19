@@ -271,6 +271,24 @@ public sealed class TodoViewModelTests : IDisposable
     }
 
     [Fact]
+    public void MoveSubtaskTo_ReordersAndPersists()
+    {
+        var item = new TodoItem { Title = "排序" };
+        item.Subtasks.Add(new SubtaskItem { Title = "甲", SortOrder = 0 });
+        item.Subtasks.Add(new SubtaskItem { Title = "乙", SortOrder = 1 });
+        item.Subtasks.Add(new SubtaskItem { Title = "丙", SortOrder = 2 });
+        _viewModel.AddItem(item);
+
+        _viewModel.MoveSubtaskTo(item, item.Subtasks[0], 2);
+
+        Assert.Equal(new[] { "乙", "丙", "甲" }, item.Subtasks.Select(x => x.Title));
+
+        var reloaded = new MainViewModel(_repository);
+        reloaded.Load();
+        Assert.Equal(new[] { "乙", "丙", "甲" }, reloaded.AllItems.Single().Subtasks.Select(x => x.Title));
+    }
+
+    [Fact]
     public void SmartView_FiltersByDueDate()
     {
         var today = new TodoItem { Title = "今天事", DueAt = DateTime.Now.Date.AddHours(23) };

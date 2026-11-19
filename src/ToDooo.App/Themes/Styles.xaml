@@ -160,43 +160,6 @@
 
     <Style x:Key="StatButtonStyle" TargetType="Button" BasedOn="{StaticResource SegmentButtonStyle}" />
 
-    <!-- 子任务行尾的排序箭头：默认隐藏，行悬停时才出现 -->
-    <Style x:Key="SubtaskArrowStyle" TargetType="Button">
-        <Setter Property="Width" Value="20" />
-        <Setter Property="Height" Value="20" />
-        <Setter Property="MinWidth" Value="0" />
-        <Setter Property="MinHeight" Value="0" />
-        <Setter Property="Padding" Value="0" />
-        <Setter Property="Background" Value="Transparent" />
-        <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="Foreground" Value="{ThemeResource TextMutedBrush}" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="Button">
-                    <Grid x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="4">
-                        <VisualStateManager.VisualStateGroups>
-                            <VisualStateGroup x:Name="CommonStates">
-                                <VisualState x:Name="Normal" />
-                                <VisualState x:Name="PointerOver">
-                                    <VisualState.Setters>
-                                        <Setter Target="Root.Background" Value="{ThemeResource HoverBrush}" />
-                                    </VisualState.Setters>
-                                </VisualState>
-                                <VisualState x:Name="Pressed">
-                                    <VisualState.Setters>
-                                        <Setter Target="Root.Background" Value="{ThemeResource PressedBrush}" />
-                                    </VisualState.Setters>
-                                </VisualState>
-                                <VisualState x:Name="Disabled" />
-                            </VisualStateGroup>
-                        </VisualStateManager.VisualStateGroups>
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Grid>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
     <!-- 子任务进度行：小号、左对齐、没有多余的按钮内边距 -->
     <Style x:Key="SubtaskToggleStyle" TargetType="Button">
         <Setter Property="Background" Value="Transparent" />

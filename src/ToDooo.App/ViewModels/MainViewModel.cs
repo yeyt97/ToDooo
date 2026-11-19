@@ -309,17 +309,26 @@ public sealed partial class MainViewModel : ObservableObject
         item.RaiseSubtasksChanged();
     }
 
-    /// <summary>上下箭头调整子任务顺序；顺序写回 sort_order，重启后保持不变。</summary>
-    public bool MoveSubtask(TodoItem item, SubtaskItem subtask, int delta)
+    public void MoveSubtaskTo(TodoItem item, SubtaskItem subtask, int index)
     {
-        var index = item.Subtasks.IndexOf(subtask);
-        var target = index + delta;
-        if (index < 0 || target < 0 || target >= item.Subtasks.Count)
+        var from = item.Subtasks.IndexOf(subtask);
+        if (from < 0)
         {
-            return false;
+            return;
         }
 
-        item.Subtasks.Move(index, target);
+        index = Math.Clamp(index, 0, item.Subtasks.Count - 1);
+        if (from == index)
+        {
+            return;
+        }
+
+        item.Subtasks.Move(from, index);
+        PersistSubtaskOrders(item);
+    }
+
+    private void PersistSubtaskOrders(TodoItem item)
+    {
         for (var i = 0; i < item.Subtasks.Count; i++)
         {
             var current = item.Subtasks[i];
@@ -334,8 +343,6 @@ public sealed partial class MainViewModel : ObservableObject
                 _repository.UpdateSubtask(current);
             }
         }
-
-        return true;
     }
 
     /// <summary>编辑保存时按草稿对齐子任务：已有的更新、新的补插、草稿里没有的删掉。</summary>

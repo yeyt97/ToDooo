@@ -1605,48 +1605,53 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void SubtaskRow_PointerEntered(object sender, PointerRoutedEventArgs e)
+    private SubtaskItem? _draggedSubtask;
+
+    private void SubtaskRow_DragStarting(UIElement sender, DragStartingEventArgs args)
     {
-        if (sender is Grid row && FindTaggedChild<StackPanel>(row, "SubtaskActions") is { } actions)
+        if (sender is FrameworkElement { DataContext: SubtaskItem subtask })
         {
-            actions.Opacity = 1;
-            actions.IsHitTestVisible = true;
+            _draggedSubtask = subtask;
+            args.Data.RequestedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
         }
     }
 
-    private void SubtaskRow_PointerExited(object sender, PointerRoutedEventArgs e)
+    private void SubtaskRow_DragOver(object sender, DragEventArgs e)
     {
-        if (sender is not Grid row)
-        {
-            return;
-        }
-
-        // 从文字挪到箭头（同一行的兄弟元素）也会冒泡出 Exited，按行内坐标判断才不会被误收起来。
-        var point = e.GetCurrentPoint(row).Position;
-        if (point.X >= 0 && point.Y >= 0 &&
-            point.X <= row.ActualWidth && point.Y <= row.ActualHeight)
-        {
-            return;
-        }
-
-        if (FindTaggedChild<StackPanel>(row, "SubtaskActions") is { } actions)
-        {
-            actions.Opacity = 0;
-            actions.IsHitTestVisible = false;
-        }
+        e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
+        e.DragUIOverride.IsCaptionVisible = false;
+        e.DragUIOverride.IsGlyphVisible = false;
     }
 
-    private void SubtaskArrow_Click(object sender, RoutedEventArgs e)
+    private void SubtaskRow_Drop(object sender, DragEventArgs e)
     {
-        if (sender is not Button { DataContext: SubtaskItem subtask, Tag: string direction })
+        if (_draggedSubtask is not { } dragged ||
+            sender is not Grid row ||
+            row.DataContext is not SubtaskItem target ||
+            dragged == target ||
+            FindOwnerTodo(row) is not { } item)
         {
             return;
         }
 
-        if (sender is DependencyObject source && FindOwnerTodo(source) is { } item)
+        var list = item.Subtasks;
+        var from = list.IndexOf(dragged);
+        var to = list.IndexOf(target);
+        if (from < 0 || to < 0)
         {
-            ViewModel.MoveSubtask(item, subtask, direction == "up" ? -1 : 1);
+            return;
         }
+
+        // 落在目标行上半部分插到它前面，下半部分插到它后面。
+        var point = e.GetPosition(row);
+        var index = point.Y <= row.ActualHeight / 2 ? to : to + 1;
+        if (from < index)
+        {
+            index--;
+        }
+
+        ViewModel.MoveSubtaskTo(item, dragged, index);
+        _draggedSubtask = null;
     }
 
     private static TodoItem? FindOwnerTodo(DependencyObject start)

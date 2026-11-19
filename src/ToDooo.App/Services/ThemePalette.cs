@@ -126,8 +126,17 @@ public static class ThemePalette
         var card = dark ? DarkCard : LightCard;
         SetGradient(resources, "CardBrush", card, factor);
         SetGradient(resources, "CardStrokeBrush", dark ? DarkCardStroke : LightCardStroke, 1.0);
-        // 弹框底色给个下限，窗口调得很透时文字也要能看清。
-        SetGradient(resources, "DialogCardBrush", card, Math.Max(factor, 0.55));
+        // 弹框用独立磨砂刷：太透会看不清，这里不跟随窗口透明度一起减淡。
+        if (resources["DialogAcrylicBrush"] is AcrylicBrush dialogAcrylic)
+        {
+            dialogAcrylic.TintColor = dark
+                ? Color.FromArgb(255, 0x2A, 0x30, 0x38)
+                : Color.FromArgb(255, 0xF2, 0xF2, 0xF7);
+            dialogAcrylic.FallbackColor = dark
+                ? Color.FromArgb(255, 0x20, 0x25, 0x2C)
+                : Color.FromArgb(255, 0xF6, 0xF6, 0xF9);
+            dialogAcrylic.TintOpacity = dark ? 0.75 : 0.85;
+        }
     }
 
     private static void SetGradient(ResourceDictionary resources, string key, Color[] colors, double factor)

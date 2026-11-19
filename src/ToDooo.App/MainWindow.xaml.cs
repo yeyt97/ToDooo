@@ -1665,7 +1665,7 @@ public sealed partial class MainWindow : Window
             IsPrimaryButtonEnabled = primaryEnabled,
         };
 
-        dialog.Resources["ContentDialogBackground"] = Application.Current.Resources["DialogCardBrush"];
+        dialog.Resources["ContentDialogBackground"] = Application.Current.Resources["DialogAcrylicBrush"];
         dialog.Resources["ContentDialogBorderBrush"] = Application.Current.Resources["CardStrokeBrush"];
         dialog.Resources["ContentDialogCornerRadius"] = new CornerRadius(8);
         dialog.Resources["ContentDialogSmokeFill"] = new SolidColorBrush(Color.FromArgb(0x33, 0x00, 0x00, 0x00));

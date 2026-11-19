@@ -40,12 +40,12 @@
         <GradientStop Color="#14FFFFFF" Offset="1" />
     </LinearGradientBrush>
 
-    <!-- 弹框底色：跟卡片同色系，但保留最低不透明度，低透明度设置下也看得清 -->
-    <LinearGradientBrush x:Key="DialogCardBrush" StartPoint="0,0" EndPoint="0.35,1">
-        <GradientStop Color="#5E2E343D" Offset="0" />
-        <GradientStop Color="#542A3038" Offset="0.55" />
-        <GradientStop Color="#5E262B33" Offset="1" />
-    </LinearGradientBrush>
+    <!-- 弹框底色：真磨砂，TintColor / FallbackColor 由 ThemePalette 跟随主题改 -->
+    <AcrylicBrush
+        x:Key="DialogAcrylicBrush"
+        FallbackColor="#F020252C"
+        TintColor="#2A3038"
+        TintOpacity="0.75" />
 
 
     <!-- 与 Windows 11 窗口自身的圆角半径(≈8)对齐，避免系统圆角和卡片圆角叠成「双层厚角」。 -->

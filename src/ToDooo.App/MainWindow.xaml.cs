@@ -1201,6 +1201,8 @@ public sealed partial class MainWindow : Window
     // 无边框窗口的内容层拿不到系统边缘命中，这里自己按位置判断贴边并手动缩放。
     private void Root_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
+        _pressOnSubtask = IsInsideSubtask(e.OriginalSource as DependencyObject);
+
         if (!e.GetCurrentPoint(Root).Properties.IsLeftButtonPressed)
         {
             return;
@@ -1665,7 +1667,7 @@ public sealed partial class MainWindow : Window
 
     private void TodoList_DragItemsStarting(object sender, DragItemsStartingEventArgs e)
     {
-        if (_pointerOverSubtasks || _subtaskDragActive)
+        if (_pointerOverSubtasks || _subtaskDragActive || _pressOnSubtask)
         {
             e.Cancel = true;
         }
@@ -1674,6 +1676,7 @@ public sealed partial class MainWindow : Window
     private const string SubtaskDragKey = "ToDoooSubtask";
     private long _lastSubtaskDropTicks;
     private bool _subtaskDragActive;
+    private bool _pressOnSubtask;
 
     private void SubtaskRow_DragStarting(UIElement sender, DragStartingEventArgs args)
     {
@@ -1735,6 +1738,22 @@ public sealed partial class MainWindow : Window
 
         ViewModel.MoveSubtaskTo(item, dragged, index);
         _draggedSubtask = null;
+    }
+
+    private static bool IsInsideSubtask(DependencyObject? start)
+    {
+        var current = start;
+        while (current is not null)
+        {
+            if (current is FrameworkElement { DataContext: SubtaskItem })
+            {
+                return true;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return false;
     }
 
     private static TodoItem? FindOwnerTodo(DependencyObject start)

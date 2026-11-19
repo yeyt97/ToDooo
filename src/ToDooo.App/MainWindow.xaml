@@ -65,16 +65,14 @@
                         Grid.Column="2"
                         AutomationProperties.Name="搜索"
                         Style="{StaticResource FlatIconButtonStyle}"
-                        Click="SearchButton_Click"
-                        ToolTipService.ToolTip="搜索（Ctrl+F）">
+                        Click="SearchButton_Click">
                         <FontIcon Glyph="&#xE721;" FontSize="14" />
                     </Button>
                     <Button
                         x:Name="MoreButton"
                         Grid.Column="3"
                         AutomationProperties.Name="更多"
-                        Style="{StaticResource FlatIconButtonStyle}"
-                        ToolTipService.ToolTip="更多">
+                        Style="{StaticResource FlatIconButtonStyle}">
                         <FontIcon Glyph="&#xE712;" FontSize="14" />
                         <Button.Flyout>
                             <MenuFlyout Opening="MoreFlyout_Opening">
@@ -109,8 +107,7 @@
                             x:Name="AllFilterButton"
                             Grid.Column="0"
                             Style="{StaticResource SegmentButtonStyle}"
-                            Click="AllFilter_Click"
-                            ToolTipService.ToolTip="显示全部待办">
+                            Click="AllFilter_Click">
                             <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                                 <TextBlock Text="全部" FontSize="11" VerticalAlignment="Center" />
                                 <TextBlock
@@ -247,8 +244,7 @@
                         Margin="0,0,2,0"
                         Visibility="Collapsed"
                         Style="{StaticResource CardActionButtonStyle}"
-                        Click="ClearAddButton_Click"
-                        ToolTipService.ToolTip="清除输入">
+                        Click="ClearAddButton_Click">
                         <FontIcon Glyph="&#xE711;" FontSize="12" />
                     </Button>
                     <Button
@@ -257,8 +253,7 @@
                         AutomationProperties.Name="详细添加"
                         Margin="0,0,6,0"
                         Style="{StaticResource CardActionButtonStyle}"
-                        Click="AddDetailButton_Click"
-                        ToolTipService.ToolTip="详细添加（可设置时间、重复、标签）">
+                        Click="AddDetailButton_Click">
                         <FontIcon Glyph="&#xE787;" FontSize="13" />
                     </Button>
                 </Grid>
@@ -306,8 +301,7 @@
                                             IsChecked="{x:Bind IsDone, Mode=OneWay}"
                                             Click="DoneCheckBox_Click"
                                             Loaded="DoneCheckBox_Loaded"
-                                            VerticalAlignment="Center"
-                                            ToolTipService.ToolTip="标记完成" />
+                                            VerticalAlignment="Center" />
 
                                         <Border
                                             Grid.Column="1"
@@ -363,8 +357,7 @@
                                             Background="Transparent"
                                             BorderThickness="0"
                                             IsHitTestVisible="{x:Bind IsImportant, Mode=OneWay}"
-                                            Opacity="{x:Bind helpers:Bind.ImportantOpacity(IsImportant), Mode=OneWay}"
-                                            ToolTipService.ToolTip="标记为重要">
+                                            Opacity="{x:Bind helpers:Bind.ImportantOpacity(IsImportant), Mode=OneWay}">
                                             <FontIcon
                                                 Glyph="{x:Bind helpers:Bind.ImportantGlyph(IsImportant), Mode=OneWay}"
                                                 FontSize="13"
@@ -415,8 +408,7 @@
                         Click="ClearCompleted_Click"
                         Content="清除已完成"
                         IsEnabled="{x:Bind ViewModel.HasCompleted, Mode=OneWay}"
-                        Style="{StaticResource LinkButtonStyle}"
-                        ToolTipService.ToolTip="删除所有已完成的待办，不可撤销" />
+                        Style="{StaticResource LinkButtonStyle}" />
                 </Grid>
             </Grid>
         </Border>

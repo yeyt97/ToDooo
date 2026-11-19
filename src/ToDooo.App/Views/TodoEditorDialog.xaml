@@ -23,8 +23,8 @@
 
             <!--  标签色点：可聚焦按钮，选中态靠亮描边 + 淡底色  -->
             <Style x:Key="TagRingButton" TargetType="Button">
-                <Setter Property="Width" Value="28" />
-                <Setter Property="Height" Value="28" />
+                <Setter Property="Width" Value="26" />
+                <Setter Property="Height" Value="26" />
                 <Setter Property="Padding" Value="0" />
                 <Setter Property="Background" Value="Transparent" />
                 <Setter Property="BorderBrush" Value="Transparent" />
@@ -35,7 +35,7 @@
                             <Grid
                                 x:Name="Root"
                                 Background="Transparent"
-                                CornerRadius="14">
+                                CornerRadius="13">
                                 <VisualStateManager.VisualStateGroups>
                                     <VisualStateGroup x:Name="CommonStates">
                                         <VisualState x:Name="Normal" />
@@ -53,12 +53,12 @@
                                     </VisualStateGroup>
                                 </VisualStateManager.VisualStateGroups>
                                 <Border
-                                    Width="26"
-                                    Height="26"
+                                    Width="24"
+                                    Height="24"
                                     Background="{TemplateBinding Background}"
                                     BorderBrush="{TemplateBinding BorderBrush}"
                                     BorderThickness="2"
-                                    CornerRadius="13">
+                                    CornerRadius="12">
                                     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
                             </Grid>
@@ -174,7 +174,6 @@
                                 <TimePicker
                                     x:Name="DueTime"
                                     Grid.Column="1"
-                                    Width="190"
                                     HorizontalAlignment="Left"
                                     AutomationProperties.Name="截止时间"
                                     ClockIdentifier="24HourClock"
@@ -239,7 +238,7 @@
                                 x:Name="TagPanel"
                                 Grid.Column="1"
                                 Orientation="Horizontal"
-                                Spacing="6" />
+                                Spacing="4" />
                         </Grid>
                     </StackPanel>
                 </Border>

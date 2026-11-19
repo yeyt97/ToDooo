@@ -316,6 +316,24 @@ public sealed partial class MainViewModel : ObservableObject
         SyncVisible(item);
     }
 
+    /// <summary>拖动过程中的实时换位：只动内存里的顺序，松手时才落库。</summary>
+    public void MoveSubtaskLive(TodoItem item, SubtaskItem subtask, int index)
+    {
+        var from = item.Subtasks.IndexOf(subtask);
+        if (from < 0)
+        {
+            return;
+        }
+
+        index = Math.Clamp(index, 0, item.Subtasks.Count - 1);
+        if (from != index)
+        {
+            item.Subtasks.Move(from, index);
+        }
+    }
+
+    public void CommitSubtaskOrder(TodoItem item) => PersistSubtaskOrders(item);
+
     public void MoveSubtaskTo(TodoItem item, SubtaskItem subtask, int index)
     {
         var from = item.Subtasks.IndexOf(subtask);

@@ -1588,7 +1588,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        if (e.ClickedItem is TodoItem { HasSubtasks: true } item)
+        if (e.ClickedItem is TodoItem item && (item.HasSubtasks || item.SubtasksExpanded))
         {
             item.SubtasksExpanded = !item.SubtasksExpanded;
             ResetSubtaskDragGuardIfCollapsed(item);
@@ -1684,6 +1684,11 @@ public sealed partial class MainWindow : Window
         {
             _draggedSubtask = subtask;
             _subtaskDragActive = true;
+            if (sender is UIElement element)
+            {
+                element.Opacity = 0.55;
+            }
+
             args.Data.Properties[SubtaskDragKey] = true;
             args.Data.RequestedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
         }
@@ -1691,15 +1696,47 @@ public sealed partial class MainWindow : Window
 
     private void SubtaskRow_DragOver(object sender, DragEventArgs e)
     {
-        e.AcceptedOperation = e.DataView.Properties.ContainsKey(SubtaskDragKey)
-            ? Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move
-            : Windows.ApplicationModel.DataTransfer.DataPackageOperation.None;
+        if (!e.DataView.Properties.ContainsKey(SubtaskDragKey))
+        {
+            e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.None;
+            return;
+        }
+
+        e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
         e.DragUIOverride.IsCaptionVisible = false;
         e.DragUIOverride.IsGlyphVisible = false;
+
+        // 和主任务拖排序一样：拖到哪一行，行就实时让位。
+        if (_draggedSubtask is not { } dragged ||
+            sender is not Grid row ||
+            row.DataContext is not SubtaskItem target ||
+            dragged == target ||
+            FindOwnerTodo(row) is not { } item)
+        {
+            return;
+        }
+
+        var list = item.Subtasks;
+        var from = list.IndexOf(dragged);
+        var to = list.IndexOf(target);
+        if (from < 0 || to < 0)
+        {
+            return;
+        }
+
+        var point = e.GetPosition(row);
+        var index = point.Y <= row.ActualHeight / 2 ? to : to + 1;
+        if (from < index)
+        {
+            index--;
+        }
+
+        ViewModel.MoveSubtaskLive(item, dragged, index);
     }
 
     private void SubtaskRow_DropCompleted(UIElement sender, DropCompletedEventArgs args)
     {
+        sender.Opacity = 1;
         _draggedSubtask = null;
         _subtaskDragActive = false;
         _pointerOverSubtasks = false;
@@ -1720,23 +1757,8 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var list = item.Subtasks;
-        var from = list.IndexOf(dragged);
-        var to = list.IndexOf(target);
-        if (from < 0 || to < 0)
-        {
-            return;
-        }
-
-        // 落在目标行上半部分插到它前面，下半部分插到它后面。
-        var point = e.GetPosition(row);
-        var index = point.Y <= row.ActualHeight / 2 ? to : to + 1;
-        if (from < index)
-        {
-            index--;
-        }
-
-        ViewModel.MoveSubtaskTo(item, dragged, index);
+        // 顺序已经在 DragOver 里实时排好，这里只落库。
+        ViewModel.CommitSubtaskOrder(item);
         _draggedSubtask = null;
     }
 
@@ -1955,26 +1977,76 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private async void RowAddSubtask_Click(object sender, RoutedEventArgs e)
+    private void RowAddSubtask_Click(object sender, RoutedEventArgs e)
     {
         if (_menuItem is not { } item)
         {
             return;
         }
 
-        var input = new TextBox
-        {
-            PlaceholderText = "子任务内容",
-            MaxLength = 120,
-        };
-        var dialog = CreateCardDialog("添加子任务", input, "添加", primaryEnabled: false, ContentDialogButton.Primary);
-        input.TextChanged += (_, _) => dialog.IsPrimaryButtonEnabled = input.Text.Trim().Length > 0;
-        dialog.Opened += (_, _) => input.Focus(FocusState.Programmatic);
+        item.SubtasksExpanded = true;
+        DispatcherQueue.TryEnqueue(() => FocusSubtaskAddBox(item));
+    }
 
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+    private void FocusSubtaskAddBox(TodoItem item)
+    {
+        if (TodoList.ContainerFromItem(item) is not DependencyObject container)
         {
-            ViewModel.AddSubtask(item, input.Text);
-            item.SubtasksExpanded = true;
+            return;
+        }
+
+        if (FindTaggedChild<TextBox>(container, "SubtaskAddBox") is { } box)
+        {
+            box.Focus(FocusState.Programmatic);
+        }
+    }
+
+    private void SubtaskAddBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (sender is not TextBox box)
+        {
+            return;
+        }
+
+        if (e.Key == Windows.System.VirtualKey.Enter)
+        {
+            e.Handled = true;
+            CommitSubtaskAdd(box, keepFocus: true);
+        }
+        else if (e.Key == Windows.System.VirtualKey.Escape)
+        {
+            e.Handled = true;
+            box.Text = string.Empty;
+        }
+    }
+
+    private void SubtaskAddBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (sender is TextBox box)
+        {
+            CommitSubtaskAdd(box, keepFocus: false);
+        }
+    }
+
+    private void CommitSubtaskAdd(TextBox box, bool keepFocus)
+    {
+        if (box.DataContext is not TodoItem item)
+        {
+            return;
+        }
+
+        var title = box.Text.Trim();
+        if (title.Length == 0)
+        {
+            return;
+        }
+
+        ViewModel.AddSubtask(item, title);
+        box.Text = string.Empty;
+
+        if (keepFocus)
+        {
+            box.Focus(FocusState.Programmatic);
         }
     }
 

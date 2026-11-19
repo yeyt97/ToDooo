@@ -9,11 +9,11 @@ namespace ToDooo.Helpers;
 public static class NaturalDateParser
 {
     private static readonly Regex DatePattern = new(
-        @"(?<today>大后天|今天|明天|后天)|(?<weekday>(?<next>下)?(?:周|星期|礼拜)(?<wd>[一二三四五六日天1-7]))|(?<md>(?<month>\d{1,2})\s*月\s*(?<day>\d{1,2})\s*[日号])|(?<days>(?<n>\d{1,2})\s*天后)",
+        @"(?<today>大后天|今天|明天|后天)|(?<weekday>(?<next>下)?(?:周|星期|礼拜)(?<wd>[一二三四五六日天1-7]))|(?<md>(?<month>\d{1,2}|[〇零一二两三四五六七八九十]{1,3})\s*月\s*(?<day>\d{1,2}|[〇零一二两三四五六七八九十]{1,3})\s*[日号])|(?<days>(?<n>\d{1,2}|[〇零一二两三四五六七八九十]{1,3})\s*天后)",
         RegexOptions.Compiled);
 
     private static readonly Regex CnTimePattern = new(
-        @"(?<period>凌晨|早上|上午|中午|下午|傍晚|晚上)?\s*(?<h>\d{1,2})\s*(?:点|时)(?:钟)?\s*(?:(?<half>半)|(?<mm>\d{1,2})\s*分?)?",
+        @"(?<period>凌晨|早上|上午|中午|下午|傍晚|晚上)?\s*(?<h>\d{1,2}|[〇零一二两三四五六七八九十]{1,3})\s*(?:点|时)(?:钟)?\s*(?:(?<half>半)|(?<quarter>一刻|三刻)|(?<mm>\d{1,2}|[〇零一二两三四五六七八九十]{1,3})\s*分?)?",
         RegexOptions.Compiled);
 
     private static readonly Regex ClockTimePattern = new(
@@ -69,8 +69,13 @@ public static class NaturalDateParser
             }
             else if (dateMatch.Groups["md"].Success)
             {
-                var month = int.Parse(dateMatch.Groups["month"].Value);
-                var day = int.Parse(dateMatch.Groups["day"].Value);
+                if (!TryParseNumber(dateMatch.Groups["month"].Value, out var month) ||
+                    !TryParseNumber(dateMatch.Groups["day"].Value, out var day))
+                {
+                    month = 0;
+                    day = 0;
+                }
+
                 if (month is >= 1 and <= 12 && day is >= 1 and <= 31)
                 {
                     var safeDay = Math.Min(day, DateTime.DaysInMonth(now.Year, month));
@@ -86,7 +91,11 @@ public static class NaturalDateParser
             }
             else if (dateMatch.Groups["days"].Success)
             {
-                var days = int.Parse(dateMatch.Groups["n"].Value);
+                if (!TryParseNumber(dateMatch.Groups["n"].Value, out var days))
+                {
+                    days = 0;
+                }
+
                 if (days is > 0 and <= 365)
                 {
                     date = now.Date.AddDays(days);
@@ -104,10 +113,18 @@ public static class NaturalDateParser
         var timeMatch = CnTimePattern.Match(work);
         if (timeMatch.Success)
         {
-            var hour = int.Parse(timeMatch.Groups["h"].Value);
-            var minute = timeMatch.Groups["mm"].Success
-                ? int.Parse(timeMatch.Groups["mm"].Value)
-                : timeMatch.Groups["half"].Success ? 30 : 0;
+            if (!TryParseNumber(timeMatch.Groups["h"].Value, out var hour))
+            {
+                hour = -1;
+            }
+
+            var minute = 0;
+            if (!timeMatch.Groups["mm"].Success || !TryParseNumber(timeMatch.Groups["mm"].Value, out minute))
+            {
+                minute = timeMatch.Groups["quarter"].Success
+                    ? (timeMatch.Groups["quarter"].Value == "一刻" ? 15 : 45)
+                    : timeMatch.Groups["half"].Success ? 30 : 0;
+            }
 
             var period = timeMatch.Groups["period"].Value;
             if (period is "下午" or "傍晚" or "晚上")
@@ -207,6 +224,60 @@ public static class NaturalDateParser
         var remainder = value.Minute % 5;
         var rounded = remainder == 0 ? value : value.AddMinutes(5 - remainder);
         return new DateTime(rounded.Year, rounded.Month, rounded.Day, rounded.Hour, rounded.Minute, 0);
+    }
+
+    private static bool TryParseNumber(string text, out int value)
+    {
+        value = 0;
+        if (string.IsNullOrEmpty(text))
+        {
+            return false;
+        }
+
+        if (text.All(char.IsAsciiDigit))
+        {
+            return int.TryParse(text, out value);
+        }
+
+        var tenIndex = text.IndexOf('十');
+        if (tenIndex < 0)
+        {
+            return TryParseSingleDigit(text, out value);
+        }
+
+        var left = tenIndex == 0 ? "一" : text[..tenIndex];
+        if (!TryParseSingleDigit(left, out var tens) || tens is < 1 or > 9)
+        {
+            return false;
+        }
+
+        var ones = 0;
+        if (tenIndex + 1 < text.Length && !TryParseSingleDigit(text[(tenIndex + 1)..], out ones))
+        {
+            return false;
+        }
+
+        value = tens * 10 + ones;
+        return true;
+    }
+
+    private static bool TryParseSingleDigit(string text, out int value)
+    {
+        value = text switch
+        {
+            "〇" or "零" => 0,
+            "一" => 1,
+            "二" or "两" => 2,
+            "三" => 3,
+            "四" => 4,
+            "五" => 5,
+            "六" => 6,
+            "七" => 7,
+            "八" => 8,
+            "九" => 9,
+            _ => -1,
+        };
+        return value >= 0;
     }
 
     private static int WeekdayNumber(char value) => value switch

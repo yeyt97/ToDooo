@@ -174,7 +174,7 @@
                                 <TimePicker
                                     x:Name="DueTime"
                                     Grid.Column="1"
-                                    HorizontalAlignment="Left"
+                                    HorizontalAlignment="Stretch"
                                     AutomationProperties.Name="截止时间"
                                     ClockIdentifier="24HourClock"
                                     MinuteIncrement="5"

@@ -82,6 +82,51 @@ public sealed class NaturalDateParserTests
     }
 
     [Fact]
+    public void ChineseHourWithPeriod()
+    {
+        Assert.True(NaturalDateParser.TryParse("明天下午三点打网球", Now, out var due, out var title));
+        Assert.Equal(new DateTime(2026, 11, 19, 15, 0, 0), due);
+        Assert.Equal("打网球", title);
+    }
+
+    [Fact]
+    public void ChineseHalfAndQuarter()
+    {
+        Assert.True(NaturalDateParser.TryParse("今天下午三点半开会", Now, out var half, out _));
+        Assert.Equal(new DateTime(2026, 11, 18, 15, 30, 0), half);
+
+        Assert.True(NaturalDateParser.TryParse("今天下午三点一刻开会", Now, out var quarter, out _));
+        Assert.Equal(new DateTime(2026, 11, 18, 15, 15, 0), quarter);
+    }
+
+    [Fact]
+    public void ChineseHourAboveTen()
+    {
+        Assert.True(NaturalDateParser.TryParse("十点十五分喝水", Now, out var due, out var title));
+        Assert.Equal(new DateTime(2026, 11, 18, 10, 15, 0), due);
+        Assert.Equal("喝水", title);
+
+        Assert.True(NaturalDateParser.TryParse("二十三点睡觉", Now, out var late, out _));
+        Assert.Equal(new DateTime(2026, 11, 18, 23, 0, 0), late);
+    }
+
+    [Fact]
+    public void ChineseMonthAndDay()
+    {
+        Assert.True(NaturalDateParser.TryParse("十二月三号交材料", Now, out var due, out var title));
+        Assert.Equal(new DateTime(2026, 12, 3, 9, 0, 0), due);
+        Assert.Equal("交材料", title);
+    }
+
+    [Fact]
+    public void ChineseRelativeDays()
+    {
+        Assert.True(NaturalDateParser.TryParse("三天后提交", Now, out var due, out var title));
+        Assert.Equal(new DateTime(2026, 11, 21, 9, 0, 0), due);
+        Assert.Equal("提交", title);
+    }
+
+    [Fact]
     public void TitleCleanup_TrimsTrailingPunctuation()
     {
         Assert.True(NaturalDateParser.TryParse("交报告，明天，10点", Now, out var due, out var title));

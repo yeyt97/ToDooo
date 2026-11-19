@@ -8,7 +8,12 @@
     Title="ToDooo">
 
     <!-- 所有行/列都用 Auto 与 * ，窗口缩放时列表区自动吃掉剩余高度；最小尺寸同时由 Win32 层约束 -->
-    <Grid x:Name="Root" Background="Transparent" MinWidth="320" MinHeight="360">
+    <Grid
+        x:Name="Root"
+        Background="Transparent"
+        KeyboardAcceleratorPlacementMode="Hidden"
+        MinWidth="320"
+        MinHeight="360">
         <Border
             CornerRadius="{StaticResource CardCornerRadius}"
             Background="{StaticResource CardBrush}"

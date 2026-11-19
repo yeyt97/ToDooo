@@ -27,6 +27,7 @@ internal static class NativeMethods
     public const int WM_MOUSEACTIVATE = 0x0021;
     public const int MA_NOACTIVATE = 3;
     public const int WM_EXITSIZEMOVE = 0x0232;
+    public const int WM_SETTINGCHANGE = 0x001A;
     public const int WM_WINDOWPOSCHANGING = 0x0046;
     public const int WM_SIZE = 0x0005;
 

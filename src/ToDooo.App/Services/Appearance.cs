@@ -9,7 +9,9 @@ public static class Appearance
     {
         ThemeMode.Dark => ElementTheme.Dark,
         ThemeMode.Light => ElementTheme.Light,
-        _ => ElementTheme.Default,
+        // Application.RequestedTheme 只在启动时取一次系统值，这里显式换算，
+        // 系统主题切换后重新应用才能真的跟着变。
+        _ => IsSystemDark() ? ElementTheme.Dark : ElementTheme.Light,
     };
 
     public static bool IsDark(ThemeMode mode) => mode switch

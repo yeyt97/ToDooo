@@ -201,6 +201,7 @@ public sealed partial class MainWindow : Window
 
         UpdateFilterVisuals();
         UpdateTagVisuals();
+        _settingsWindow?.RefreshTheme();
     }
 
     private void ApplyDwmTheme(bool dark)
@@ -800,6 +801,17 @@ public sealed partial class MainWindow : Window
 
             case NativeMethods.WM_EXITSIZEMOVE:
                 SavePosition();
+                break;
+
+            case NativeMethods.WM_SETTINGCHANGE:
+                // 系统深/浅色切换时刷新；固定深/浅色的设置不受影响。
+                if (lParam != IntPtr.Zero
+                    && _settings.Current.ThemeMode == (int)ThemeMode.System
+                    && System.Runtime.InteropServices.Marshal.PtrToStringUni(lParam) == "ImmersiveColorSet")
+                {
+                    _dispatcher.TryEnqueue(ApplyAppearance);
+                }
+
                 break;
         }
 

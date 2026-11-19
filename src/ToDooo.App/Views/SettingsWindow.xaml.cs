@@ -65,6 +65,13 @@ public sealed partial class SettingsWindow : Window
         Activate();
     }
 
+    /// <summary>系统主题变化时由主窗口调用，跟随系统模式下重刷本窗口外观。</summary>
+    public void RefreshTheme()
+    {
+        Root.RequestedTheme = Appearance.ToElementTheme((ThemeMode)_settings.Current.ThemeMode);
+        ApplyWindowMaterial();
+    }
+
     private void ConfigureWindow()
     {
         _appWindow.Title = "设置";

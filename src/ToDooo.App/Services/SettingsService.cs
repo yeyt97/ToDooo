@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using ToDooo.Models;
 
 namespace ToDooo.Services;
 
@@ -8,6 +9,17 @@ public enum ThemeMode
     System = 0,
     Dark = 1,
     Light = 2,
+}
+
+public sealed class SmartViewSetting
+{
+    public int View { get; set; }
+
+    public bool Enabled { get; set; } = true;
+
+    public static List<SmartViewSetting> CreateDefault() => SmartViewInfo.All
+        .Select(view => new SmartViewSetting { View = (int)view, Enabled = true })
+        .ToList();
 }
 
 public sealed class AppSettings
@@ -29,6 +41,12 @@ public sealed class AppSettings
 
     /// <summary>提前多少分钟提醒：0 = 到期时提醒。</summary>
     public int ReminderLeadMinutes { get; set; }
+
+    /// <summary>鼠标离开窗口时自动变淡、移回恢复。</summary>
+    public bool AutoHide { get; set; }
+
+    /// <summary>智能视图的启用状态与显示顺序（列表顺序即显示顺序）。</summary>
+    public List<SmartViewSetting> SmartViews { get; set; } = SmartViewSetting.CreateDefault();
 }
 
 public sealed class SettingsService

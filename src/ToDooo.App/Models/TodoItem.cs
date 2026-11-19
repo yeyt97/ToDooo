@@ -61,6 +61,10 @@ public partial class TodoItem : ObservableObject
     [ObservableProperty]
     private bool dueNotified;
 
+    /// <summary>提醒被推迟到什么时候；为空表示没推迟。</summary>
+    [ObservableProperty]
+    private DateTime? snoozeUntil;
+
     [ObservableProperty]
     private bool subtasksExpanded;
 

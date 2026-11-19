@@ -153,6 +153,46 @@
 
     <Style x:Key="StatButtonStyle" TargetType="Button" BasedOn="{StaticResource SegmentButtonStyle}" />
 
+    <!-- 智能视图的小胶囊：比分段条更紧凑，不占满宽度 -->
+    <Style x:Key="SmartChipStyle" TargetType="Button">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="10,3" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="MinHeight" Value="24" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Foreground" Value="{ThemeResource TextSecondaryBrush}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="12">
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="Root.Background" Value="{ThemeResource HoverBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="Root.Background" Value="{ThemeResource PressedBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Disabled" />
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                        <ContentPresenter
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Padding="{TemplateBinding Padding}"
+                            Content="{TemplateBinding Content}" />
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- 添加入口与任务卡片共用同一张「卡片」外观 -->
     <!-- 添加框专用：原生 TextBox 的占位文字不吃 VerticalContentAlignment，
          拉高后会贴顶。这里用极简模板把编辑区钉在垂直中心，占位文字由外层 TextBlock 承担。 -->

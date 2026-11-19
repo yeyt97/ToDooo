@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using ToDooo.Interop;
+using ToDooo.Models;
 using ToDooo.Services;
 using Windows.Graphics;
 
@@ -14,7 +15,7 @@ namespace ToDooo.Views;
 public sealed partial class SettingsWindow : Window
 {
     private const int LogicalWidth = 420;
-    private const int LogicalHeight = 520;
+    private const int LogicalHeight = 600;
 
     private static readonly int[] LeadOptions = { 0, 5, 15, 30, 60 };
 
@@ -52,6 +53,8 @@ public sealed partial class SettingsWindow : Window
         OpacitySlider.Value = Math.Clamp(settings.Current.WindowOpacity, 0.1, 1.0);
         OpacityValue.Text = $"{Math.Round(OpacitySlider.Value * 100)}%";
         StartupToggle.IsOn = StartupService.IsEnabled;
+        AutoHideToggle.IsOn = settings.Current.AutoHide;
+        BuildSmartViewList();
         LeadBox.SelectedIndex = Math.Max(0, Array.IndexOf(LeadOptions, settings.Current.ReminderLeadMinutes));
 
         _ready = true;
@@ -253,6 +256,119 @@ public sealed partial class SettingsWindow : Window
         }
 
         StartupService.SetEnabled(StartupToggle.IsOn);
+    }
+
+    private void AutoHideToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (!_ready)
+        {
+            return;
+        }
+
+        _settings.Current.AutoHide = AutoHideToggle.IsOn;
+        _settings.Save();
+        _settingsChanged();
+    }
+
+    private void BuildSmartViewList()
+    {
+        NormalizeSmartViews();
+        SmartViewList.Children.Clear();
+
+        var views = _settings.Current.SmartViews;
+        for (var i = 0; i < views.Count; i++)
+        {
+            var index = i;
+            var setting = views[i];
+            if (!Enum.IsDefined(typeof(SmartView), setting.View))
+            {
+                continue;
+            }
+
+            var check = new CheckBox
+            {
+                Content = SmartViewInfo.Title((SmartView)setting.View),
+                IsChecked = setting.Enabled,
+                MinWidth = 0,
+                Margin = new Thickness(0),
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            check.Click += (_, _) =>
+            {
+                setting.Enabled = check.IsChecked == true;
+                SaveSmartViews();
+            };
+
+            var row = new Grid { ColumnSpacing = 4 };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var up = CreateArrowButton("\uE70E", index > 0, "上移");
+            up.Click += (_, _) => MoveSmartView(index, -1);
+            Grid.SetColumn(up, 1);
+
+            var down = CreateArrowButton("\uE70D", index < views.Count - 1, "下移");
+            down.Click += (_, _) => MoveSmartView(index, 1);
+            Grid.SetColumn(down, 2);
+
+            row.Children.Add(check);
+            row.Children.Add(up);
+            row.Children.Add(down);
+            SmartViewList.Children.Add(row);
+        }
+    }
+
+    private static Button CreateArrowButton(string glyph, bool enabled, string name)
+    {
+        var button = new Button
+        {
+            Style = (Style)Application.Current.Resources["LinkButtonStyle"],
+            Content = new FontIcon { Glyph = glyph, FontSize = 9 },
+            Width = 26,
+            Height = 26,
+            MinWidth = 0,
+            Padding = new Thickness(0),
+            IsEnabled = enabled,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, name);
+        return button;
+    }
+
+    private void MoveSmartView(int index, int delta)
+    {
+        var views = _settings.Current.SmartViews;
+        var target = index + delta;
+        if (index < 0 || index >= views.Count || target < 0 || target >= views.Count)
+        {
+            return;
+        }
+
+        (views[index], views[target]) = (views[target], views[index]);
+        SaveSmartViews();
+        BuildSmartViewList();
+    }
+
+    private void SaveSmartViews()
+    {
+        _settings.Save();
+        _settingsChanged();
+    }
+
+    // 配置里缺的视图补到末尾；未知值丢掉，避免以后改枚举时读出怪数据。
+    private void NormalizeSmartViews()
+    {
+        var views = _settings.Current.SmartViews ??= SmartViewSetting.CreateDefault();
+        views.RemoveAll(setting => !Enum.IsDefined(typeof(SmartView), setting.View));
+
+        foreach (var view in SmartViewInfo.All)
+        {
+            if (views.All(setting => setting.View != (int)view))
+            {
+                views.Add(new SmartViewSetting { View = (int)view, Enabled = true });
+            }
+        }
     }
 
     private void LeadBox_SelectionChanged(object sender, SelectionChangedEventArgs e)

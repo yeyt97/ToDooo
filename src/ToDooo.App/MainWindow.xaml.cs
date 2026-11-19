@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using ToDooo.Interop;
 using ToDooo.Models;
 using ToDooo.Services;
@@ -29,6 +30,7 @@ public sealed partial class MainWindow : Window
     private readonly Microsoft.UI.Dispatching.DispatcherQueue _dispatcher =
         Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
     private readonly List<Button> _tagButtons = new();
+    private readonly List<Button> _smartViewButtons = new();
     private readonly List<FontIcon> _tagChecks = new();
     private Button? _tagClearButton;
 
@@ -65,6 +67,7 @@ public sealed partial class MainWindow : Window
 
         ConfigureWindow();
         BuildTagDots();
+        BuildSmartViewChips();
         UpdateFilterVisuals();
 
         // XAML 的 LostFocus 在窗口整体失活时不会触发，这里补一次全局失焦提交。
@@ -74,6 +77,9 @@ public sealed partial class MainWindow : Window
         {
             Source = () => ViewModel.AllItems,
         };
+
+        // 系统通知是后台线程回调的，这里转回 UI 线程处理。
+        notifier.SnoozeRequested = id => _dispatcher.TryEnqueue(() => SnoozeReminder(id));
     }
 
     public MainViewModel ViewModel { get; }
@@ -680,6 +686,13 @@ public sealed partial class MainWindow : Window
     {
         ApplyAppearance();
         _reminder.LeadMinutes = _settings.Current.ReminderLeadMinutes;
+        BuildSmartViewChips();
+
+        // 关掉自动隐藏时把可能已经变淡的窗口拉回来。
+        if (!_settings.Current.AutoHide)
+        {
+            AnimateRootOpacity(1);
+        }
     }
 
     private void ExitApp()
@@ -1063,6 +1076,61 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void BuildSmartViewChips()
+    {
+        SmartViewPanel.Children.Clear();
+        _smartViewButtons.Clear();
+
+        foreach (var setting in _settings.Current.SmartViews)
+        {
+            if (!setting.Enabled || !Enum.IsDefined(typeof(SmartView), setting.View))
+            {
+                continue;
+            }
+
+            var view = (SmartView)setting.View;
+            var button = new Button
+            {
+                Content = SmartViewInfo.Title(view),
+                Tag = view,
+                Style = (Style)Application.Current.Resources["SmartChipStyle"],
+            };
+            button.Click += SmartView_Click;
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+                button, $"视图 {SmartViewInfo.Title(view)}");
+            _smartViewButtons.Add(button);
+            SmartViewPanel.Children.Add(button);
+        }
+
+        SmartViewPanel.Visibility = _smartViewButtons.Count > 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        UpdateSmartViewVisuals();
+    }
+
+    private void SmartView_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: SmartView view })
+        {
+            ViewModel.ToggleSmartView(view);
+            UpdateSmartViewVisuals();
+        }
+    }
+
+    private void UpdateSmartViewVisuals()
+    {
+        foreach (var button in _smartViewButtons)
+        {
+            var active = button.Tag is SmartView view && (int)view == ViewModel.SelectedSmartView;
+            button.Background = active
+                ? PaletteBrush("SegmentSelectedBrush")
+                : PaletteBrush("TransparentBrush");
+            button.Foreground = active
+                ? PaletteBrush("TextPrimaryBrush")
+                : PaletteBrush("TextMutedBrush");
+        }
+    }
+
     private void UpdateFilterVisuals()
     {
         SetStatVisual(AllFilterButton, ViewModel.Filter == TodoFilter.All);
@@ -1074,6 +1142,9 @@ public sealed partial class MainWindow : Window
         ClearCompletedButton.Visibility = ViewModel.Filter == TodoFilter.Done
             ? Visibility.Visible
             : Visibility.Collapsed;
+
+        // 切换分段筛选时，智能视图的选中态也要跟着刷。
+        UpdateSmartViewVisuals();
     }
 
     // 分段筛选的选中态是一块中性高亮，而不是强调色或透明度差异。
@@ -1085,26 +1156,69 @@ public sealed partial class MainWindow : Window
 
     private void AllFilter_Click(object sender, RoutedEventArgs e)
     {
+        ViewModel.ClearSmartView();
         ViewModel.SetFilter(TodoFilter.All);
         UpdateFilterVisuals();
     }
 
     private void ActiveFilter_Click(object sender, RoutedEventArgs e)
     {
+        ViewModel.ClearSmartView();
         ViewModel.SetFilter(TodoFilter.Active);
         UpdateFilterVisuals();
     }
 
     private void ImportantFilter_Click(object sender, RoutedEventArgs e)
     {
+        ViewModel.ClearSmartView();
         ViewModel.SetFilter(TodoFilter.Important);
         UpdateFilterVisuals();
     }
 
     private void DoneFilter_Click(object sender, RoutedEventArgs e)
     {
+        ViewModel.ClearSmartView();
         ViewModel.SetFilter(TodoFilter.Done);
         UpdateFilterVisuals();
+    }
+
+    // 鼠标离开窗口时淡出，移回恢复；设置里没开就保持原样。
+    private void Root_PointerEntered(object sender, PointerRoutedEventArgs e) => AnimateRootOpacity(1);
+
+    private void Root_PointerExited(object sender, PointerRoutedEventArgs e) =>
+        AnimateRootOpacity(_settings.Current.AutoHide ? 0.25 : 1);
+
+    private void AnimateRootOpacity(double target)
+    {
+        if (Math.Abs(Root.Opacity - target) < 0.01)
+        {
+            return;
+        }
+
+        var animation = new DoubleAnimation
+        {
+            To = target,
+            Duration = new Duration(TimeSpan.FromMilliseconds(200)),
+            EnableDependentAnimation = true,
+        };
+        Storyboard.SetTarget(animation, Root);
+        Storyboard.SetTargetProperty(animation, "Opacity");
+
+        var storyboard = new Storyboard();
+        storyboard.Children.Add(animation);
+        storyboard.Begin();
+    }
+
+    private void SnoozeReminder(long id)
+    {
+        var item = ViewModel.AllItems.FirstOrDefault(candidate => candidate.Id == id);
+        if (item is null || item.IsDone)
+        {
+            return;
+        }
+
+        ViewModel.Snooze(item, 10);
+        ShowBalloon("已推迟", $"{item.Title}：10 分钟后再提醒");
     }
 
     private void FocusAddBox() => AddTextBox.Focus(FocusState.Programmatic);
@@ -1438,8 +1552,28 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void ClearCompleted_Click(object sender, RoutedEventArgs e)
+    private async void ClearCompleted_Click(object sender, RoutedEventArgs e)
     {
+        if (ViewModel.DoneCount == 0)
+        {
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = "清除已完成",
+            Content = $"将删除 {ViewModel.DoneCount} 条已完成待办，删除后可在底部撤销。",
+            PrimaryButtonText = "清除",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close,
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
         var removed = ViewModel.ClearCompleted();
         UpdateFilterVisuals();
         if (removed.Count > 0)
@@ -1460,6 +1594,24 @@ public sealed partial class MainWindow : Window
             {
                 important.Text = _menuItem.ImportantMenuText;
             }
+
+            // 没有截止时间就没有提醒可推迟。
+            if (((MenuFlyout)sender).Items.Count > 2 &&
+                ((MenuFlyout)sender).Items[2] is MenuFlyoutItem snooze)
+            {
+                snooze.Visibility = _menuItem?.DueAt is null
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+            }
+        }
+    }
+
+    private void RowSnooze_Click(object sender, RoutedEventArgs e)
+    {
+        if (_menuItem is { } item)
+        {
+            ViewModel.Snooze(item, 10);
+            ShowBalloon("已推迟", $"{item.Title}：10 分钟后再提醒");
         }
     }
 

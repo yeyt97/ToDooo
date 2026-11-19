@@ -252,4 +252,52 @@ public sealed class TodoViewModelTests : IDisposable
         Assert.Single(_viewModel.Items);
         Assert.Equal("准备出差", _viewModel.Items[0].Title);
     }
+
+    [Fact]
+    public void SmartView_FiltersByDueDate()
+    {
+        var today = new TodoItem { Title = "今天事", DueAt = DateTime.Now.Date.AddHours(23) };
+        var tomorrow = new TodoItem { Title = "明天事", DueAt = DateTime.Now.Date.AddDays(1).AddHours(9) };
+        var overdue = new TodoItem { Title = "昨天事", DueAt = DateTime.Now.Date.AddDays(-1).AddHours(9) };
+        var noDue = new TodoItem { Title = "无期限" };
+        var done = new TodoItem { Title = "完成在今天", DueAt = DateTime.Now.Date.AddHours(10) };
+        _viewModel.AddItem(today);
+        _viewModel.AddItem(tomorrow);
+        _viewModel.AddItem(overdue);
+        _viewModel.AddItem(noDue);
+        _viewModel.AddItem(done);
+        _viewModel.SetDone(done, true);
+
+        _viewModel.ToggleSmartView(SmartView.Today);
+        Assert.Equal(new[] { "今天事" }, _viewModel.Items.Select(x => x.Title));
+
+        _viewModel.ToggleSmartView(SmartView.Tomorrow);
+        Assert.Equal(new[] { "明天事" }, _viewModel.Items.Select(x => x.Title));
+
+        _viewModel.ToggleSmartView(SmartView.Overdue);
+        Assert.Equal(new[] { "昨天事" }, _viewModel.Items.Select(x => x.Title));
+
+        // 再点一次同一个视图取消筛选。
+        _viewModel.ToggleSmartView(SmartView.Overdue);
+        Assert.Equal(-1, _viewModel.SelectedSmartView);
+        Assert.Equal(5, _viewModel.Items.Count);
+    }
+
+    [Fact]
+    public void Snooze_ResetsNotificationAndPersists()
+    {
+        var item = new TodoItem { Title = "开会", DueAt = DateTime.Now.AddMinutes(-1), DueNotified = true };
+        _viewModel.AddItem(item);
+
+        _viewModel.Snooze(item, 10);
+
+        Assert.False(item.DueNotified);
+        Assert.True(item.SnoozeUntil > DateTime.Now.AddMinutes(9));
+
+        var reloaded = new MainViewModel(_repository);
+        reloaded.Load();
+        var loaded = reloaded.AllItems.Single();
+        Assert.False(loaded.DueNotified);
+        Assert.True(loaded.SnoozeUntil > DateTime.Now.AddMinutes(9));
+    }
 }

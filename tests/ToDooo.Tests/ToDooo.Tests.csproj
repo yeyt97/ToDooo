@@ -19,6 +19,7 @@
   <!-- 直接链接被测源码：模型 / 视图模型 / 仓储都不依赖 WinUI，无需引用 UI 工程 -->
   <ItemGroup>
     <Compile Include="..\..\src\ToDooo.App\Models\TodoItem.cs" Link="Linked\Models\TodoItem.cs" />
+    <Compile Include="..\..\src\ToDooo.App\Models\SmartView.cs" Link="Linked\Models\SmartView.cs" />
     <Compile Include="..\..\src\ToDooo.App\ViewModels\MainViewModel.cs" Link="Linked\ViewModels\MainViewModel.cs" />
     <Compile Include="..\..\src\ToDooo.App\Services\TodoRepository.cs" Link="Linked\Services\TodoRepository.cs" />
     <Compile Include="..\..\src\ToDooo.App\Helpers\NaturalDateParser.cs" Link="Linked\Helpers\NaturalDateParser.cs" />

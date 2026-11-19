@@ -33,6 +33,10 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private int doneCount;
 
+    /// <summary>当前选中的智能视图；-1 = 不按智能视图筛。</summary>
+    [ObservableProperty]
+    private int selectedSmartView = -1;
+
     public MainViewModel(TodoRepository repository)
     {
         _repository = repository;
@@ -81,6 +85,29 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     /// <summary>详细新建：标题之外还可带截止时间、重复、重要与标签。</summary>
+    partial void OnSelectedSmartViewChanged(int value) => ApplyFilter();
+
+    public void ToggleSmartView(SmartView view)
+    {
+        // 再点一次同一视图即取消。
+        SelectedSmartView = SelectedSmartView == (int)view ? -1 : (int)view;
+    }
+
+    public void ClearSmartView()
+    {
+        if (SelectedSmartView >= 0)
+        {
+            SelectedSmartView = -1;
+        }
+    }
+
+    public void Snooze(TodoItem item, int minutes)
+    {
+        item.SnoozeUntil = DateTime.Now.AddMinutes(minutes);
+        item.DueNotified = false;
+        _repository.Update(item);
+    }
+
     public void AddItem(TodoItem item)
     {
         item.Title = item.Title.Trim();
@@ -95,9 +122,13 @@ public sealed partial class MainViewModel : ObservableObject
         _all.Add(item);
 
         // 新建会把视图切回「全部」，只有原本就不在「全部」视图时才需要重建。
-        var viewChanged = Filter != TodoFilter.All || SelectedTag != -1;
+        var viewChanged = Filter != TodoFilter.All || SelectedTag != -1 || SelectedSmartView != -1;
         Filter = TodoFilter.All;
         SelectedTag = -1;
+        if (SelectedSmartView != -1)
+        {
+            SelectedSmartView = -1;
+        }
 
         if (viewChanged)
         {
@@ -120,6 +151,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         item.IsDone = done;
         item.CompletedAt = done ? DateTime.Now : null;
+        item.SnoozeUntil = null;
         _repository.Update(item);
 
         // 整条完成/取消完成时，子任务跟着同步，避免出现「父任务完成了子项还空着」。
@@ -217,6 +249,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (item.DueAt != dueAt)
         {
             item.DueNotified = false;
+            item.SnoozeUntil = null;
         }
 
         item.Title = title;
@@ -487,6 +520,32 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(AllCount));
     }
 
+    private bool MatchesSmartView(TodoItem item)
+    {
+        // 智能视图只看未完成的；已完成的不再占日期。
+        if (item.IsDone)
+        {
+            return false;
+        }
+
+        var now = DateTime.Now;
+        var today = now.Date;
+        return (SmartView)SelectedSmartView switch
+        {
+            SmartView.Today => item.DueAt is { } due && due.Date == today,
+            SmartView.Tomorrow => item.DueAt is { } due && due.Date == today.AddDays(1),
+            SmartView.ThisWeek => item.DueAt is { } due &&
+                due.Date >= today &&
+                due.Date < WeekStart(today).AddDays(7),
+            SmartView.Overdue => item.DueAt is { } due && due < now,
+            _ => true,
+        };
+    }
+
+    // 周一为一周起点。
+    private static DateTime WeekStart(DateTime day) =>
+        day.AddDays(-(((int)day.DayOfWeek + 6) % 7));
+
     private bool Matches(TodoItem item)
     {
         if (_searchQuery.Length > 0 &&
@@ -498,6 +557,11 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         if (SelectedTag >= 0 && item.TagIndex != SelectedTag)
+        {
+            return false;
+        }
+
+        if (SelectedSmartView >= 0 && !MatchesSmartView(item))
         {
             return false;
         }

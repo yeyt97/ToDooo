@@ -56,6 +56,12 @@ public sealed class ReminderService : IDisposable
                 continue;
             }
 
+            // 点了“推迟”的，到推迟时间之前不再提醒。
+            if (item.SnoozeUntil is { } snooze && now < snooze)
+            {
+                continue;
+            }
+
             if (now < due.AddMinutes(-Math.Max(0, LeadMinutes)))
             {
                 continue;
@@ -70,7 +76,7 @@ public sealed class ReminderService : IDisposable
                 var message = now < due
                     ? $"{item.Title}（{Math.Ceiling((due - now).TotalMinutes)} 分钟后到期）"
                     : $"{item.Title}（截止 {due:HH:mm}）";
-                _notifier.Show("待办提醒", message);
+                _notifier.Show("待办提醒", message, item.Id);
             }
             else
             {

@@ -13,7 +13,9 @@
         Background="Transparent"
         KeyboardAcceleratorPlacementMode="Hidden"
         MinWidth="320"
-        MinHeight="360">
+        MinHeight="360"
+        PointerEntered="Root_PointerEntered"
+        PointerExited="Root_PointerExited">
         <Border
             CornerRadius="0"
             Background="{ThemeResource CardBrush}"
@@ -109,6 +111,7 @@
                         <Button
                             x:Name="AllFilterButton"
                             Grid.Column="0"
+                            AutomationProperties.Name="全部"
                             Style="{StaticResource SegmentButtonStyle}"
                             Click="AllFilter_Click">
                             <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
@@ -123,6 +126,7 @@
                         <Button
                             x:Name="ActiveStat"
                             Grid.Column="1"
+                            AutomationProperties.Name="进行中"
                             Style="{StaticResource StatButtonStyle}"
                             Click="ActiveFilter_Click">
                             <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
@@ -137,6 +141,7 @@
                         <Button
                             x:Name="ImportantStat"
                             Grid.Column="2"
+                            AutomationProperties.Name="重要"
                             Style="{StaticResource StatButtonStyle}"
                             Click="ImportantFilter_Click">
                             <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
@@ -151,6 +156,7 @@
                         <Button
                             x:Name="DoneStat"
                             Grid.Column="3"
+                            AutomationProperties.Name="已完成"
                             Style="{StaticResource StatButtonStyle}"
                             Click="DoneFilter_Click">
                             <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
@@ -199,13 +205,20 @@
                     </Grid>
                 </Grid>
 
-                <!--  颜色筛选：14x6 短横条  -->
+                <!--  智能视图 + 颜色筛选  -->
                 <StackPanel
-                    x:Name="TagPanel"
                     Grid.Row="3"
-                    Padding="14,0,14,8"
-                    Orientation="Horizontal"
-                    Spacing="2" />
+                    Margin="14,0,14,8"
+                    Spacing="6">
+                    <StackPanel
+                        x:Name="SmartViewPanel"
+                        Orientation="Horizontal"
+                        Spacing="6" />
+                    <StackPanel
+                        x:Name="TagPanel"
+                        Orientation="Horizontal"
+                        Spacing="2" />
+                </StackPanel>
 
                 <!--  添加入口：常驻输入框，回车或离焦即提交；右侧清除 + 详细新建  -->
                 <Grid
@@ -285,6 +298,7 @@
                                         <MenuFlyout Opening="RowFlyout_Opening">
                                             <MenuFlyoutItem Text="编辑…" Click="RowEdit_Click" />
                                             <MenuFlyoutItem Text="标记为重要" Click="RowImportant_Click" />
+                                            <MenuFlyoutItem Text="10 分钟后再提醒" Click="RowSnooze_Click" />
                                             <MenuFlyoutSeparator />
                                             <MenuFlyoutItem Text="删除" Click="RowDelete_Click" />
                                         </MenuFlyout>
@@ -463,6 +477,7 @@
                 <Grid Grid.Row="6" Padding="14,2,10,10">
                     <Button
                         x:Name="ClearCompletedButton"
+                        AutomationProperties.Name="清除已完成"
                         HorizontalAlignment="Right"
                         Click="ClearCompleted_Click"
                         Content="清除已完成"

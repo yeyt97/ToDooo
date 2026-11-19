@@ -35,7 +35,8 @@ public sealed class TodoRepository
                 sort_order    REAL    NOT NULL DEFAULT 0,
                 created_at    TEXT    NOT NULL,
                 completed_at  TEXT    NULL,
-                due_notified  INTEGER NOT NULL DEFAULT 0
+                due_notified  INTEGER NOT NULL DEFAULT 0,
+                snooze_until  TEXT    NULL
             );
 
             CREATE INDEX IF NOT EXISTS idx_todos_order ON todos(sort_order);
@@ -51,6 +52,18 @@ public sealed class TodoRepository
             CREATE INDEX IF NOT EXISTS idx_subtasks_todo ON subtasks(todo_id);
             """;
         command.ExecuteNonQuery();
+
+        // 旧库补列：SQLite 没有 ADD COLUMN IF NOT EXISTS，重复执行报错就忽略。
+        try
+        {
+            using var alter = connection.CreateCommand();
+            alter.CommandText = "ALTER TABLE todos ADD COLUMN snooze_until TEXT NULL";
+            alter.ExecuteNonQuery();
+        }
+        catch
+        {
+            // 列已存在
+        }
     }
 
     public List<TodoItem> GetAll()
@@ -59,7 +72,7 @@ public sealed class TodoRepository
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT id, title, is_done, is_important, due_at, recurrence, tag_index,
-                   sort_order, created_at, completed_at, due_notified
+                   sort_order, created_at, completed_at, due_notified, snooze_until
             FROM todos
             ORDER BY sort_order ASC, id ASC
             """;
@@ -120,9 +133,9 @@ public sealed class TodoRepository
         using var command = connection.CreateCommand();
         command.CommandText = """
             INSERT INTO todos (title, is_done, is_important, due_at, recurrence, tag_index,
-                               sort_order, created_at, completed_at, due_notified)
+                               sort_order, created_at, completed_at, due_notified, snooze_until)
             VALUES ($title, $done, $important, $due, $recurrence, $tag,
-                    $order, $created, $completed, $notified);
+                    $order, $created, $completed, $notified, $snooze);
             SELECT last_insert_rowid();
             """;
         Bind(command, item);
@@ -215,7 +228,8 @@ public sealed class TodoRepository
                 tag_index = $tag,
                 sort_order = $order,
                 completed_at = $completed,
-                due_notified = $notified
+                due_notified = $notified,
+                snooze_until = $snooze
             WHERE id = $id
             """;
         Bind(command, item);
@@ -291,6 +305,7 @@ public sealed class TodoRepository
         command.Parameters.AddWithValue("$created", ToDb(item.CreatedAt) ?? string.Empty);
         command.Parameters.AddWithValue("$completed", (object?)ToDb(item.CompletedAt) ?? DBNull.Value);
         command.Parameters.AddWithValue("$notified", item.DueNotified ? 1 : 0);
+        command.Parameters.AddWithValue("$snooze", (object?)ToDb(item.SnoozeUntil) ?? DBNull.Value);
     }
 
     private static TodoItem Read(SqliteDataReader reader) => new()
@@ -306,6 +321,7 @@ public sealed class TodoRepository
         CreatedAt = FromDb(reader.GetString(8)) ?? DateTime.Now,
         CompletedAt = FromDb(reader.IsDBNull(9) ? null : reader.GetString(9)),
         DueNotified = reader.GetInt64(10) != 0,
+        SnoozeUntil = FromDb(reader.IsDBNull(11) ? null : reader.GetString(11)),
     };
 
     private static string? ToDb(DateTime? value) => value?.ToString(DateFormat);

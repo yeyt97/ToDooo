@@ -130,6 +130,21 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
+                            <TextBlock Style="{StaticResource LabelText}" Text="自动隐藏" />
+                            <ToggleSwitch
+                                x:Name="AutoHideToggle"
+                                Grid.Column="1"
+                                MinWidth="0"
+                                AutomationProperties.Name="自动隐藏"
+                                OffContent=""
+                                OnContent=""
+                                Toggled="AutoHideToggle_Toggled" />
+                        </Grid>
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
                             <TextBlock Style="{StaticResource LabelText}" Text="提前提醒" />
                             <ComboBox
                                 x:Name="LeadBox"
@@ -143,6 +158,20 @@
                                 <ComboBoxItem Content="提前 1 小时" />
                             </ComboBox>
                         </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!--  智能视图  -->
+                <Border
+                    Padding="14,10,14,12"
+                    Background="{ThemeResource ItemCardBrush}"
+                    BorderBrush="{ThemeResource ItemCardStrokeBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8">
+                    <StackPanel Spacing="8">
+                        <TextBlock Style="{StaticResource LabelText}" Text="智能视图" />
+                        <TextBlock Style="{StaticResource HintText}" Text="勾选要在主窗口显示的视图，用箭头调整显示顺序。" />
+                        <StackPanel x:Name="SmartViewList" Spacing="2" />
                     </StackPanel>
                 </Border>
 

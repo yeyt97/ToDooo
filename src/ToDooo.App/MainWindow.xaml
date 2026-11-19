@@ -185,10 +185,11 @@
                         BorderBrush="{ThemeResource ItemCardStrokeBrush}"
                         BorderThickness="1"
                         CornerRadius="{StaticResource ItemCornerRadius}" />
-                    <Grid Padding="10,0" ColumnSpacing="8">
+                    <Grid Padding="10,0,6,0" ColumnSpacing="6">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <FontIcon
                             Glyph="&#xE721;"
@@ -201,9 +202,30 @@
                             Height="34"
                             AutomationProperties.Name="搜索待办"
                             KeyDown="SearchBox_KeyDown"
+                            LostFocus="SearchBox_LostFocus"
                             PlaceholderText="搜索待办"
                             Style="{StaticResource AddTextBoxStyle}"
                             TextChanged="SearchBox_TextChanged" />
+                        <Button
+                            x:Name="ClearSearchButton"
+                            Grid.Column="2"
+                            AutomationProperties.Name="清除搜索"
+                            Click="ClearSearch_Click"
+                            Style="{StaticResource CardActionButtonStyle}"
+                            Visibility="Collapsed">
+                            <Grid Width="16" Height="16">
+                                <Border
+                                    Width="16"
+                                    Height="16"
+                                    BorderBrush="{ThemeResource TextMutedBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="8" />
+                                <FontIcon
+                                    Glyph="&#xE711;"
+                                    FontSize="7"
+                                    Foreground="{ThemeResource TextMutedBrush}" />
+                            </Grid>
+                        </Button>
                     </Grid>
                 </Grid>
 

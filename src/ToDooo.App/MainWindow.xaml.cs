@@ -593,7 +593,28 @@ public sealed partial class MainWindow : Window
     }
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
-        => ViewModel.SetSearch(SearchBox.Text);
+    {
+        ViewModel.SetSearch(SearchBox.Text);
+        ClearSearchButton.Visibility = SearchBox.Text.Length > 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private void ClearSearch_Click(object sender, RoutedEventArgs e)
+    {
+        SearchBox.Text = string.Empty;
+        SearchBox.Focus(FocusState.Programmatic);
+    }
+
+    private void SearchBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        // 没内容就收起搜索条，不占位置。
+        if (SearchBox.Text.Length == 0 && SearchBar.Visibility == Visibility.Visible)
+        {
+            SearchBar.Visibility = Visibility.Collapsed;
+            ViewModel.SetSearch(string.Empty);
+        }
+    }
 
     private void SearchBox_KeyDown(object sender, KeyRoutedEventArgs e)
     {

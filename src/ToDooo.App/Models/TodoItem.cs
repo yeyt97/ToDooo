@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace ToDooo.Models;
@@ -9,6 +10,23 @@ public enum TodoRecurrence
     Weekly = 2,
     Monthly = 3,
 }
+
+public partial class SubtaskItem : ObservableObject
+{
+    public long Id { get; set; }
+
+    [ObservableProperty]
+    private string title = string.Empty;
+
+    [ObservableProperty]
+    private bool isDone;
+
+    [ObservableProperty]
+    private double sortOrder;
+}
+
+/// <summary>编辑弹窗里子任务的中间态：Id 为 0 表示这次新加的。</summary>
+public sealed record SubtaskDraft(long Id, string Title, bool Done);
 
 public partial class TodoItem : ObservableObject
 {
@@ -42,6 +60,17 @@ public partial class TodoItem : ObservableObject
 
     [ObservableProperty]
     private bool dueNotified;
+
+    [ObservableProperty]
+    private bool subtasksExpanded;
+
+    public ObservableCollection<SubtaskItem> Subtasks { get; } = new();
+
+    public bool HasSubtasks => Subtasks.Count > 0;
+
+    public int SubtaskDoneCount => Subtasks.Count(item => item.IsDone);
+
+    public string SubtaskProgressText => $"{SubtaskDoneCount}/{Subtasks.Count}";
 
     public bool IsOverdue => !IsDone && DueAt is { } due && due < DateTime.Now;
 
@@ -93,14 +122,36 @@ public partial class TodoItem : ObservableObject
         OnPropertyChanged(nameof(RecurrenceText));
     }
 
-    public TodoItem CreateNextOccurrence(DateTime nextDue) => new()
+    public void RaiseSubtasksChanged()
     {
-        Title = Title,
-        IsImportant = IsImportant,
-        Recurrence = Recurrence,
-        TagIndex = TagIndex,
-        DueAt = nextDue,
-        SortOrder = SortOrder + 0.5,
-        CreatedAt = DateTime.Now,
-    };
+        OnPropertyChanged(nameof(HasSubtasks));
+        OnPropertyChanged(nameof(SubtaskDoneCount));
+        OnPropertyChanged(nameof(SubtaskProgressText));
+    }
+
+    public TodoItem CreateNextOccurrence(DateTime nextDue)
+    {
+        var next = new TodoItem
+        {
+            Title = Title,
+            IsImportant = IsImportant,
+            Recurrence = Recurrence,
+            TagIndex = TagIndex,
+            DueAt = nextDue,
+            SortOrder = SortOrder + 0.5,
+            CreatedAt = DateTime.Now,
+        };
+
+        // 重复任务的下一轮把子任务带上，但全部重置为未完成。
+        foreach (var subtask in Subtasks)
+        {
+            next.Subtasks.Add(new SubtaskItem
+            {
+                Title = subtask.Title,
+                SortOrder = subtask.SortOrder,
+            });
+        }
+
+        return next;
+    }
 }

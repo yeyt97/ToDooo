@@ -25,14 +25,15 @@ public sealed partial class TodoEditorDialog : Window
     private const int LogicalWidth = 420;
 
     // 截止时间收起/展开是两种高度，窗口跟着长，别留一大片空白。
-    private const int CollapsedHeight = 392;
-    private const int ExpandedHeight = 486;
+    private const int CollapsedHeight = 520;
+    private const int ExpandedHeight = 610;
 
     // 让后续逻辑排在关窗之后的下一轮消息里跑，别卡在关窗过程中重入 UI。
     private readonly TaskCompletionSource<bool> _result = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly List<Button> _tagButtons = new();
     private readonly List<FontIcon> _tagChecks = new();
     private Button? _clearTagButton;
+    private readonly List<SubtaskDraft> _subtaskDrafts = new();
     private readonly IntPtr _hwnd;
     private readonly AppWindow _appWindow;
     private DesktopAcrylicController? _acrylic;
@@ -81,6 +82,7 @@ public sealed partial class TodoEditorDialog : Window
 
         BuildTagButtons();
         UpdateTagVisuals();
+        RenderSubtasks();
         ApplyDueVisibility();
         _ready = true;
 
@@ -103,6 +105,13 @@ public sealed partial class TodoEditorDialog : Window
         ImportantToggle.IsOn = item.IsImportant;
         _tagIndex = item.TagIndex;
         UpdateTagVisuals();
+
+        foreach (var subtask in item.Subtasks)
+        {
+            _subtaskDrafts.Add(new SubtaskDraft(subtask.Id, subtask.Title, subtask.IsDone));
+        }
+
+        RenderSubtasks();
         ApplyDueVisibility();
     }
 
@@ -130,6 +139,9 @@ public sealed partial class TodoEditorDialog : Window
     public bool IsImportant => ImportantToggle.IsOn;
 
     public int TagIndex => _tagIndex;
+
+    /// <summary>保存时带出去的子任务草稿，交给主窗口按 Id 对齐落库。</summary>
+    public IReadOnlyList<SubtaskDraft> Subtasks => _subtaskDrafts;
 
     /// <summary>先摆到主窗口正中间再激活；owner 为空就只按当前显示器兜底。</summary>
     public void ShowOver(AppWindow? owner)
@@ -488,4 +500,110 @@ public sealed partial class TodoEditorDialog : Window
         {
             _clearTagButton.Visibility = _tagIndex >= 0 ? Visibility.Visible : Visibility.Collapsed;
         }
-    }}
+    }
+
+    private void SubtaskInput_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == Windows.System.VirtualKey.Enter)
+        {
+            e.Handled = true;
+            CommitSubtaskInput();
+        }
+    }
+
+    private void AddSubtask_Click(object sender, RoutedEventArgs e) => CommitSubtaskInput();
+
+    private void CommitSubtaskInput()
+    {
+        var title = SubtaskInput.Text.Trim();
+        if (title.Length == 0)
+        {
+            return;
+        }
+
+        _subtaskDrafts.Add(new SubtaskDraft(0, title, false));
+        SubtaskInput.Text = string.Empty;
+        RenderSubtasks();
+        SubtaskInput.Focus(FocusState.Programmatic);
+    }
+
+    private void RenderSubtasks()
+    {
+        SubtaskPanel.Children.Clear();
+
+        for (var i = 0; i < _subtaskDrafts.Count; i++)
+        {
+            var index = i;
+            var draft = _subtaskDrafts[i];
+
+            var check = new CheckBox
+            {
+                IsChecked = draft.Done,
+                MinWidth = 0,
+                Margin = new Thickness(0),
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            check.Click += (_, _) =>
+            {
+                _subtaskDrafts[index] = _subtaskDrafts[index] with { Done = check.IsChecked == true };
+                RenderSubtasks();
+            };
+
+            var title = new TextBox
+            {
+                Text = draft.Title,
+                Background = new SolidColorBrush(Colors.Transparent),
+                BorderThickness = new Thickness(0),
+                Padding = new Thickness(4, 2, 4, 2),
+                FontSize = 13,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            title.TextChanged += (_, _) =>
+            {
+                _subtaskDrafts[index] = _subtaskDrafts[index] with { Title = title.Text };
+            };
+            if (draft.Done)
+            {
+                title.Opacity = 0.55;
+            }
+
+            var delete = new Button
+            {
+                Content = new FontIcon { Glyph = "\uE711", FontSize = 10 },
+                Width = 26,
+                Height = 26,
+                MinWidth = 0,
+                Padding = new Thickness(0),
+                Background = new SolidColorBrush(Colors.Transparent),
+                BorderThickness = new Thickness(0),
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(delete, "删除子任务");
+            delete.Click += (_, _) =>
+            {
+                if (index < _subtaskDrafts.Count)
+                {
+                    _subtaskDrafts.RemoveAt(index);
+                }
+
+                RenderSubtasks();
+            };
+
+            var row = new Grid { ColumnSpacing = 6 };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetColumn(title, 1);
+            Grid.SetColumn(delete, 2);
+            row.Children.Add(check);
+            row.Children.Add(title);
+            row.Children.Add(delete);
+            SubtaskPanel.Children.Add(row);
+        }
+
+        UpdateSubtaskCount();
+    }
+
+    private void UpdateSubtaskCount() =>
+        SubtaskCountText.Text = $"{_subtaskDrafts.Count(draft => draft.Done)}/{_subtaskDrafts.Count}";
+}

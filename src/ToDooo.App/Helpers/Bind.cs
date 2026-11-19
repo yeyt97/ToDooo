@@ -67,4 +67,8 @@ public static class Bind
 
     // 行尾星标：标记了重要就常亮，没标记的默认藏起来、靠悬停浮现。
     public static double ImportantOpacity(bool important) => important ? 1.0 : 0.0;
+
+    public static string ChevronGlyph(bool expanded) => expanded ? "\uE70E" : "\uE70D";
+
+    public static Brush SubtaskBrush(bool done) => done ? Palette("TextMutedBrush") : Palette("TextSecondaryBrush");
 }

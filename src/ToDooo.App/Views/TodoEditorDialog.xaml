@@ -238,6 +238,51 @@
                         </Grid>
                     </StackPanel>
                 </Border>
+
+                <!--  分组 3：子任务  -->
+                <Border
+                    Padding="14,10,14,12"
+                    Background="{ThemeResource ItemCardBrush}"
+                    BorderBrush="{ThemeResource ItemCardStrokeBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8">
+                    <StackPanel Spacing="8">
+                        <Grid>
+                            <TextBlock Style="{StaticResource LabelText}" Text="子任务" />
+                            <TextBlock
+                                x:Name="SubtaskCountText"
+                                HorizontalAlignment="Right"
+                                Style="{StaticResource LabelText}"
+                                Text="0/0" />
+                        </Grid>
+
+                        <StackPanel x:Name="SubtaskPanel" Spacing="2" />
+
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox
+                                x:Name="SubtaskInput"
+                                MinHeight="34"
+                                Padding="8,4"
+                                AutomationProperties.Name="新子任务"
+                                CornerRadius="6"
+                                KeyDown="SubtaskInput_KeyDown"
+                                PlaceholderText="添加子任务，回车确认" />
+                            <Button
+                                Grid.Column="1"
+                                Width="36"
+                                Height="34"
+                                AutomationProperties.Name="添加子任务"
+                                Click="AddSubtask_Click"
+                                CornerRadius="6">
+                                <FontIcon Glyph="&#xE710;" FontSize="12" />
+                            </Button>
+                        </Grid>
+                    </StackPanel>
+                </Border>
             </StackPanel>
         </ScrollViewer>
 

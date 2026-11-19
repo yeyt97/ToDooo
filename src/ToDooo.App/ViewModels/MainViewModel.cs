@@ -122,6 +122,23 @@ public sealed partial class MainViewModel : ObservableObject
         item.CompletedAt = done ? DateTime.Now : null;
         _repository.Update(item);
 
+        // 整条完成/取消完成时，子任务跟着同步，避免出现「父任务完成了子项还空着」。
+        foreach (var subtask in item.Subtasks)
+        {
+            if (subtask.IsDone == done)
+            {
+                continue;
+            }
+
+            subtask.IsDone = done;
+            if (subtask.Id > 0)
+            {
+                _repository.UpdateSubtask(subtask);
+            }
+        }
+
+        item.RaiseSubtasksChanged();
+
         if (done && item.Recurrence != TodoRecurrence.None)
         {
             var next = item.CreateNextOccurrence(AdvanceDue(item));
@@ -212,6 +229,100 @@ public sealed partial class MainViewModel : ObservableObject
         // 编辑只可能让这一条变显或变隐（标签/重要变化），按需增删一行，不重建列表。
         SyncVisible(item);
         RefreshCounts();
+    }
+
+    public void AddSubtask(TodoItem item, string title)
+    {
+        title = title.Trim();
+        if (title.Length == 0)
+        {
+            return;
+        }
+
+        var subtask = new SubtaskItem { Title = title, SortOrder = item.Subtasks.Count };
+        if (item.Id > 0)
+        {
+            _repository.AddSubtask(item.Id, subtask);
+        }
+
+        item.Subtasks.Add(subtask);
+        item.RaiseSubtasksChanged();
+    }
+
+    public void SetSubtaskDone(TodoItem item, SubtaskItem subtask, bool done)
+    {
+        if (subtask.IsDone == done)
+        {
+            return;
+        }
+
+        subtask.IsDone = done;
+        if (subtask.Id > 0)
+        {
+            _repository.UpdateSubtask(subtask);
+        }
+
+        item.RaiseSubtasksChanged();
+    }
+
+    public void DeleteSubtask(TodoItem item, SubtaskItem subtask)
+    {
+        if (subtask.Id > 0)
+        {
+            _repository.DeleteSubtask(subtask.Id);
+        }
+
+        item.Subtasks.Remove(subtask);
+        item.RaiseSubtasksChanged();
+    }
+
+    /// <summary>编辑保存时按草稿对齐子任务：已有的更新、新的补插、草稿里没有的删掉。</summary>
+    public void ApplySubtasks(TodoItem item, IReadOnlyList<SubtaskDraft> drafts)
+    {
+        var existing = item.Subtasks.ToDictionary(subtask => subtask.Id);
+        var ordered = new List<SubtaskItem>(drafts.Count);
+        var index = 0;
+
+        foreach (var draft in drafts)
+        {
+            var title = draft.Title.Trim();
+            if (title.Length == 0)
+            {
+                continue;
+            }
+
+            if (draft.Id > 0 && existing.Remove(draft.Id, out var subtask))
+            {
+                subtask.Title = title;
+                subtask.IsDone = draft.Done;
+                subtask.SortOrder = index++;
+                _repository.UpdateSubtask(subtask);
+                ordered.Add(subtask);
+                continue;
+            }
+
+            var created = new SubtaskItem
+            {
+                Title = title,
+                IsDone = draft.Done,
+                SortOrder = index++,
+            };
+            _repository.AddSubtask(item.Id, created);
+            ordered.Add(created);
+        }
+
+        foreach (var removed in existing.Values)
+        {
+            _repository.DeleteSubtask(removed.Id);
+        }
+
+        item.Subtasks.Clear();
+        foreach (var subtask in ordered)
+        {
+            item.Subtasks.Add(subtask);
+        }
+
+        item.RaiseSubtasksChanged();
     }
 
     public void SetSearch(string? query)
@@ -379,7 +490,9 @@ public sealed partial class MainViewModel : ObservableObject
     private bool Matches(TodoItem item)
     {
         if (_searchQuery.Length > 0 &&
-            !item.Title.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase))
+            !item.Title.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) &&
+            !item.Subtasks.Any(subtask =>
+                subtask.Title.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase)))
         {
             return false;
         }

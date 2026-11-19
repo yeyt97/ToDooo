@@ -39,6 +39,16 @@ public sealed class TodoRepository
             );
 
             CREATE INDEX IF NOT EXISTS idx_todos_order ON todos(sort_order);
+
+            CREATE TABLE IF NOT EXISTS subtasks (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                todo_id     INTEGER NOT NULL,
+                title       TEXT    NOT NULL,
+                is_done     INTEGER NOT NULL DEFAULT 0,
+                sort_order  REAL    NOT NULL DEFAULT 0
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_subtasks_todo ON subtasks(todo_id);
             """;
         command.ExecuteNonQuery();
     }
@@ -61,7 +71,47 @@ public sealed class TodoRepository
             items.Add(Read(reader));
         }
 
+        reader.Close();
+        LoadSubtasks(connection, items);
         return items;
+    }
+
+    private static void LoadSubtasks(SqliteConnection connection, List<TodoItem> items)
+    {
+        if (items.Count == 0)
+        {
+            return;
+        }
+
+        var byId = items.ToDictionary(item => item.Id);
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT id, todo_id, title, is_done, sort_order
+            FROM subtasks
+            ORDER BY todo_id ASC, sort_order ASC, id ASC
+            """;
+
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            if (!byId.TryGetValue(reader.GetInt64(1), out var parent))
+            {
+                continue;
+            }
+
+            parent.Subtasks.Add(new SubtaskItem
+            {
+                Id = reader.GetInt64(0),
+                Title = reader.GetString(2),
+                IsDone = reader.GetInt64(3) != 0,
+                SortOrder = reader.GetDouble(4),
+            });
+        }
+
+        foreach (var item in items)
+        {
+            item.RaiseSubtasksChanged();
+        }
     }
 
     public void Add(TodoItem item)
@@ -77,6 +127,78 @@ public sealed class TodoRepository
             """;
         Bind(command, item);
         item.Id = (long)(command.ExecuteScalar() ?? 0L);
+        InsertSubtasks(connection, item);
+    }
+
+    private static void InsertSubtasks(SqliteConnection connection, TodoItem item)
+    {
+        if (item.Subtasks.Count == 0)
+        {
+            return;
+        }
+
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO subtasks (todo_id, title, is_done, sort_order)
+            VALUES ($todo, $title, $done, $order);
+            SELECT last_insert_rowid();
+            """;
+        var todoParameter = command.Parameters.Add("$todo", SqliteType.Integer);
+        var titleParameter = command.Parameters.Add("$title", SqliteType.Text);
+        var doneParameter = command.Parameters.Add("$done", SqliteType.Integer);
+        var orderParameter = command.Parameters.Add("$order", SqliteType.Real);
+
+        foreach (var subtask in item.Subtasks)
+        {
+            todoParameter.Value = item.Id;
+            titleParameter.Value = subtask.Title;
+            doneParameter.Value = subtask.IsDone ? 1 : 0;
+            orderParameter.Value = subtask.SortOrder;
+            subtask.Id = (long)(command.ExecuteScalar() ?? 0L);
+        }
+    }
+
+    public void AddSubtask(long todoId, SubtaskItem subtask)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO subtasks (todo_id, title, is_done, sort_order)
+            VALUES ($todo, $title, $done, $order);
+            SELECT last_insert_rowid();
+            """;
+        command.Parameters.AddWithValue("$todo", todoId);
+        command.Parameters.AddWithValue("$title", subtask.Title);
+        command.Parameters.AddWithValue("$done", subtask.IsDone ? 1 : 0);
+        command.Parameters.AddWithValue("$order", subtask.SortOrder);
+        subtask.Id = (long)(command.ExecuteScalar() ?? 0L);
+    }
+
+    public void UpdateSubtask(SubtaskItem subtask)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE subtasks SET
+                title = $title,
+                is_done = $done,
+                sort_order = $order
+            WHERE id = $id
+            """;
+        command.Parameters.AddWithValue("$title", subtask.Title);
+        command.Parameters.AddWithValue("$done", subtask.IsDone ? 1 : 0);
+        command.Parameters.AddWithValue("$order", subtask.SortOrder);
+        command.Parameters.AddWithValue("$id", subtask.Id);
+        command.ExecuteNonQuery();
+    }
+
+    public void DeleteSubtask(long id)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM subtasks WHERE id = $id";
+        command.Parameters.AddWithValue("$id", id);
+        command.ExecuteNonQuery();
     }
 
     public void Update(TodoItem item)
@@ -105,7 +227,10 @@ public sealed class TodoRepository
     {
         using var connection = Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "DELETE FROM todos WHERE id = $id";
+        command.CommandText = """
+            DELETE FROM subtasks WHERE todo_id = $id;
+            DELETE FROM todos WHERE id = $id;
+            """;
         command.Parameters.AddWithValue("$id", id);
         command.ExecuteNonQuery();
     }
@@ -140,7 +265,10 @@ public sealed class TodoRepository
     {
         using var connection = Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "DELETE FROM todos WHERE is_done = 1";
+        command.CommandText = """
+            DELETE FROM subtasks WHERE todo_id IN (SELECT id FROM todos WHERE is_done = 1);
+            DELETE FROM todos WHERE is_done = 1;
+            """;
         command.ExecuteNonQuery();
     }
 

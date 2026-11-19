@@ -344,6 +344,62 @@
                                                     TextTrimming="CharacterEllipsis"
                                                     Foreground="{x:Bind helpers:Bind.DueBrush(IsOverdue), Mode=OneWay}" />
                                             </StackPanel>
+
+                                            <!--  子任务：默认只显示进度，点开在卡片里直接勾选  -->
+                                            <StackPanel
+                                                Spacing="2"
+                                                Visibility="{x:Bind helpers:Bind.VisibleWhen(HasSubtasks), Mode=OneWay}">
+                                                <Button
+                                                    AutomationProperties.Name="展开子任务"
+                                                    HorizontalAlignment="Left"
+                                                    Padding="0,2"
+                                                    Click="SubtasksToggle_Click"
+                                                    Style="{StaticResource LinkButtonStyle}">
+                                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                                        <FontIcon
+                                                            Glyph="{x:Bind helpers:Bind.ChevronGlyph(SubtasksExpanded), Mode=OneWay}"
+                                                            FontSize="9"
+                                                            VerticalAlignment="Center"
+                                                            Foreground="{ThemeResource TextMutedBrush}" />
+                                                        <TextBlock
+                                                            Text="{x:Bind SubtaskProgressText, Mode=OneWay}"
+                                                            FontSize="11"
+                                                            VerticalAlignment="Center" />
+                                                    </StackPanel>
+                                                </Button>
+                                                <ItemsControl
+                                                    ItemsSource="{x:Bind Subtasks, Mode=OneWay}"
+                                                    Visibility="{x:Bind helpers:Bind.VisibleWhen(SubtasksExpanded), Mode=OneWay}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate x:DataType="models:SubtaskItem">
+                                                            <Grid
+                                                                Margin="0,1"
+                                                                ColumnSpacing="2">
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="Auto" />
+                                                                    <ColumnDefinition Width="*" />
+                                                                </Grid.ColumnDefinitions>
+                                                                <CheckBox
+                                                                    MinWidth="0"
+                                                                    MinHeight="0"
+                                                                    Padding="2,0,4,0"
+                                                                    AutomationProperties.Name="子任务完成"
+                                                                    Click="SubtaskCheck_Click"
+                                                                    IsChecked="{x:Bind IsDone, Mode=OneWay}"
+                                                                    VerticalAlignment="Center" />
+                                                                <TextBlock
+                                                                    Grid.Column="1"
+                                                                    VerticalAlignment="Center"
+                                                                    FontSize="12"
+                                                                    Text="{x:Bind Title, Mode=OneWay}"
+                                                                    TextDecorations="{x:Bind helpers:Bind.Deco(IsDone), Mode=OneWay}"
+                                                                    TextWrapping="Wrap"
+                                                                    Foreground="{x:Bind helpers:Bind.SubtaskBrush(IsDone), Mode=OneWay}" />
+                                                            </Grid>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
                                         </StackPanel>
 
                                         <!--

@@ -629,6 +629,12 @@ public sealed partial class MainWindow : Window
                 item.SortOrder,
                 CreatedAt = item.CreatedAt.ToString("yyyy-MM-dd'T'HH:mm:ss"),
                 CompletedAt = item.CompletedAt?.ToString("yyyy-MM-dd'T'HH:mm:ss"),
+                Subtasks = item.Subtasks.Select(subtask => new
+                {
+                    subtask.Title,
+                    subtask.IsDone,
+                    subtask.SortOrder,
+                }),
             });
 
             var json = System.Text.Json.JsonSerializer.Serialize(
@@ -1224,14 +1230,32 @@ public sealed partial class MainWindow : Window
 
         if (await ShowEditorAsync(dialog))
         {
-            ViewModel.AddItem(new TodoItem
+            var item = new TodoItem
             {
                 Title = dialog.TodoTitle,
                 DueAt = dialog.DueAt,
                 Recurrence = dialog.Recurrence,
                 IsImportant = dialog.IsImportant,
                 TagIndex = dialog.TagIndex,
-            });
+            };
+
+            foreach (var subtaskDraft in dialog.Subtasks)
+            {
+                var title = subtaskDraft.Title.Trim();
+                if (title.Length == 0)
+                {
+                    continue;
+                }
+
+                item.Subtasks.Add(new SubtaskItem
+                {
+                    Title = title,
+                    IsDone = subtaskDraft.Done,
+                    SortOrder = item.Subtasks.Count,
+                });
+            }
+
+            ViewModel.AddItem(item);
             AddTextBox.Text = string.Empty;
             UpdateFilterVisuals();
             UpdateTagVisuals();
@@ -1296,6 +1320,41 @@ public sealed partial class MainWindow : Window
             box.IsChecked = item.IsDone;
             UpdateFilterVisuals();
         }
+    }
+
+    private void SubtasksToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: TodoItem item })
+        {
+            item.SubtasksExpanded = !item.SubtasksExpanded;
+        }
+    }
+
+    private void SubtaskCheck_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is CheckBox box && box.DataContext is SubtaskItem subtask)
+        {
+            if (FindOwnerTodo(box) is { } item)
+            {
+                ViewModel.SetSubtaskDone(item, subtask, box.IsChecked == true);
+            }
+        }
+    }
+
+    private static TodoItem? FindOwnerTodo(DependencyObject start)
+    {
+        var current = start;
+        while (current is not null)
+        {
+            if (current is FrameworkElement { DataContext: TodoItem item })
+            {
+                return item;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return null;
     }
 
     // 卡片悬停：提亮卡片，并让未标记重要的行浮出星标按钮（已标记的本来就在亮着）。
@@ -1439,6 +1498,7 @@ public sealed partial class MainWindow : Window
         {
             ViewModel.ApplyEdit(
                 item, dialog.TodoTitle, dialog.DueAt, dialog.Recurrence, dialog.IsImportant, dialog.TagIndex);
+            ViewModel.ApplySubtasks(item, dialog.Subtasks);
             UpdateFilterVisuals();
         }
     }

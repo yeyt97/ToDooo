@@ -73,7 +73,7 @@ public sealed class TodoViewModelTests : IDisposable
         _viewModel.AddItem(b);
         _viewModel.AddItem(c);
 
-        _viewModel.ToggleTag(0);
+        _viewModel.SelectTag(0);
         _viewModel.SetFilter(TodoFilter.Important);
 
         Assert.Single(_viewModel.Items);
@@ -174,5 +174,82 @@ public sealed class TodoViewModelTests : IDisposable
         Assert.Equal(3, loaded.TagIndex);
         Assert.Equal(TodoRecurrence.Weekly, loaded.Recurrence);
         Assert.Equal(item.DueAt, loaded.DueAt);
+    }
+
+    [Fact]
+    public void Subtasks_PersistWithProgress()
+    {
+        var item = new TodoItem { Title = "搬家" };
+        item.Subtasks.Add(new SubtaskItem { Title = "打包", SortOrder = 0 });
+        item.Subtasks.Add(new SubtaskItem { Title = "叫车", SortOrder = 1 });
+        _viewModel.AddItem(item);
+
+        Assert.True(item.HasSubtasks);
+        Assert.Equal("0/2", item.SubtaskProgressText);
+
+        _viewModel.SetSubtaskDone(item, item.Subtasks[0], true);
+
+        var reloaded = new MainViewModel(_repository);
+        reloaded.Load();
+        var loaded = reloaded.AllItems.Single();
+        Assert.Equal(new[] { "打包", "叫车" }, loaded.Subtasks.Select(x => x.Title));
+        Assert.True(loaded.Subtasks[0].IsDone);
+        Assert.Equal("1/2", loaded.SubtaskProgressText);
+    }
+
+    [Fact]
+    public void CompletingParent_CompletesSubtasks()
+    {
+        var item = new TodoItem { Title = "周报" };
+        item.Subtasks.Add(new SubtaskItem { Title = "写正文", SortOrder = 0 });
+        item.Subtasks.Add(new SubtaskItem { Title = "配图", SortOrder = 1 });
+        _viewModel.AddItem(item);
+
+        _viewModel.SetDone(item, true);
+        Assert.All(item.Subtasks, subtask => Assert.True(subtask.IsDone));
+        Assert.Equal("2/2", item.SubtaskProgressText);
+
+        _viewModel.SetDone(item, false);
+        Assert.All(item.Subtasks, subtask => Assert.False(subtask.IsDone));
+    }
+
+    [Fact]
+    public void ApplySubtasks_UpdatesAddsAndRemoves()
+    {
+        var item = new TodoItem { Title = "购物" };
+        item.Subtasks.Add(new SubtaskItem { Title = "牛奶", SortOrder = 0 });
+        item.Subtasks.Add(new SubtaskItem { Title = "面包", SortOrder = 1 });
+        _viewModel.AddItem(item);
+
+        var milk = item.Subtasks[0];
+        _viewModel.ApplySubtasks(item, new List<SubtaskDraft>
+        {
+            new(milk.Id, "低脂牛奶", true),
+            new(0, "鸡蛋", false),
+        });
+
+        Assert.Equal(new[] { "低脂牛奶", "鸡蛋" }, item.Subtasks.Select(x => x.Title));
+        Assert.True(item.Subtasks[0].IsDone);
+        Assert.Equal("1/2", item.SubtaskProgressText);
+
+        var reloaded = new MainViewModel(_repository);
+        reloaded.Load();
+        var loaded = reloaded.AllItems.Single();
+        Assert.Equal(new[] { "低脂牛奶", "鸡蛋" }, loaded.Subtasks.Select(x => x.Title));
+        Assert.Equal(1, loaded.SubtaskDoneCount);
+    }
+
+    [Fact]
+    public void Search_MatchesSubtaskTitle()
+    {
+        var item = new TodoItem { Title = "准备出差" };
+        item.Subtasks.Add(new SubtaskItem { Title = "订高铁票" });
+        _viewModel.AddItem(item);
+        _viewModel.Add("其他任务");
+
+        _viewModel.SetSearch("高铁");
+
+        Assert.Single(_viewModel.Items);
+        Assert.Equal("准备出差", _viewModel.Items[0].Title);
     }
 }

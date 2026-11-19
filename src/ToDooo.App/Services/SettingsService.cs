@@ -24,7 +24,7 @@ public sealed class AppSettings
 
     public int ThemeMode { get; set; }
 
-    /// <summary>窗口不透明度：0.4–1.0，默认 0.8。</summary>
+    /// <summary>窗口不透明度（设置页显示为“透明度”）：0.1–1.0，默认 0.8。</summary>
     public double WindowOpacity { get; set; } = 0.8;
 
     /// <summary>提前多少分钟提醒：0 = 到期时提醒。</summary>

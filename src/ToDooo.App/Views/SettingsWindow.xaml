@@ -85,7 +85,7 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Style="{StaticResource LabelText}" Text="窗口不透明度" />
+                            <TextBlock Style="{StaticResource LabelText}" Text="透明度" />
                             <TextBlock
                                 x:Name="OpacityValue"
                                 Grid.Column="1"
@@ -97,7 +97,7 @@
                             x:Name="OpacitySlider"
                             MinWidth="0"
                             Maximum="1"
-                            Minimum="0.4"
+                            Minimum="0.1"
                             StepFrequency="0.05"
                             ValueChanged="OpacitySlider_ValueChanged" />
                     </StackPanel>

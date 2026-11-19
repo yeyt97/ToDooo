@@ -119,8 +119,10 @@ public static class ThemePalette
             }
         }
 
-        // 不透明度滑杆直接作用在卡片底色上：40% 时几乎只剩磨砂，100% 回到基线。
-        var factor = 0.1 + 0.9 * Math.Clamp((opacity - 0.4) / 0.6, 0.0, 1.0);
+        // 不透明度滑杆直接作用在卡片底色上：10% 时几乎只剩磨砂，100% 回到基线。
+        var factor = opacity >= 0.4
+            ? 0.1 + 0.9 * Math.Clamp((opacity - 0.4) / 0.6, 0.0, 1.0)
+            : 0.1 * Math.Clamp((opacity - 0.1) / 0.3, 0.0, 1.0);
         var card = dark ? DarkCard : LightCard;
         SetGradient(resources, "CardBrush", card, factor);
         SetGradient(resources, "CardStrokeBrush", dark ? DarkCardStroke : LightCardStroke, 1.0);

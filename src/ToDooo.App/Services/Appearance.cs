@@ -34,7 +34,14 @@ public static class Appearance
         }
     }
 
-    /// <summary>40%–100% 的“不透明度”映射到亚克力 tint：0.10–0.58。</summary>
+    /// <summary>10%–100% 的窗口不透明度映射到亚克力 tint：0.02–0.65。</summary>
     public static float TintForOpacity(double opacity)
-        => (float)Math.Clamp(0.05 + (Math.Clamp(opacity, 0.4, 1.0) - 0.4) * 1.0, 0.05, 0.7);
+    {
+        var o = Math.Clamp(opacity, 0.1, 1.0);
+        // 0.4 以上沿用原曲线；更低区间继续向 0 靠近，让窗口更透。
+        var tint = o >= 0.4
+            ? 0.05 + (o - 0.4)
+            : 0.05 * (o - 0.1) / 0.3;
+        return (float)Math.Clamp(tint, 0.0, 0.7);
+    }
 }

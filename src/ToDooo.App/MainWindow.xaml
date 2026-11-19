@@ -454,7 +454,8 @@
 
                                             <Grid
                                                 Margin="0,3,0,0"
-                                                ColumnSpacing="4">
+                                                ColumnSpacing="4"
+                                                Visibility="{x:Bind helpers:Bind.VisibleWhen(SubtaskAddActive), Mode=OneWay}">
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="Auto" />
                                                     <ColumnDefinition Width="*" />

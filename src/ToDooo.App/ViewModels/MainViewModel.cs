@@ -309,6 +309,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (item.Subtasks.Count == 0)
         {
             item.SubtasksExpanded = false;
+            item.SubtaskAddActive = false;
         }
 
         item.RaiseSubtasksChanged();
@@ -419,6 +420,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (item.Subtasks.Count == 0)
         {
             item.SubtasksExpanded = false;
+            item.SubtaskAddActive = false;
         }
 
         item.RaiseSubtasksChanged();

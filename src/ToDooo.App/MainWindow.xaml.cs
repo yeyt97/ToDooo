@@ -1602,6 +1602,8 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        item.SubtaskAddActive = false;
+
         // 子任务区随收起消失时 PointerExited 不一定会到，手动把拖动开关还原。
         _pointerOverSubtasks = false;
         if (!_subtaskDragActive)
@@ -1985,6 +1987,7 @@ public sealed partial class MainWindow : Window
         }
 
         item.SubtasksExpanded = true;
+        item.SubtaskAddActive = true;
         DispatcherQueue.TryEnqueue(() => FocusSubtaskAddBox(item));
     }
 
@@ -2011,12 +2014,16 @@ public sealed partial class MainWindow : Window
         if (e.Key == Windows.System.VirtualKey.Enter)
         {
             e.Handled = true;
-            CommitSubtaskAdd(box, keepFocus: true);
+            CommitSubtaskAdd(box);
         }
         else if (e.Key == Windows.System.VirtualKey.Escape)
         {
             e.Handled = true;
             box.Text = string.Empty;
+            if (box.DataContext is TodoItem item)
+            {
+                item.SubtaskAddActive = false;
+            }
         }
     }
 
@@ -2024,11 +2031,11 @@ public sealed partial class MainWindow : Window
     {
         if (sender is TextBox box)
         {
-            CommitSubtaskAdd(box, keepFocus: false);
+            CommitSubtaskAdd(box);
         }
     }
 
-    private void CommitSubtaskAdd(TextBox box, bool keepFocus)
+    private void CommitSubtaskAdd(TextBox box)
     {
         if (box.DataContext is not TodoItem item)
         {
@@ -2036,18 +2043,14 @@ public sealed partial class MainWindow : Window
         }
 
         var title = box.Text.Trim();
-        if (title.Length == 0)
+        if (title.Length > 0)
         {
-            return;
+            ViewModel.AddSubtask(item, title);
+            box.Text = string.Empty;
         }
 
-        ViewModel.AddSubtask(item, title);
-        box.Text = string.Empty;
-
-        if (keepFocus)
-        {
-            box.Focus(FocusState.Programmatic);
-        }
+        // 添加框只在右键触发时出现，提交或点走就收起。
+        item.SubtaskAddActive = false;
     }
 
     private void RowEdit_Click(object sender, RoutedEventArgs e)

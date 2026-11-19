@@ -68,6 +68,9 @@ public partial class TodoItem : ObservableObject
     [ObservableProperty]
     private bool subtasksExpanded;
 
+    [ObservableProperty]
+    private bool subtaskAddActive;
+
     public ObservableCollection<SubtaskItem> Subtasks { get; } = new();
 
     public bool HasSubtasks => Subtasks.Count > 0;

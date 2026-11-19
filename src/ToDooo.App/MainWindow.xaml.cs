@@ -29,6 +29,7 @@ public sealed partial class MainWindow : Window
     private readonly Microsoft.UI.Dispatching.DispatcherQueue _dispatcher =
         Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
     private readonly List<Button> _tagButtons = new();
+    private readonly List<FontIcon> _tagChecks = new();
     private Button? _tagClearButton;
 
     private NativeMethods.SUBCLASSPROC? _subclassProc;
@@ -917,11 +918,11 @@ public sealed partial class MainWindow : Window
         for (var i = 0; i < MainViewModel.TagColors.Length; i++)
         {
             var hex = MainViewModel.TagColors[i];
-            var color = new SolidColorBrush(Color.FromArgb(
+            var color = Color.FromArgb(
                 255,
                 Convert.ToByte(hex.Substring(1, 2), 16),
                 Convert.ToByte(hex.Substring(3, 2), 16),
-                Convert.ToByte(hex.Substring(5, 2), 16)));
+                Convert.ToByte(hex.Substring(5, 2), 16));
             AddTagButton(style, i, color, $"标签 {i + 1}");
         }
 
@@ -963,25 +964,45 @@ public sealed partial class MainWindow : Window
         TagPanel.Children.Add(_tagClearButton);
     }
 
-    private void AddTagButton(Style style, int index, Brush color, string name)
+    private void AddTagButton(Style style, int index, Color color, string name)
     {
-        var swatch = new Border
+        // 和编辑弹窗同一套：18px 圆点，选中时圆点里出现对勾。
+        var dot = new Border
         {
-            Width = 14,
-            Height = 6,
-            CornerRadius = new CornerRadius(3),
-            Background = color,
+            Width = 18,
+            Height = 18,
+            CornerRadius = new CornerRadius(9),
+            Background = new SolidColorBrush(color),
         };
+
+        var luminance = 0.299 * color.R + 0.587 * color.G + 0.114 * color.B;
+        var check = new FontIcon
+        {
+            Glyph = "",
+            FontSize = 11,
+            Foreground = new SolidColorBrush(luminance > 150
+                ? Color.FromArgb(255, 0x26, 0x2B, 0x33)
+                : Color.FromArgb(255, 0xFF, 0xFF, 0xFF)),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Visibility = Visibility.Collapsed,
+        };
+
+        var content = new Grid();
+        content.Children.Add(dot);
+        content.Children.Add(check);
 
         var button = new Button
         {
             Style = style,
-            Content = swatch,
+            Content = content,
             Tag = index,
+            Background = (Brush)Application.Current.Resources["TransparentBrush"],
         };
         button.Click += TagDot_Click;
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, name);
         _tagButtons.Add(button);
+        _tagChecks.Add(check);
         TagPanel.Children.Add(button);
     }
 
@@ -1001,7 +1022,9 @@ public sealed partial class MainWindow : Window
         var transparent = (Brush)Application.Current.Resources["TransparentBrush"];
         for (var i = 0; i < _tagButtons.Count; i++)
         {
-            _tagButtons[i].Background = ViewModel.SelectedTag == i ? selected : transparent;
+            var isSelected = ViewModel.SelectedTag == i;
+            _tagChecks[i].Visibility = isSelected ? Visibility.Visible : Visibility.Collapsed;
+            _tagButtons[i].Background = isSelected ? selected : transparent;
         }
 
         if (_tagClearButton is not null)

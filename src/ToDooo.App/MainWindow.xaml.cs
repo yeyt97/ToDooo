@@ -1589,7 +1589,20 @@ public sealed partial class MainWindow : Window
         if (e.ClickedItem is TodoItem { HasSubtasks: true } item)
         {
             item.SubtasksExpanded = !item.SubtasksExpanded;
+            ResetSubtaskDragGuardIfCollapsed(item);
         }
+    }
+
+    private void ResetSubtaskDragGuardIfCollapsed(TodoItem item)
+    {
+        if (item.SubtasksExpanded)
+        {
+            return;
+        }
+
+        // 子任务区随收起消失时 PointerExited 不一定会到，手动把拖动开关还原。
+        _pointerOverSubtasks = false;
+        TodoList.CanDragItems = true;
     }
 
     private void SubtasksToggle_Click(object sender, RoutedEventArgs e)
@@ -1597,6 +1610,7 @@ public sealed partial class MainWindow : Window
         if (sender is Button { DataContext: TodoItem item })
         {
             item.SubtasksExpanded = !item.SubtasksExpanded;
+            ResetSubtaskDragGuardIfCollapsed(item);
         }
     }
 
@@ -1612,6 +1626,38 @@ public sealed partial class MainWindow : Window
     }
 
     private SubtaskItem? _draggedSubtask;
+    private bool _pointerOverSubtasks;
+
+    // 指针在子任务区域时先禁掉外层列表的拖动，否则会变成拖动整张卡片。
+    private void SubtaskListArea_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        _pointerOverSubtasks = true;
+        TodoList.CanDragItems = false;
+    }
+
+    private void SubtaskListArea_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is UIElement area)
+        {
+            var point = e.GetCurrentPoint(area).Position;
+            if (point.X >= 0 && point.Y >= 0 &&
+                point.X <= area.RenderSize.Width && point.Y <= area.RenderSize.Height)
+            {
+                return;
+            }
+        }
+
+        _pointerOverSubtasks = false;
+        TodoList.CanDragItems = true;
+    }
+
+    private void TodoList_DragItemsStarting(object sender, DragItemsStartingEventArgs e)
+    {
+        if (_pointerOverSubtasks)
+        {
+            e.Cancel = true;
+        }
+    }
 
     private const string SubtaskDragKey = "ToDoooSubtask";
     private long _lastSubtaskDropTicks;

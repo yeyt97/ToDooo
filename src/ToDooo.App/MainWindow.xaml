@@ -285,6 +285,7 @@
                         CanDragItems="True"
                         CanReorderItems="True"
                         DragItemsCompleted="TodoList_DragItemsCompleted"
+                        DragItemsStarting="TodoList_DragItemsStarting"
                         IsItemClickEnabled="True"
                         ItemClick="TodoList_ItemClick"
                         ItemsSource="{x:Bind ViewModel.Items, Mode=OneWay}"
@@ -406,6 +407,8 @@
                                             Grid.Column="2"
                                             Grid.ColumnSpan="3"
                                             Margin="0,2,0,0"
+                                            PointerEntered="SubtaskListArea_PointerEntered"
+                                            PointerExited="SubtaskListArea_PointerExited"
                                             Visibility="{x:Bind helpers:Bind.VisibleWhen(SubtasksExpanded), Mode=OneWay}">
                                             <ItemsControl
                                                 ItemsSource="{x:Bind Subtasks, Mode=OneWay}">

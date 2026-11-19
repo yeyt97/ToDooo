@@ -15,10 +15,9 @@
         MinWidth="320"
         MinHeight="360">
         <Border
-            CornerRadius="{StaticResource CardCornerRadius}"
+            CornerRadius="0"
             Background="{ThemeResource CardBrush}"
-            BorderBrush="{ThemeResource CardStrokeBrush}"
-            BorderThickness="1">
+            BorderThickness="0">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />

@@ -18,6 +18,7 @@ internal static class NativeMethods
     public const long WS_EX_TOOLWINDOW = 0x00000080L;
     public const long WS_EX_APPWINDOW = 0x00040000L;
 
+    public const int WM_NCCALCSIZE = 0x0083;
     public const int WM_NCHITTEST = 0x0084;
     public const int WM_NCLBUTTONDBLCLK = 0x00A3;
     public const int WM_SYSCOMMAND = 0x0112;
@@ -112,6 +113,15 @@ internal static class NativeMethods
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    public struct MARGINS
+    {
+        public int LeftWidth;
+        public int RightWidth;
+        public int TopHeight;
+        public int BottomHeight;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     public struct WINDOWPOS
     {
         public IntPtr hwnd;
@@ -203,6 +213,16 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     public static extern int SetWindowRgn(IntPtr hWnd, IntPtr hRgn, bool redraw);
+
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmExtendFrameIntoClientArea(IntPtr hWnd, ref MARGINS margins);
+
+    /// <summary>让 DWM 把整扇窗口当客户区合成（sheet of glass），圆角和边缘由系统统一裁。</summary>
+    public static void ApplySheetOfGlass(IntPtr hWnd)
+    {
+        var margins = new MARGINS { LeftWidth = -1, RightWidth = -1, TopHeight = -1, BottomHeight = -1 };
+        _ = DwmExtendFrameIntoClientArea(hWnd, ref margins);
+    }
 
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
     public static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int index);

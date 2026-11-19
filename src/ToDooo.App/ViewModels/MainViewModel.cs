@@ -233,9 +233,12 @@ public sealed partial class MainViewModel : ObservableObject
         ApplyFilter();
     }
 
-    public void ToggleTag(int index)
+    /// <summary>index = -2 表示“无颜色”筛选（再点一次取消）；颜色按钮只选中，不再点掉。</summary>
+    public void SelectTag(int index)
     {
-        SelectedTag = SelectedTag == index ? -1 : index;
+        SelectedTag = index == -2
+            ? SelectedTag == -2 ? -1 : -2
+            : index;
         ApplyFilter();
     }
 
@@ -379,6 +382,11 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (_searchQuery.Length > 0 &&
             !item.Title.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (SelectedTag == -2 && item.TagIndex >= 0)
         {
             return false;
         }

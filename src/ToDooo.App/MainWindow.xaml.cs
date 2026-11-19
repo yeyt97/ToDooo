@@ -28,7 +28,7 @@ public sealed partial class MainWindow : Window
     private readonly AppWindow _appWindow;
     private readonly Microsoft.UI.Dispatching.DispatcherQueue _dispatcher =
         Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
-    private readonly List<Border> _tagRings = new();
+    private readonly List<Button> _tagButtons = new();
 
     private NativeMethods.SUBCLASSPROC? _subclassProc;
     private DesktopAcrylicController? _acrylic;
@@ -209,11 +209,6 @@ public sealed partial class MainWindow : Window
 
     /// <summary>按当前窗口实际主题取主题字典里的画刷，供代码创建/设置的视觉使用。</summary>
     private static Brush PaletteBrush(string key) => (Brush)Application.Current.Resources[key];
-
-    private Color NeutralRingColor()
-        => Root.ActualTheme == ElementTheme.Light
-            ? Color.FromArgb(255, 0x2A, 0x2A, 0x2E)
-            : Color.FromArgb(255, 0xE9, 0xEC, 0xF0);
 
     private void InstallSubclass()
     {
@@ -735,6 +730,16 @@ public sealed partial class MainWindow : Window
 
                 break;
 
+            case NativeMethods.WM_NCCALCSIZE:
+                // 保留系统缩放边框（可以拖边 resize），但让客户区铺满整个窗口，
+                // 否则内容会内缩 3px，和 DWM 圆角叠出「台阶」。
+                if (wParam != IntPtr.Zero)
+                {
+                    return IntPtr.Zero;
+                }
+
+                break;
+
             case NativeMethods.WM_NCHITTEST:
                 return HitTestResizeBorder(hWnd, msg, wParam, lParam);
 
@@ -907,61 +912,62 @@ public sealed partial class MainWindow : Window
     private void BuildTagDots()
     {
         var style = (Style)Application.Current.Resources["TagDotButtonStyle"];
+
+        // 最前面的“无颜色”：和彩色条同形的灰色短横条，不是图标。
+        AddTagButton(style, -2, (Brush)Application.Current.Resources["TextMutedBrush"], "无颜色");
+
         for (var i = 0; i < MainViewModel.TagColors.Length; i++)
         {
             var hex = MainViewModel.TagColors[i];
-            // DeskBox 的颜色筛选是短横条，选中态用一圈中性描边表示。
-            var swatch = new Border
-            {
-                Width = 14,
-                Height = 6,
-                CornerRadius = new CornerRadius(3),
-                Background = new SolidColorBrush(Color.FromArgb(
-                    255,
-                    Convert.ToByte(hex.Substring(1, 2), 16),
-                    Convert.ToByte(hex.Substring(3, 2), 16),
-                    Convert.ToByte(hex.Substring(5, 2), 16))),
-            };
-
-            var ring = new Border
-            {
-                Width = 20,
-                Height = 16,
-                CornerRadius = new CornerRadius(4),
-                BorderThickness = new Thickness(1),
-                BorderBrush = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0)),
-                Child = swatch,
-            };
-
-            var button = new Button
-            {
-                Style = style,
-                Content = ring,
-                Tag = i,
-            };
-            button.Click += TagDot_Click;
-
-            _tagRings.Add(ring);
-            TagPanel.Children.Add(button);
+            var color = new SolidColorBrush(Color.FromArgb(
+                255,
+                Convert.ToByte(hex.Substring(1, 2), 16),
+                Convert.ToByte(hex.Substring(3, 2), 16),
+                Convert.ToByte(hex.Substring(5, 2), 16)));
+            AddTagButton(style, i, color, $"标签 {i + 1}");
         }
+    }
+
+    private void AddTagButton(Style style, int index, Brush color, string name)
+    {
+        var swatch = new Border
+        {
+            Width = 14,
+            Height = 6,
+            CornerRadius = new CornerRadius(3),
+            Background = color,
+        };
+
+        var button = new Button
+        {
+            Style = style,
+            Content = swatch,
+            Tag = index,
+        };
+        button.Click += TagDot_Click;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, name);
+        _tagButtons.Add(button);
+        TagPanel.Children.Add(button);
     }
 
     private void TagDot_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button { Tag: int index })
         {
-            ViewModel.ToggleTag(index);
+            ViewModel.SelectTag(index);
             UpdateTagVisuals();
         }
     }
 
     private void UpdateTagVisuals()
     {
-        for (var i = 0; i < _tagRings.Count; i++)
+        // 选中态是一块中性灰底，不再给色条套外框。
+        var selected = (Brush)Application.Current.Resources["SegmentSelectedBrush"];
+        var transparent = (Brush)Application.Current.Resources["TransparentBrush"];
+        for (var i = 0; i < _tagButtons.Count; i++)
         {
-            ((SolidColorBrush)_tagRings[i].BorderBrush).Color = ViewModel.SelectedTag == i
-                ? NeutralRingColor()
-                : Color.FromArgb(0, 0, 0, 0);
+            var index = i == 0 ? -2 : i - 1;
+            _tagButtons[i].Background = ViewModel.SelectedTag == index ? selected : transparent;
         }
     }
 

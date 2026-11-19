@@ -370,6 +370,17 @@ public sealed partial class TodoEditorDialog : Window
 
     private void BuildTagButtons()
     {
+        // 最前面的“无颜色”：和色点同形的灰色短横条。
+        AddTagButton(-1, new Border
+        {
+            Width = 14,
+            Height = 6,
+            CornerRadius = new CornerRadius(3),
+            Background = (Brush)Application.Current.Resources["TextMutedBrush"],
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+
         for (var i = 0; i < MainViewModel.TagColors.Length; i++)
         {
             var color = Color.FromArgb(
@@ -394,15 +405,6 @@ public sealed partial class TodoEditorDialog : Window
                 VerticalAlignment = VerticalAlignment.Center,
             }, checkColor);
         }
-
-        AddTagButton(-1, new FontIcon
-        {
-            Glyph = "\uE711",
-            FontSize = 9,
-            Opacity = 0.55,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-        });
     }
 
     private void AddTagButton(int index, UIElement content, Color? checkColor = null)
@@ -431,13 +433,12 @@ public sealed partial class TodoEditorDialog : Window
         };
 
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
-            host, index < 0 ? "清除标签" : $"标签 {index + 1}");
+            host, index < 0 ? "无颜色" : $"标签 {index + 1}");
 
         host.Click += (s, _) =>
         {
             var tag = (int)((Button)s!).Tag;
-            // 点已选中的色条等于取消标签，和主界面顶部的标签筛选一个手感。
-            _tagIndex = tag < 0 || _tagIndex == tag ? -1 : tag;
+            _tagIndex = tag < 0 ? -1 : tag;
             UpdateTagVisuals();
         };
 
@@ -448,20 +449,16 @@ public sealed partial class TodoEditorDialog : Window
 
     private void UpdateTagVisuals()
     {
-        var light = Root.ActualTheme == ElementTheme.Light;
+        var selectedBrush = (Brush)Application.Current.Resources["SegmentSelectedBrush"];
+        var transparent = (Brush)Application.Current.Resources["TransparentBrush"];
         for (var i = 0; i < _tagButtons.Count; i++)
         {
-            var index = i == _tagButtons.Count - 1 ? -1 : i;
+            var index = i == 0 ? -1 : i - 1;
             var selected = _tagIndex == index;
 
-            // 选中：圆点里出现对勾 + 一圈对比色描边 + 淡底色，比单加一圈线明显得多。
+            // 选中：对勾 + 中性灰底，不再套外框。
             _tagChecks[i].Visibility = selected && index >= 0 ? Visibility.Visible : Visibility.Collapsed;
-            ((SolidColorBrush)_tagButtons[i].BorderBrush).Color = selected
-                ? light ? Color.FromArgb(255, 0x2A, 0x2A, 0x2E) : Color.FromArgb(255, 0xE9, 0xEC, 0xF0)
-                : Color.FromArgb(0, 0, 0, 0);
-            ((SolidColorBrush)_tagButtons[i].Background).Color = selected
-                ? light ? Color.FromArgb(0x1F, 0x00, 0x00, 0x00) : Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF)
-                : Color.FromArgb(0, 0, 0, 0);
+            _tagButtons[i].BorderBrush = transparent;
+            _tagButtons[i].Background = selected ? selectedBrush : transparent;
         }
-    }
-}
+    }}

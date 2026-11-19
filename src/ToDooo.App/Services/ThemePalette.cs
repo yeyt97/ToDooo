@@ -126,6 +126,8 @@ public static class ThemePalette
         var card = dark ? DarkCard : LightCard;
         SetGradient(resources, "CardBrush", card, factor);
         SetGradient(resources, "CardStrokeBrush", dark ? DarkCardStroke : LightCardStroke, 1.0);
+        // 弹框底色给个下限，窗口调得很透时文字也要能看清。
+        SetGradient(resources, "DialogCardBrush", card, Math.Max(factor, 0.55));
     }
 
     private static void SetGradient(ResourceDictionary resources, string key, Color[] colors, double factor)

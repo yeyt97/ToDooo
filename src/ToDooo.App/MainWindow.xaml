@@ -298,9 +298,7 @@
                                     PointerExited="TodoCard_PointerExited">
                                     <Border.ContextFlyout>
                                         <MenuFlyout Opening="RowFlyout_Opening">
-                                            <MenuFlyoutItem Text="编辑…" Click="RowEdit_Click" />
                                             <MenuFlyoutItem Text="添加子任务…" Click="RowAddSubtask_Click" />
-                                            <MenuFlyoutItem Text="标记为重要" Click="RowImportant_Click" />
                                             <MenuFlyoutItem Text="10 分钟后再提醒" Click="RowSnooze_Click" />
                                             <MenuFlyoutSeparator />
                                             <MenuFlyoutItem Text="删除" Click="RowDelete_Click" />

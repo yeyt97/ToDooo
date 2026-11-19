@@ -229,6 +229,16 @@ public sealed partial class MainWindow : Window
         var value = dark ? 1 : 0;
         NativeMethods.DwmSetWindowAttribute(
             _hwnd, NativeMethods.DWMWA_USE_IMMERSIVE_DARK_MODE, ref value, sizeof(int));
+
+        // 系统原生菜单（托盘的兜底菜单等）也跟着深/浅色走。
+        try
+        {
+            NativeMethods.SetPreferredAppMode(dark ? 2 : 3);
+            NativeMethods.FlushMenuThemes();
+        }
+        catch
+        {
+        }
     }
 
     /// <summary>按当前窗口实际主题取主题字典里的画刷，供代码创建/设置的视觉使用。</summary>
@@ -1629,20 +1639,37 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var dialog = new ContentDialog
-        {
-            XamlRoot = Root.XamlRoot,
-            Title = "删除子任务",
-            Content = $"确定删除「{subtask.Title}」吗？",
-            PrimaryButtonText = "删除",
-            CloseButtonText = "取消",
-            DefaultButton = ContentDialogButton.Close,
-        };
-
+        var dialog = CreateCardDialog("删除子任务", $"确定删除「{subtask.Title}」吗？", "删除");
         if (await dialog.ShowAsync() == ContentDialogResult.Primary)
         {
             ViewModel.DeleteSubtask(item, subtask);
         }
+    }
+
+    /// <summary>弹框统一用卡片色板：和窗口主题、透明度保持一致。</summary>
+    private ContentDialog CreateCardDialog(
+        string title,
+        object content,
+        string primaryButtonText,
+        bool primaryEnabled = true,
+        ContentDialogButton defaultButton = ContentDialogButton.Close)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = title,
+            Content = content,
+            PrimaryButtonText = primaryButtonText,
+            CloseButtonText = "取消",
+            DefaultButton = defaultButton,
+            IsPrimaryButtonEnabled = primaryEnabled,
+        };
+
+        dialog.Resources["ContentDialogBackground"] = Application.Current.Resources["DialogCardBrush"];
+        dialog.Resources["ContentDialogBorderBrush"] = Application.Current.Resources["CardStrokeBrush"];
+        dialog.Resources["ContentDialogCornerRadius"] = new CornerRadius(8);
+        dialog.Resources["ContentDialogSmokeFill"] = new SolidColorBrush(Color.FromArgb(0x33, 0x00, 0x00, 0x00));
+        return dialog;
     }
 
     // 卡片悬停：提亮卡片，并让未标记重要的行浮出星标按钮（已标记的本来就在亮着）。
@@ -1733,15 +1760,10 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var dialog = new ContentDialog
-        {
-            XamlRoot = Root.XamlRoot,
-            Title = "清除已完成",
-            Content = $"将删除 {ViewModel.DoneCount} 条已完成待办，删除后可在底部撤销。",
-            PrimaryButtonText = "清除",
-            CloseButtonText = "取消",
-            DefaultButton = ContentDialogButton.Close,
-        };
+        var dialog = CreateCardDialog(
+            "清除已完成",
+            $"将删除 {ViewModel.DoneCount} 条已完成待办，删除后可在底部撤销。",
+            "清除");
 
         if (await dialog.ShowAsync() != ContentDialogResult.Primary)
         {
@@ -1763,15 +1785,10 @@ public sealed partial class MainWindow : Window
         if (sender is MenuFlyout { Target: FrameworkElement target })
         {
             _menuItem = target.DataContext as TodoItem;
-            if (_menuItem is not null && ((MenuFlyout)sender).Items.Count > 2 &&
-                ((MenuFlyout)sender).Items[2] is MenuFlyoutItem important)
-            {
-                important.Text = _menuItem.ImportantMenuText;
-            }
 
             // 没有截止时间就没有提醒可推迟。
-            if (((MenuFlyout)sender).Items.Count > 3 &&
-                ((MenuFlyout)sender).Items[3] is MenuFlyoutItem snooze)
+            if (((MenuFlyout)sender).Items.Count > 1 &&
+                ((MenuFlyout)sender).Items[1] is MenuFlyoutItem snooze)
             {
                 snooze.Visibility = _menuItem?.DueAt is null
                     ? Visibility.Collapsed
@@ -1792,16 +1809,7 @@ public sealed partial class MainWindow : Window
             PlaceholderText = "子任务内容",
             MaxLength = 120,
         };
-        var dialog = new ContentDialog
-        {
-            XamlRoot = Root.XamlRoot,
-            Title = "添加子任务",
-            Content = input,
-            PrimaryButtonText = "添加",
-            CloseButtonText = "取消",
-            DefaultButton = ContentDialogButton.Primary,
-            IsPrimaryButtonEnabled = false,
-        };
+        var dialog = CreateCardDialog("添加子任务", input, "添加", primaryEnabled: false, ContentDialogButton.Primary);
         input.TextChanged += (_, _) => dialog.IsPrimaryButtonEnabled = input.Text.Trim().Length > 0;
         dialog.Opened += (_, _) => input.Focus(FocusState.Programmatic);
 
@@ -1821,23 +1829,6 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void RowEdit_Click(object sender, RoutedEventArgs e)
-    {
-        if (_menuItem is { } item)
-        {
-            _ = EditItemAsync(item);
-        }
-    }
-
-    private void RowImportant_Click(object sender, RoutedEventArgs e)
-    {
-        if (_menuItem is { } item)
-        {
-            ViewModel.ToggleImportant(item);
-            UpdateFilterVisuals();
-        }
-    }
-
     private void RowDelete_Click(object sender, RoutedEventArgs e)
     {
         _ = ConfirmDeleteAsync();
@@ -1850,15 +1841,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var dialog = new ContentDialog
-        {
-            XamlRoot = Root.XamlRoot,
-            Title = "删除待办",
-            Content = $"确定删除「{item.Title}」吗？",
-            PrimaryButtonText = "删除",
-            CloseButtonText = "取消",
-            DefaultButton = ContentDialogButton.Close,
-        };
+        var dialog = CreateCardDialog("删除待办", $"确定删除「{item.Title}」吗？", "删除");
 
         if (await dialog.ShowAsync() != ContentDialogResult.Primary)
         {

@@ -1665,6 +1665,12 @@ public sealed partial class MainWindow : Window
             IsPrimaryButtonEnabled = primaryEnabled,
         };
 
+        // 弹框本身不继承主窗口的 RequestedTheme，浅色窗口在深色系统下会显示成白字。
+        dialog.RequestedTheme = Root.RequestedTheme == ElementTheme.Default
+            ? Appearance.ToElementTheme((ThemeMode)_settings.Current.ThemeMode)
+            : Root.RequestedTheme;
+        ThemePalette.ApplyTextControlPalette(dialog.Resources);
+
         dialog.Resources["ContentDialogBackground"] = Application.Current.Resources["DialogAcrylicBrush"];
         dialog.Resources["ContentDialogBorderBrush"] = Application.Current.Resources["CardStrokeBrush"];
         dialog.Resources["ContentDialogCornerRadius"] = new CornerRadius(8);
@@ -1787,8 +1793,8 @@ public sealed partial class MainWindow : Window
             _menuItem = target.DataContext as TodoItem;
 
             // 没有截止时间就没有提醒可推迟。
-            if (((MenuFlyout)sender).Items.Count > 1 &&
-                ((MenuFlyout)sender).Items[1] is MenuFlyoutItem snooze)
+            if (((MenuFlyout)sender).Items.Count > 2 &&
+                ((MenuFlyout)sender).Items[2] is MenuFlyoutItem snooze)
             {
                 snooze.Visibility = _menuItem?.DueAt is null
                     ? Visibility.Collapsed
@@ -1817,6 +1823,14 @@ public sealed partial class MainWindow : Window
         {
             ViewModel.AddSubtask(item, input.Text);
             item.SubtasksExpanded = true;
+        }
+    }
+
+    private void RowEdit_Click(object sender, RoutedEventArgs e)
+    {
+        if (_menuItem is { } item)
+        {
+            _ = EditItemAsync(item);
         }
     }
 

@@ -5,18 +5,19 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:helpers="using:ToDooo.Helpers"
     xmlns:models="using:ToDooo.Models"
+    xmlns:controls="using:ToDooo.Controls"
     Title="ToDooo">
 
     <!-- 所有行/列都用 Auto 与 * ，窗口缩放时列表区自动吃掉剩余高度；最小尺寸同时由 Win32 层约束 -->
-    <Grid
+    <controls:CursorGrid
         x:Name="Root"
         Background="Transparent"
         KeyboardAcceleratorPlacementMode="Hidden"
         MinWidth="320"
         MinHeight="360"
+        PointerCaptureLost="Root_PointerCaptureLost"
         PointerEntered="Root_PointerEntered"
-        PointerExited="Root_PointerExited"
-        PointerPressed="Root_PointerPressed">
+        PointerExited="Root_PointerExited">
         <Border
             CornerRadius="0"
             Background="{ThemeResource CardBrush}"
@@ -402,6 +403,11 @@
                                                             <Grid
                                                                 Margin="0,1"
                                                                 ColumnSpacing="4">
+                                                                <Grid.ContextFlyout>
+                                                                    <MenuFlyout Opening="SubtaskFlyout_Opening">
+                                                                        <MenuFlyoutItem Text="删除子任务" Click="SubtaskDelete_Click" />
+                                                                    </MenuFlyout>
+                                                                </Grid.ContextFlyout>
                                                                 <Grid.ColumnDefinitions>
                                                                     <ColumnDefinition Width="Auto" />
                                                                     <ColumnDefinition Width="*" />
@@ -556,5 +562,5 @@
                 Invoked="FilterAccelerator_Invoked"
                 Modifiers="Control" />
         </Grid.KeyboardAccelerators>
-    </Grid>
+    </controls:CursorGrid>
 </Window>

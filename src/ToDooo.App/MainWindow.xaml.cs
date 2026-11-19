@@ -70,6 +70,20 @@ public sealed partial class MainWindow : Window
         BuildSmartViewChips();
         UpdateFilterVisuals();
 
+        // 列表/滚动区会先把按下事件标记为已处理，贴边缩放要能看见这些被吞掉的事件。
+        Root.AddHandler(
+            UIElement.PointerPressedEvent,
+            new PointerEventHandler(Root_PointerPressed),
+            handledEventsToo: true);
+        Root.AddHandler(
+            UIElement.PointerMovedEvent,
+            new PointerEventHandler(Root_PointerMoved),
+            handledEventsToo: true);
+        Root.AddHandler(
+            UIElement.PointerReleasedEvent,
+            new PointerEventHandler(Root_PointerReleased),
+            handledEventsToo: true);
+
         // XAML 的 LostFocus 在窗口整体失活时不会触发，这里补一次全局失焦提交。
         Activated += MainWindow_Activated;
 
@@ -739,7 +753,7 @@ public sealed partial class MainWindow : Window
                 // 托盘菜单展开期间例外：沉底会把 flyout 一起收掉，等菜单关了再沉。
                 if ((wParam.ToInt64() & 0xFFFF) != 0)
                 {
-                    if (!_trayMenuOpen && !_resizing && !_sizing)
+                    if (!_trayMenuOpen && !_sizing)
                     {
                         _dispatcher.TryEnqueue(BedToDesktop);
                     }
@@ -776,7 +790,9 @@ public sealed partial class MainWindow : Window
                 break;
 
             case NativeMethods.WM_NCHITTEST:
-                return HitTestResizeBorder(hWnd, msg, wParam, lParam);
+                // 边框区域的命中不让系统接管：无边框窗口进系统缩放循环会卡住，
+                // 统一当客户区处理，边缘缩放交给 XAML 的 Root_PointerPressed。
+                return new IntPtr(NativeMethods.HTCLIENT);
 
             case NativeMethods.WM_WINDOWPOSCHANGING:
             {
@@ -853,48 +869,15 @@ public sealed partial class MainWindow : Window
         return NativeMethods.DefSubclassProc(hWnd, msg, wParam, lParam);
     }
 
-    /// <summary>
-    /// 无标题栏窗口的系统尺寸边框命中区很窄，这里再给客户区最外圈 6px 做一次边缘/角落判定，
-    /// 保证四条边和四个角都能拖动缩放；非边缘区域交回系统原来的命中结果。
-    /// </summary>
-    private IntPtr HitTestResizeBorder(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
-    {
-        var hit = NativeMethods.DefSubclassProc(hWnd, msg, wParam, lParam);
-        if (hit.ToInt64() != NativeMethods.HTCLIENT ||
-            !NativeMethods.GetWindowRect(_hwnd, out var rect))
-        {
-            return hit;
-        }
-
-        // lParam 低/高 16 位是鼠标的屏幕坐标，副屏可能为负，用 short 还原符号。
-        var x = (short)(lParam.ToInt64() & 0xFFFF);
-        var y = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
-        const int edge = 6;
-
-        var left = x - rect.Left < edge;
-        var right = rect.Right - x <= edge;
-        var top = y - rect.Top < edge;
-        var bottom = rect.Bottom - y <= edge;
-
-        var code = (left, right, top, bottom) switch
-        {
-            (true, _, true, _) => NativeMethods.HTTOPLEFT,
-            (_, true, true, _) => NativeMethods.HTTOPRIGHT,
-            (true, _, _, true) => NativeMethods.HTBOTTOMLEFT,
-            (_, true, _, true) => NativeMethods.HTBOTTOMRIGHT,
-            (true, _, _, _) => NativeMethods.HTLEFT,
-            (_, true, _, _) => NativeMethods.HTRIGHT,
-            (_, _, true, _) => NativeMethods.HTTOP,
-            (_, _, _, true) => NativeMethods.HTBOTTOM,
-            _ => NativeMethods.HTCLIENT,
-        };
-
-        return code == NativeMethods.HTCLIENT ? hit : new IntPtr(code);
-    }
-
     private void DragRegion_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
         if (!e.GetCurrentPoint((UIElement)sender).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        // 顶边 8px 留给缩放，别当成拖动窗口。
+        if (e.GetCurrentPoint(Root).Position.Y < 8)
         {
             return;
         }
@@ -1187,17 +1170,25 @@ public sealed partial class MainWindow : Window
         UpdateFilterVisuals();
     }
 
-    private bool _resizing;
     private bool _sizing;
+    private int _resizeHit;
+    private NativeMethods.POINT _resizeStartCursor;
+    private NativeMethods.RECT _resizeStartRect;
 
     // 鼠标离开窗口时淡出，移回恢复；设置里没开就保持原样。
-    private void Root_PointerEntered(object sender, PointerRoutedEventArgs e) => AnimateRootOpacity(1);
+    private void Root_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        AnimateRootOpacity(1);
+        UpdateResizeCursor(e.GetCurrentPoint(Root).Position);
+    }
 
-    private void Root_PointerExited(object sender, PointerRoutedEventArgs e) =>
+    private void Root_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
         AnimateRootOpacity(_settings.Current.AutoHide ? 0.25 : 1);
+        Root.SetCursor(null);
+    }
 
-    // 无边框窗口在 XAML 内容层收到指针时，系统不会替我们进缩放循环；
-    // 这里按位置判断贴边，再转成非客户区拖拽，让边缘和四角都能缩放。
+    // 无边框窗口的内容层拿不到系统边缘命中，这里自己按位置判断贴边并手动缩放。
     private void Root_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
         if (!e.GetCurrentPoint(Root).Properties.IsLeftButtonPressed)
@@ -1205,17 +1196,111 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var point = e.GetCurrentPoint(Root).Position;
-        var width = Root.ActualWidth;
-        var height = Root.ActualHeight;
+        var local = e.GetCurrentPoint(Root).Position;
+        var hit = EdgeHit(local);
+        if (hit == 0)
+        {
+            return;
+        }
+
+        if (!NativeMethods.GetCursorPos(out _resizeStartCursor) ||
+            !NativeMethods.GetWindowRect(_hwnd, out _resizeStartRect))
+        {
+            return;
+        }
+
+        _resizeHit = hit;
+        Root.CapturePointer(e.Pointer);
+        UpdateResizeCursor(local);
+        e.Handled = true;
+    }
+
+    private void Root_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        var local = e.GetCurrentPoint(Root).Position;
+
+        if (_resizeHit == 0)
+        {
+            UpdateResizeCursor(local);
+            return;
+        }
+
+        if (NativeMethods.GetCursorPos(out var cursor))
+        {
+            var scale = NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
+            var minWidth = (int)Math.Round(320 * scale);
+            var minHeight = (int)Math.Round(360 * scale);
+            var dx = cursor.X - _resizeStartCursor.X;
+            var dy = cursor.Y - _resizeStartCursor.Y;
+
+            var left = _resizeStartRect.Left;
+            var top = _resizeStartRect.Top;
+            var right = _resizeStartRect.Right;
+            var bottom = _resizeStartRect.Bottom;
+
+            if (_resizeHit is NativeMethods.HTLEFT or NativeMethods.HTTOPLEFT or NativeMethods.HTBOTTOMLEFT)
+            {
+                left = Math.Min(_resizeStartRect.Left + dx, _resizeStartRect.Right - minWidth);
+            }
+
+            if (_resizeHit is NativeMethods.HTRIGHT or NativeMethods.HTTOPRIGHT or NativeMethods.HTBOTTOMRIGHT)
+            {
+                right = Math.Max(_resizeStartRect.Right + dx, _resizeStartRect.Left + minWidth);
+            }
+
+            if (_resizeHit is NativeMethods.HTTOP or NativeMethods.HTTOPLEFT or NativeMethods.HTTOPRIGHT)
+            {
+                top = Math.Min(_resizeStartRect.Top + dy, _resizeStartRect.Bottom - minHeight);
+            }
+
+            if (_resizeHit is NativeMethods.HTBOTTOM or NativeMethods.HTBOTTOMLEFT or NativeMethods.HTBOTTOMRIGHT)
+            {
+                bottom = Math.Max(_resizeStartRect.Bottom + dy, _resizeStartRect.Top + minHeight);
+            }
+
+            NativeMethods.SetWindowPos(
+                _hwnd, IntPtr.Zero, left, top, right - left, bottom - top,
+                NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
+        }
+
+        e.Handled = true;
+    }
+
+    private void Root_PointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        if (_resizeHit == 0)
+        {
+            return;
+        }
+
+        _resizeHit = 0;
+        Root.ReleasePointerCapture(e.Pointer);
+        SavePosition();
+        UpdateResizeCursor(e.GetCurrentPoint(Root).Position);
+        e.Handled = true;
+    }
+
+    private void Root_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
+    {
+        if (_resizeHit == 0)
+        {
+            return;
+        }
+
+        _resizeHit = 0;
+        SavePosition();
+        Root.SetCursor(null);
+    }
+
+    private int EdgeHit(Windows.Foundation.Point point)
+    {
         const double edge = 8;
-
         var left = point.X < edge;
-        var right = point.X > width - edge;
+        var right = point.X > Root.ActualWidth - edge;
         var top = point.Y < edge;
-        var bottom = point.Y > height - edge;
+        var bottom = point.Y > Root.ActualHeight - edge;
 
-        var hit = (left, right, top, bottom) switch
+        return (left, right, top, bottom) switch
         {
             (true, _, true, _) => NativeMethods.HTTOPLEFT,
             (_, true, true, _) => NativeMethods.HTTOPRIGHT,
@@ -1227,25 +1312,19 @@ public sealed partial class MainWindow : Window
             (_, _, _, true) => NativeMethods.HTBOTTOM,
             _ => 0,
         };
+    }
 
-        if (hit == 0)
+    private void UpdateResizeCursor(Windows.Foundation.Point point)
+    {
+        var hit = _resizeHit != 0 ? _resizeHit : EdgeHit(point);
+        Root.SetCursor(hit switch
         {
-            return;
-        }
-
-        e.Handled = true;
-        _resizing = true;
-        try
-        {
-            NativeMethods.ReleaseCapture();
-            NativeMethods.SendMessageW(
-                _hwnd, NativeMethods.WM_NCLBUTTONDOWN, new IntPtr(hit), IntPtr.Zero);
-        }
-        finally
-        {
-            _resizing = false;
-            SavePosition();
-        }
+            NativeMethods.HTLEFT or NativeMethods.HTRIGHT => Microsoft.UI.Input.InputSystemCursorShape.SizeWestEast,
+            NativeMethods.HTTOP or NativeMethods.HTBOTTOM => Microsoft.UI.Input.InputSystemCursorShape.SizeNorthSouth,
+            NativeMethods.HTTOPLEFT or NativeMethods.HTBOTTOMRIGHT => Microsoft.UI.Input.InputSystemCursorShape.SizeNorthwestSoutheast,
+            NativeMethods.HTTOPRIGHT or NativeMethods.HTBOTTOMLEFT => Microsoft.UI.Input.InputSystemCursorShape.SizeNortheastSouthwest,
+            _ => null,
+        });
     }
 
     private void AnimateRootOpacity(double target)
@@ -1531,6 +1610,41 @@ public sealed partial class MainWindow : Window
         return null;
     }
 
+    private SubtaskItem? _menuSubtask;
+
+    private void SubtaskFlyout_Opening(object sender, object e)
+    {
+        if (sender is MenuFlyout { Target: FrameworkElement target } &&
+            target.DataContext is SubtaskItem subtask)
+        {
+            _menuSubtask = subtask;
+            _menuItem = FindOwnerTodo(target);
+        }
+    }
+
+    private async void SubtaskDelete_Click(object sender, RoutedEventArgs e)
+    {
+        if (_menuSubtask is not { } subtask || _menuItem is not { } item)
+        {
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = "删除子任务",
+            Content = $"确定删除「{subtask.Title}」吗？",
+            PrimaryButtonText = "删除",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close,
+        };
+
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        {
+            ViewModel.DeleteSubtask(item, subtask);
+        }
+    }
+
     // 卡片悬停：提亮卡片，并让未标记重要的行浮出星标按钮（已标记的本来就在亮着）。
     private void TodoCard_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
@@ -1726,12 +1840,34 @@ public sealed partial class MainWindow : Window
 
     private void RowDelete_Click(object sender, RoutedEventArgs e)
     {
-        if (_menuItem is { } item)
+        _ = ConfirmDeleteAsync();
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        if (_menuItem is not { } item)
         {
-            ViewModel.Delete(item);
-            UpdateFilterVisuals();
-            ShowUndo($"已删除「{item.Title}」", new List<TodoItem> { item });
+            return;
         }
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = "删除待办",
+            Content = $"确定删除「{item.Title}」吗？",
+            PrimaryButtonText = "删除",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close,
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        ViewModel.Delete(item);
+        UpdateFilterVisuals();
+        ShowUndo($"已删除「{item.Title}」", new List<TodoItem> { item });
     }
 
     private async Task EditItemAsync(TodoItem item)

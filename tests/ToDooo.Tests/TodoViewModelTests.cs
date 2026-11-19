@@ -254,6 +254,23 @@ public sealed class TodoViewModelTests : IDisposable
     }
 
     [Fact]
+    public void AddSubtask_PersistsToExistingItem()
+    {
+        var item = new TodoItem { Title = "装修" };
+        _viewModel.AddItem(item);
+
+        _viewModel.AddSubtask(item, "量尺寸");
+        _viewModel.AddSubtask(item, "  ");
+
+        Assert.Single(item.Subtasks);
+        Assert.Equal("1", item.SubtaskProgressText[^1..]);
+
+        var reloaded = new MainViewModel(_repository);
+        reloaded.Load();
+        Assert.Equal(new[] { "量尺寸" }, reloaded.AllItems.Single().Subtasks.Select(x => x.Title));
+    }
+
+    [Fact]
     public void SmartView_FiltersByDueDate()
     {
         var today = new TodoItem { Title = "今天事", DueAt = DateTime.Now.Date.AddHours(23) };

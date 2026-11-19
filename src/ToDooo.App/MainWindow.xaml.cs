@@ -1589,20 +1589,52 @@ public sealed partial class MainWindow : Window
         if (sender is MenuFlyout { Target: FrameworkElement target })
         {
             _menuItem = target.DataContext as TodoItem;
-            if (_menuItem is not null && ((MenuFlyout)sender).Items.Count > 1 &&
-                ((MenuFlyout)sender).Items[1] is MenuFlyoutItem important)
+            if (_menuItem is not null && ((MenuFlyout)sender).Items.Count > 2 &&
+                ((MenuFlyout)sender).Items[2] is MenuFlyoutItem important)
             {
                 important.Text = _menuItem.ImportantMenuText;
             }
 
             // 没有截止时间就没有提醒可推迟。
-            if (((MenuFlyout)sender).Items.Count > 2 &&
-                ((MenuFlyout)sender).Items[2] is MenuFlyoutItem snooze)
+            if (((MenuFlyout)sender).Items.Count > 3 &&
+                ((MenuFlyout)sender).Items[3] is MenuFlyoutItem snooze)
             {
                 snooze.Visibility = _menuItem?.DueAt is null
                     ? Visibility.Collapsed
                     : Visibility.Visible;
             }
+        }
+    }
+
+    private async void RowAddSubtask_Click(object sender, RoutedEventArgs e)
+    {
+        if (_menuItem is not { } item)
+        {
+            return;
+        }
+
+        var input = new TextBox
+        {
+            PlaceholderText = "子任务内容",
+            MaxLength = 120,
+        };
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = "添加子任务",
+            Content = input,
+            PrimaryButtonText = "添加",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary,
+            IsPrimaryButtonEnabled = false,
+        };
+        input.TextChanged += (_, _) => dialog.IsPrimaryButtonEnabled = input.Text.Trim().Length > 0;
+        dialog.Opened += (_, _) => input.Focus(FocusState.Programmatic);
+
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        {
+            ViewModel.AddSubtask(item, input.Text);
+            item.SubtasksExpanded = true;
         }
     }
 

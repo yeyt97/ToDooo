@@ -339,6 +339,12 @@ public sealed partial class TodoEditorDialog : Window
             DueToggle.IsOn = true;
         }
 
+        // 保存时把还没确认的子任务输入一起带上。
+        if (saved)
+        {
+            AppendPendingSubtask();
+        }
+
         // 先隐藏再关：WinUI 关窗瞬间合成目标会先变黑一帧（点取消肉眼可见「闪一下」），
         // 隐藏后窗口不再参与合成，黑帧就看不到了。结果仍在 Closed 里给。
         _saved = saved;
@@ -515,16 +521,27 @@ public sealed partial class TodoEditorDialog : Window
 
     private void CommitSubtaskInput()
     {
-        var title = SubtaskInput.Text.Trim();
-        if (title.Length == 0)
+        if (!AppendPendingSubtask())
         {
             return;
         }
 
-        _subtaskDrafts.Add(new SubtaskDraft(0, title, false));
-        SubtaskInput.Text = string.Empty;
         RenderSubtasks();
         SubtaskInput.Focus(FocusState.Programmatic);
+    }
+
+    // 输入框里敲了内容但没点“添加”就保存时，也把它当作一条子任务，避免白打。
+    private bool AppendPendingSubtask()
+    {
+        var title = SubtaskInput.Text.Trim();
+        if (title.Length == 0)
+        {
+            return false;
+        }
+
+        _subtaskDrafts.Add(new SubtaskDraft(0, title, false));
+        SubtaskInput.Text = string.Empty;
+        return true;
     }
 
     private void RenderSubtasks()

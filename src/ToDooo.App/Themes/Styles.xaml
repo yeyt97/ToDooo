@@ -573,8 +573,8 @@
                                 <VisualState x:Name="Indeterminate" />
                                 <VisualState x:Name="Checked">
                                     <VisualState.Setters>
-                                        <Setter Target="Box.Background" Value="{ThemeResource NeutralCheckFillBrush}" />
-                                        <Setter Target="Box.BorderBrush" Value="Transparent" />
+                                        <Setter Target="Fill.Opacity" Value="1" />
+                                        <Setter Target="Check.Foreground" Value="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
                                         <Setter Target="Check.Opacity" Value="1" />
                                     </VisualState.Setters>
                                 </VisualState>
@@ -584,17 +584,26 @@
                             x:Name="HoverRing"
                             Width="20"
                             Height="20"
-                            CornerRadius="6"
+                            CornerRadius="10"
                             Background="{ThemeResource HoverBrush}"
                             Opacity="0" />
                         <Border
                             x:Name="Box"
                             Width="18"
                             Height="18"
-                            CornerRadius="4"
+                            CornerRadius="9"
                             BorderThickness="1.5"
                             BorderBrush="{ThemeResource CheckBorderBrush}"
                             Background="Transparent"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center" />
+                        <Border
+                            x:Name="Fill"
+                            Width="12"
+                            Height="12"
+                            CornerRadius="6"
+                            Background="{ThemeResource AccentBrush}"
+                            Opacity="0"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center" />
                         <FontIcon

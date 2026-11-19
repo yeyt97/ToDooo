@@ -60,7 +60,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     public string EmptyDescription => _searchQuery.Length > 0
         ? "换个关键词，或清空搜索看全部"
-        : "回车或离焦即保存 · 点右侧日历设置时间 · 点任务编辑详情";
+        : "点颜色栏右侧 + 新建待办 · 标题里可以直接写时间";
 
     public bool HasCompleted => DoneCount > 0;
 

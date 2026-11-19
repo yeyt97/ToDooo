@@ -584,7 +584,6 @@ public sealed partial class MainWindow : Window
             SearchBox.Text = string.Empty;
             ViewModel.SetSearch(string.Empty);
             SearchBar.Visibility = Visibility.Collapsed;
-            FocusAddBox();
         }
         else
         {
@@ -604,7 +603,8 @@ public sealed partial class MainWindow : Window
     private void ClearSearch_Click(object sender, RoutedEventArgs e)
     {
         SearchBox.Text = string.Empty;
-        SearchBox.Focus(FocusState.Programmatic);
+        ViewModel.SetSearch(string.Empty);
+        SearchBar.Visibility = Visibility.Collapsed;
     }
 
     private void SearchBox_LostFocus(object sender, RoutedEventArgs e)
@@ -1216,6 +1216,7 @@ public sealed partial class MainWindow : Window
     private bool _sizing;
     private bool _moreMenuOpen;
     private bool _contextMenuOpen;
+    private bool _dialogOpen;
 
     private enum EdgeDock
     {
@@ -1253,6 +1254,12 @@ public sealed partial class MainWindow : Window
     {
         AnimateRootOpacity(_settings.Current.AutoHide && _dockEdge == EdgeDock.None ? 0.25 : 1);
         Root.SetCursor(null);
+        if (_subtaskAddHover is { } hovered)
+        {
+            SetSubtaskProgressMode(hovered, adding: false);
+            _subtaskAddHover = null;
+        }
+
         ScheduleDockRetract();
     }
 
@@ -1292,6 +1299,7 @@ public sealed partial class MainWindow : Window
         if (_resizeHit == 0)
         {
             UpdateResizeCursor(local);
+            UpdateSubtaskHover(local);
             return;
         }
 
@@ -1613,7 +1621,7 @@ public sealed partial class MainWindow : Window
     {
         if (_dockEdge == EdgeDock.None || _dockRetracted ||
             _editor is not null || _settingsWindow is not null ||
-            _moreMenuOpen || _contextMenuOpen || _trayMenuOpen ||
+            _moreMenuOpen || _contextMenuOpen || _dialogOpen || _trayMenuOpen ||
             _sizing || _resizeHit != 0 || _dragging)
         {
             return;
@@ -1664,7 +1672,48 @@ public sealed partial class MainWindow : Window
         ShowBalloon("已推迟", $"{item.Title}：10 分钟后再提醒");
     }
 
-    private void FocusAddBox() => AddTextBox.Focus(FocusState.Programmatic);
+    private void FocusAddBox() => OpenAddBar();
+
+    private void AddTaskButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (AddBar.Visibility == Visibility.Visible)
+        {
+            CloseAddBar();
+        }
+        else
+        {
+            OpenAddBar();
+        }
+    }
+
+    private void OpenAddBar()
+    {
+        AddBar.Visibility = Visibility.Visible;
+        AddTextBox.Focus(FocusState.Programmatic);
+    }
+
+    private void CloseAddBar()
+    {
+        // 收起时 TextBox 会失焦，别把残留文字当草稿提交。
+        _suppressAddCommit = true;
+        try
+        {
+            AddTextBox.Text = string.Empty;
+            AddBar.Visibility = Visibility.Collapsed;
+        }
+        finally
+        {
+            _dispatcher.TryEnqueue(() => _suppressAddCommit = false);
+        }
+    }
+
+    private bool _textComposing;
+
+    private void AddTextBox_TextCompositionStarted(TextBox sender, TextCompositionStartedEventArgs args) =>
+        _textComposing = true;
+
+    private void AddTextBox_TextCompositionEnded(TextBox sender, TextCompositionEndedEventArgs args) =>
+        _textComposing = false;
 
     private void AddTextBox_TextChanged(object sender, TextChangedEventArgs e)
     {
@@ -1680,28 +1729,25 @@ public sealed partial class MainWindow : Window
 
     private void AddTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
     {
+        if (e.Key == VirtualKey.Enter && _textComposing)
+        {
+            // 输入法还在组词，这一下回车是给输入法的；等组词结束后再提交，避免重复添加。
+            return;
+        }
+
         if (e.Key == VirtualKey.Enter)
         {
-            if (CommitAddDraft())
+            if (CommitAddDraft() && ViewModel.Items.Count > 0)
             {
-                // 输入框常驻，列表重建/滚动都可能抢走焦点；两帧后把焦点还回来以便连续添加。
-                _dispatcher.TryEnqueue(() =>
-                {
-                    if (ViewModel.Items.Count > 0)
-                    {
-                        TodoList.ScrollIntoView(ViewModel.Items[0]);
-                    }
-
-                    _dispatcher.TryEnqueue(() => AddTextBox.Focus(FocusState.Programmatic));
-                });
+                TodoList.ScrollIntoView(ViewModel.Items[0]);
             }
 
             e.Handled = true;
         }
         else if (e.Key == VirtualKey.Escape)
         {
-            AddTextBox.Text = string.Empty;
             e.Handled = true;
+            CloseAddBar();
         }
     }
 
@@ -1723,6 +1769,13 @@ public sealed partial class MainWindow : Window
         var focused = FocusManager.GetFocusedElement(Root.XamlRoot) as DependencyObject;
         if (focused is not null && IsWithin(focused, AddBar))
         {
+            return;
+        }
+
+        // 空内容离焦：直接收起，不占位置。
+        if (string.IsNullOrWhiteSpace(AddTextBox.Text))
+        {
+            CloseAddBar();
             return;
         }
 
@@ -1757,6 +1810,7 @@ public sealed partial class MainWindow : Window
         AddTextBox.Text = string.Empty;
         UpdateFilterVisuals();
         UpdateTagVisuals();
+        CloseAddBar();
         return true;
     }
 
@@ -1816,9 +1870,7 @@ public sealed partial class MainWindow : Window
             AddTextBox.Text = string.Empty;
             UpdateFilterVisuals();
             UpdateTagVisuals();
-
-            // 保存后才把焦点收回添加框；取消时不去抢焦点，免得主窗口被提起来闪一下。
-            FocusAddBox();
+            CloseAddBar();
         }
     }
 
@@ -1906,26 +1958,46 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void SubtaskProgress_PointerEntered(object sender, PointerRoutedEventArgs e) =>
-        SetSubtaskProgressMode(sender, adding: true);
+    private Button? _subtaskAddHover;
 
-    private void SubtaskProgress_PointerExited(object sender, PointerRoutedEventArgs e)
+    private void SubtaskProgress_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
         if (sender is Button button)
         {
-            var point = e.GetCurrentPoint(button).Position;
-            if (point.X >= 0 && point.Y >= 0 &&
-                point.X <= button.ActualWidth && point.Y <= button.ActualHeight)
-            {
-                return;
-            }
+            _subtaskAddHover = button;
+            SetSubtaskProgressMode(button, adding: true);
         }
-
-        SetSubtaskProgressMode(sender, adding: false);
     }
 
-    private void SubtaskAddControl_Loaded(object sender, RoutedEventArgs e) =>
+    // 用根节点的移动事件判断指针是否已经离开按钮，避免 Exited 偶尔丢事件导致文案卡住。
+    private void UpdateSubtaskHover(Windows.Foundation.Point pointInRoot)
+    {
+        if (_subtaskAddHover is not { } button)
+        {
+            return;
+        }
+
+        var bounds = button
+            .TransformToVisual(Root)
+            .TransformBounds(new Windows.Foundation.Rect(0, 0, button.ActualWidth, button.ActualHeight));
+
+        if (bounds.Contains(pointInRoot))
+        {
+            return;
+        }
+
+        SetSubtaskProgressMode(button, adding: false);
+        _subtaskAddHover = null;
+    }
+
+    private void SubtaskAddControl_Loaded(object sender, RoutedEventArgs e)
+    {
         SetSubtaskProgressMode(sender, adding: false);
+        if (ReferenceEquals(sender, _subtaskAddHover))
+        {
+            _subtaskAddHover = null;
+        }
+    }
 
     // 用透明度切换而不是显隐，避免切换瞬间布局重排导致指针“离开”按钮、状态卡住。
     private static void SetSubtaskProgressMode(object sender, bool adding)
@@ -1953,6 +2025,7 @@ public sealed partial class MainWindow : Window
         if (sender is Button { DataContext: TodoItem item } button)
         {
             SetSubtaskProgressMode(button, adding: false);
+            _subtaskAddHover = null;
             item.SubtasksExpanded = true;
             item.SubtaskAddActive = true;
             DispatcherQueue.TryEnqueue(() => FocusSubtaskAddBox(item));
@@ -2257,6 +2330,17 @@ public sealed partial class MainWindow : Window
             : Root.RequestedTheme;
         ThemePalette.ApplyTextControlPalette(dialog.Resources);
 
+        // 弹框有可能落在独立弹层里，指针会离开主窗口；这期间别让窗口自动收回。
+        dialog.Opened += (_, _) =>
+        {
+            _dialogOpen = true;
+            CancelDockRetract();
+        };
+        dialog.Closed += (_, _) =>
+        {
+            _dialogOpen = false;
+        };
+
         dialog.Resources["ContentDialogBackground"] = Application.Current.Resources["DialogAcrylicBrush"];
         dialog.Resources["ContentDialogBorderBrush"] = Application.Current.Resources["CardStrokeBrush"];
         dialog.Resources["ContentDialogCornerRadius"] = new CornerRadius(8);
@@ -2432,6 +2516,11 @@ public sealed partial class MainWindow : Window
 
         if (e.Key == Windows.System.VirtualKey.Enter)
         {
+            if (_textComposing)
+            {
+                return;
+            }
+
             e.Handled = true;
             CommitSubtaskAdd(box, keepOpen: true);
         }

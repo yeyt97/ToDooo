@@ -232,57 +232,65 @@
                     </Grid>
                 </Grid>
 
-                <!--  智能视图 + 颜色筛选  -->
-                <StackPanel
-                    Grid.Row="3"
-                    Margin="14,0,14,8"
-                    Spacing="6">
-                    <StackPanel
-                        x:Name="SmartViewPanel"
-                        Orientation="Horizontal"
-                        Spacing="6" />
-                    <StackPanel
-                        x:Name="TagPanel"
-                        Orientation="Horizontal"
-                        Spacing="2" />
-                </StackPanel>
+                <!--  智能视图 + 颜色筛选，最右是“新建”入口  -->
+                <Grid Grid.Row="3" Margin="14,0,14,8" ColumnSpacing="4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Spacing="6" VerticalAlignment="Center">
+                        <StackPanel
+                            x:Name="SmartViewPanel"
+                            Orientation="Horizontal"
+                            Spacing="6" />
+                        <StackPanel
+                            x:Name="TagPanel"
+                            Orientation="Horizontal"
+                            Spacing="2" />
+                    </StackPanel>
+                    <Button
+                        x:Name="AddTaskButton"
+                        Grid.Column="1"
+                        AutomationProperties.Name="新建待办"
+                        Style="{StaticResource FlatIconButtonStyle}"
+                        VerticalAlignment="Center"
+                        Click="AddTaskButton_Click">
+                        <FontIcon Glyph="&#xE710;" FontSize="12" />
+                    </Button>
+                </Grid>
 
                 <!--  添加入口：常驻输入框，回车或离焦即提交；右侧清除 + 详细新建  -->
                 <Grid
                     x:Name="AddBar"
                     Grid.Row="4"
                     Height="46"
-                    Margin="12,0,12,8">
+                    Margin="12,0,12,8"
+                    Visibility="Collapsed">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="34" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <Border
-                        Grid.ColumnSpan="4"
+                        Grid.ColumnSpan="3"
                         Background="{ThemeResource ItemCardBrush}"
                         BorderBrush="{ThemeResource ItemCardStrokeBrush}"
                         BorderThickness="1"
                         CornerRadius="{StaticResource ItemCornerRadius}" />
-                    <FontIcon
-                        Grid.Column="0"
-                        Glyph="&#xE710;"
-                        FontSize="13"
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center"
-                        Foreground="{ThemeResource TextSecondaryBrush}" />
                     <TextBox
                         x:Name="AddTextBox"
-                        Grid.Column="1"
+                        Grid.Column="0"
                         Height="46"
+                        Margin="12,0,4,0"
                         Style="{StaticResource AddTextBoxStyle}"
                         TextChanged="AddTextBox_TextChanged"
                         KeyDown="AddTextBox_KeyDown"
-                        LostFocus="AddTextBox_LostFocus" />
+                        LostFocus="AddTextBox_LostFocus"
+                        TextCompositionStarted="AddTextBox_TextCompositionStarted"
+                        TextCompositionEnded="AddTextBox_TextCompositionEnded" />
                     <Button
                         x:Name="ClearAddButton"
-                        Grid.Column="2"
+                        Grid.Column="1"
                         AutomationProperties.Name="清除输入"
                         Margin="0,0,2,0"
                         Visibility="Collapsed"
@@ -292,7 +300,7 @@
                     </Button>
                     <Button
                         x:Name="AddDetailButton"
-                        Grid.Column="3"
+                        Grid.Column="2"
                         AutomationProperties.Name="详细添加"
                         Margin="0,0,6,0"
                         Style="{StaticResource CardActionButtonStyle}"
@@ -404,7 +412,6 @@
                                             Click="SubtaskAddButton_Click"
                                             Loaded="SubtaskAddControl_Loaded"
                                             PointerEntered="SubtaskProgress_PointerEntered"
-                                            PointerExited="SubtaskProgress_PointerExited"
                                             Style="{StaticResource SubtaskToggleStyle}">
                                             <Grid>
                                                 <StackPanel
@@ -528,6 +535,8 @@
                                                     Tag="SubtaskAddBox"
                                                     KeyDown="SubtaskAddBox_KeyDown"
                                                     LostFocus="SubtaskAddBox_LostFocus"
+                                                    TextCompositionStarted="AddTextBox_TextCompositionStarted"
+                                                    TextCompositionEnded="AddTextBox_TextCompositionEnded"
                                                     PlaceholderText="添加子任务，回车确认"
                                                     Style="{StaticResource AddTextBoxStyle}" />
                                             </Grid>

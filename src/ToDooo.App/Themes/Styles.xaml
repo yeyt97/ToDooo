@@ -6,73 +6,40 @@
     <!-- DeskBox-inspired neutral slate palette.
          Widget 本体是深色亚克力，内容靠「半透明层次」而不是强调色区分：
          窗口底 -> 分段条 -> 任务卡片 -> 悬停层，逐级提亮。 -->
-    <ResourceDictionary.ThemeDictionaries>
-        <ResourceDictionary x:Key="Default">
-            <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F5F5F5" />
-            <SolidColorBrush x:Key="TextSecondaryBrush" Color="#C9D0D8" />
-            <SolidColorBrush x:Key="TextMutedBrush" Color="#939DA9" />
-            <SolidColorBrush x:Key="DividerBrush" Color="#1AFFFFFF" />
-            <SolidColorBrush x:Key="OverdueBrush" Color="#F2C94C" />
-            <SolidColorBrush x:Key="HoverBrush" Color="#14FFFFFF" />
-            <SolidColorBrush x:Key="PressedBrush" Color="#20FFFFFF" />
-            <SolidColorBrush x:Key="LayerFillSecondaryBrush" Color="#0BFFFFFF" />
-            <SolidColorBrush x:Key="LayerStrokeBrush" Color="#14FFFFFF" />
-            <SolidColorBrush x:Key="ItemCardBrush" Color="#12FFFFFF" />
-            <SolidColorBrush x:Key="ItemCardHoverBrush" Color="#1EFFFFFF" />
-            <SolidColorBrush x:Key="ItemCardStrokeBrush" Color="#0CFFFFFF" />
-            <SolidColorBrush x:Key="SegmentBarBrush" Color="#0AFFFFFF" />
-            <SolidColorBrush x:Key="SegmentSelectedBrush" Color="#26FFFFFF" />
-            <SolidColorBrush x:Key="OverlaySurfaceBrush" Color="#2A3038" />
-            <SolidColorBrush x:Key="NeutralCheckFillBrush" Color="#EDEFF2" />
-            <SolidColorBrush x:Key="CheckGlyphBrush" Color="#262B33" />
-            <SolidColorBrush x:Key="CheckBorderBrush" Color="#7A828E" />
+    <!-- 色板：深色为基线，运行时由 ThemePalette 直接改画刷颜色/透明度，
+         这样切换主题、拖不透明度滑杆都能立即生效（ThemeDictionaries 在应用级字典里
+         不会跟随窗口的 RequestedTheme）。 -->
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F5F5F5" />
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#C9D0D8" />
+    <SolidColorBrush x:Key="TextMutedBrush" Color="#939DA9" />
+    <SolidColorBrush x:Key="DividerBrush" Color="#1AFFFFFF" />
+    <SolidColorBrush x:Key="OverdueBrush" Color="#F2C94C" />
+    <SolidColorBrush x:Key="HoverBrush" Color="#14FFFFFF" />
+    <SolidColorBrush x:Key="PressedBrush" Color="#20FFFFFF" />
+    <SolidColorBrush x:Key="LayerFillSecondaryBrush" Color="#0BFFFFFF" />
+    <SolidColorBrush x:Key="LayerStrokeBrush" Color="#14FFFFFF" />
+    <SolidColorBrush x:Key="ItemCardBrush" Color="#12FFFFFF" />
+    <SolidColorBrush x:Key="ItemCardHoverBrush" Color="#1EFFFFFF" />
+    <SolidColorBrush x:Key="ItemCardStrokeBrush" Color="#0CFFFFFF" />
+    <SolidColorBrush x:Key="SegmentBarBrush" Color="#0AFFFFFF" />
+    <SolidColorBrush x:Key="SegmentSelectedBrush" Color="#26FFFFFF" />
+    <SolidColorBrush x:Key="OverlaySurfaceBrush" Color="#2A3038" />
+    <SolidColorBrush x:Key="NeutralCheckFillBrush" Color="#EDEFF2" />
+    <SolidColorBrush x:Key="CheckGlyphBrush" Color="#262B33" />
+    <SolidColorBrush x:Key="CheckBorderBrush" Color="#7A828E" />
 
-            <LinearGradientBrush x:Key="CardBrush" StartPoint="0,0" EndPoint="0.35,1">
-                <GradientStop Color="#5E2E343D" Offset="0" />
-                <GradientStop Color="#542A3038" Offset="0.55" />
-                <GradientStop Color="#5E262B33" Offset="1" />
-            </LinearGradientBrush>
+    <LinearGradientBrush x:Key="CardBrush" StartPoint="0,0" EndPoint="0.35,1">
+        <GradientStop Color="#5E2E343D" Offset="0" />
+        <GradientStop Color="#542A3038" Offset="0.55" />
+        <GradientStop Color="#5E262B33" Offset="1" />
+    </LinearGradientBrush>
 
-            <LinearGradientBrush x:Key="CardStrokeBrush" StartPoint="0,0" EndPoint="1,1">
-                <GradientStop Color="#18FFFFFF" Offset="0" />
-                <GradientStop Color="#0AFFFFFF" Offset="0.5" />
-                <GradientStop Color="#14FFFFFF" Offset="1" />
-            </LinearGradientBrush>
-        </ResourceDictionary>
+    <LinearGradientBrush x:Key="CardStrokeBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#18FFFFFF" Offset="0" />
+        <GradientStop Color="#0AFFFFFF" Offset="0.5" />
+        <GradientStop Color="#14FFFFFF" Offset="1" />
+    </LinearGradientBrush>
 
-        <ResourceDictionary x:Key="Light">
-            <SolidColorBrush x:Key="TextPrimaryBrush" Color="#1B1B1F" />
-            <SolidColorBrush x:Key="TextSecondaryBrush" Color="#43464C" />
-            <SolidColorBrush x:Key="TextMutedBrush" Color="#6C7077" />
-            <SolidColorBrush x:Key="DividerBrush" Color="#14000000" />
-            <SolidColorBrush x:Key="OverdueBrush" Color="#A15E00" />
-            <SolidColorBrush x:Key="HoverBrush" Color="#0F000000" />
-            <SolidColorBrush x:Key="PressedBrush" Color="#1A000000" />
-            <SolidColorBrush x:Key="LayerFillSecondaryBrush" Color="#08000000" />
-            <SolidColorBrush x:Key="LayerStrokeBrush" Color="#12000000" />
-            <SolidColorBrush x:Key="ItemCardBrush" Color="#0D000000" />
-            <SolidColorBrush x:Key="ItemCardHoverBrush" Color="#17000000" />
-            <SolidColorBrush x:Key="ItemCardStrokeBrush" Color="#0F000000" />
-            <SolidColorBrush x:Key="SegmentBarBrush" Color="#08000000" />
-            <SolidColorBrush x:Key="SegmentSelectedBrush" Color="#1A000000" />
-            <SolidColorBrush x:Key="OverlaySurfaceBrush" Color="#F3F3F6" />
-            <SolidColorBrush x:Key="NeutralCheckFillBrush" Color="#2A2A2E" />
-            <SolidColorBrush x:Key="CheckGlyphBrush" Color="#FFFFFF" />
-            <SolidColorBrush x:Key="CheckBorderBrush" Color="#8A8A92" />
-
-            <LinearGradientBrush x:Key="CardBrush" StartPoint="0,0" EndPoint="0.35,1">
-                <GradientStop Color="#66FFFFFF" Offset="0" />
-                <GradientStop Color="#5CF7F7FA" Offset="0.55" />
-                <GradientStop Color="#66F0F0F4" Offset="1" />
-            </LinearGradientBrush>
-
-            <LinearGradientBrush x:Key="CardStrokeBrush" StartPoint="0,0" EndPoint="1,1">
-                <GradientStop Color="#33000000" Offset="0" />
-                <GradientStop Color="#16000000" Offset="0.5" />
-                <GradientStop Color="#26000000" Offset="1" />
-            </LinearGradientBrush>
-        </ResourceDictionary>
-    </ResourceDictionary.ThemeDictionaries>
 
     <!-- 与 Windows 11 窗口自身的圆角半径(≈8)对齐，避免系统圆角和卡片圆角叠成「双层厚角」。 -->
     <CornerRadius x:Key="CardCornerRadius">8</CornerRadius>

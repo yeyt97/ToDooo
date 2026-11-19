@@ -16,10 +16,25 @@ public static class Appearance
     {
         ThemeMode.Dark => true,
         ThemeMode.Light => false,
-        _ => Application.Current.RequestedTheme == ApplicationTheme.Dark,
+        _ => IsSystemDark(),
     };
+
+    /// <summary>Application.RequestedTheme 不反映系统值，直接读“应用模式”注册表。</summary>
+    private static bool IsSystemDark()
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+            return key?.GetValue("AppsUseLightTheme") is int value && value == 0;
+        }
+        catch
+        {
+            return Application.Current.RequestedTheme == ApplicationTheme.Dark;
+        }
+    }
 
     /// <summary>40%–100% 的“不透明度”映射到亚克力 tint：0.10–0.58。</summary>
     public static float TintForOpacity(double opacity)
-        => (float)Math.Clamp(0.1 + (Math.Clamp(opacity, 0.4, 1.0) - 0.4) * 0.8, 0.1, 0.75);
+        => (float)Math.Clamp(0.05 + (Math.Clamp(opacity, 0.4, 1.0) - 0.4) * 1.0, 0.05, 0.7);
 }

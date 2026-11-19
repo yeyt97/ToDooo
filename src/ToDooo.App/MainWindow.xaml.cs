@@ -132,6 +132,7 @@ public sealed partial class MainWindow : Window
         }
 
         Root.RequestedTheme = Appearance.ToElementTheme((ThemeMode)_settings.Current.ThemeMode);
+        ThemePalette.Apply(Appearance.IsDark((ThemeMode)_settings.Current.ThemeMode), _settings.Current.WindowOpacity);
         ApplyAcrylicMaterial();
 
         var exStyle = NativeMethods.GetWindowLongPtr(_hwnd, NativeMethods.GWL_EXSTYLE).ToInt64();
@@ -181,6 +182,7 @@ public sealed partial class MainWindow : Window
     {
         Root.RequestedTheme = Appearance.ToElementTheme((ThemeMode)_settings.Current.ThemeMode);
         var dark = Appearance.IsDark((ThemeMode)_settings.Current.ThemeMode);
+        ThemePalette.Apply(dark, _settings.Current.WindowOpacity);
         ApplyDwmTheme(dark);
 
         if (_acrylic is not null)
@@ -206,19 +208,7 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>按当前窗口实际主题取主题字典里的画刷，供代码创建/设置的视觉使用。</summary>
-    private Brush PaletteBrush(string key)
-    {
-        var themeKey = Root.ActualTheme == ElementTheme.Light ? "Light" : "Default";
-        if (Application.Current.Resources.ThemeDictionaries.TryGetValue(themeKey, out var dictionary) &&
-            dictionary is ResourceDictionary themeDictionary &&
-            themeDictionary.TryGetValue(key, out var value) &&
-            value is Brush brush)
-        {
-            return brush;
-        }
-
-        return (Brush)Application.Current.Resources[key];
-    }
+    private static Brush PaletteBrush(string key) => (Brush)Application.Current.Resources[key];
 
     private Color NeutralRingColor()
         => Root.ActualTheme == ElementTheme.Light

@@ -325,15 +325,14 @@
                                             IsChecked="{x:Bind IsDone, Mode=OneWay}"
                                             Click="DoneCheckBox_Click"
                                             Loaded="DoneCheckBox_Loaded"
-                                            VerticalAlignment="Top"
-                                            Margin="0,-1,0,0" />
+                                            VerticalAlignment="Center" />
 
                                         <Border
                                             Grid.Column="1"
                                             Width="3"
                                             Height="20"
-                                            Margin="0,-1,5,0"
-                                            VerticalAlignment="Top"
+                                            Margin="0,0,5,0"
+                                            VerticalAlignment="Center"
                                             Background="{x:Bind helpers:Bind.TagBrush(TagIndex), Mode=OneWay}"
                                             CornerRadius="1.5"
                                             Visibility="{x:Bind helpers:Bind.HasTag(TagIndex), Mode=OneWay}" />
@@ -450,8 +449,7 @@
                                             Tag="ItemActions"
                                             Style="{StaticResource CardActionButtonStyle}"
                                             Click="QuickImportant_Click"
-                                            VerticalAlignment="Top"
-                                            Margin="0,-4,0,0"
+                                            VerticalAlignment="Center"
                                             Background="Transparent"
                                             BorderThickness="0"
                                             IsHitTestVisible="{x:Bind IsImportant, Mode=OneWay}"

@@ -329,6 +329,14 @@ public sealed partial class MainWindow : Window
     /// </summary>
     public void ShowTrayMenu()
     {
+        // 托盘消息是在窗口过程里来的，直接在里面弹 XAML 菜单会重入消息循环（激活、弹窗都要
+        // 等 UI 线程，而 UI 线程正卡在这个回调里），表现就是右键一下整个应用不动。
+        // 先切回正常的 dispatcher 回调，再弹菜单。
+        _dispatcher.TryEnqueue(ShowTrayMenuCore);
+    }
+
+    private void ShowTrayMenuCore()
+    {
         // 内容树还没挂上 XamlRoot 时（启动瞬间）飞来托盘消息，直接跳过。
         if (Root.XamlRoot is null)
         {

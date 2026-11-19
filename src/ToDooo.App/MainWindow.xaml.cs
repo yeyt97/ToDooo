@@ -1602,7 +1602,11 @@ public sealed partial class MainWindow : Window
 
         // 子任务区随收起消失时 PointerExited 不一定会到，手动把拖动开关还原。
         _pointerOverSubtasks = false;
-        TodoList.CanDragItems = true;
+        if (!_subtaskDragActive)
+        {
+            TodoList.CanDragItems = true;
+            TodoList.CanReorderItems = true;
+        }
     }
 
     private void SubtasksToggle_Click(object sender, RoutedEventArgs e)
@@ -1633,6 +1637,7 @@ public sealed partial class MainWindow : Window
     {
         _pointerOverSubtasks = true;
         TodoList.CanDragItems = false;
+        TodoList.CanReorderItems = false;
     }
 
     private void SubtaskListArea_PointerExited(object sender, PointerRoutedEventArgs e)
@@ -1647,13 +1652,20 @@ public sealed partial class MainWindow : Window
             }
         }
 
+        // 子任务拖到列表外时指针会离开这个区域，但拖动还没结束，别急着把列表拖动打开。
+        if (_subtaskDragActive)
+        {
+            return;
+        }
+
         _pointerOverSubtasks = false;
         TodoList.CanDragItems = true;
+        TodoList.CanReorderItems = true;
     }
 
     private void TodoList_DragItemsStarting(object sender, DragItemsStartingEventArgs e)
     {
-        if (_pointerOverSubtasks)
+        if (_pointerOverSubtasks || _subtaskDragActive)
         {
             e.Cancel = true;
         }
@@ -1661,12 +1673,14 @@ public sealed partial class MainWindow : Window
 
     private const string SubtaskDragKey = "ToDoooSubtask";
     private long _lastSubtaskDropTicks;
+    private bool _subtaskDragActive;
 
     private void SubtaskRow_DragStarting(UIElement sender, DragStartingEventArgs args)
     {
         if (sender is FrameworkElement { DataContext: SubtaskItem subtask })
         {
             _draggedSubtask = subtask;
+            _subtaskDragActive = true;
             args.Data.Properties[SubtaskDragKey] = true;
             args.Data.RequestedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
         }
@@ -1684,7 +1698,11 @@ public sealed partial class MainWindow : Window
     private void SubtaskRow_DropCompleted(UIElement sender, DropCompletedEventArgs args)
     {
         _draggedSubtask = null;
+        _subtaskDragActive = false;
+        _pointerOverSubtasks = false;
         _lastSubtaskDropTicks = Environment.TickCount64;
+        TodoList.CanDragItems = true;
+        TodoList.CanReorderItems = true;
     }
 
     private void SubtaskRow_Drop(object sender, DragEventArgs e)

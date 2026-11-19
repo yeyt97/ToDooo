@@ -302,9 +302,10 @@ public sealed partial class MainWindow : Window
             }
             else
             {
+                // 取消钉住：脱离桌面层后是普通窗口，不置顶，可以被其他窗口盖住。
                 NativeMethods.SetWindowLongPtr(_hwnd, NativeMethods.GWLP_HWNDPARENT, IntPtr.Zero);
                 NativeMethods.SetWindowPos(
-                    _hwnd, NativeMethods.HWND_TOPMOST, 0, 0, 0, 0,
+                    _hwnd, NativeMethods.HWND_NOTOPMOST, 0, 0, 0, 0,
                     NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE
                     | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW);
                 _hostHwnd = IntPtr.Zero;
@@ -640,6 +641,18 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void MoreFlyout_Opening(object sender, object e)
+    {
+        PinMenuItem.IsChecked = _pinned;
+    }
+
+    private void PinMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        ApplyPin(PinMenuItem.IsChecked, persist: true);
+        // 钉住失败（找不到桌面图标层）时回滚勾选状态。
+        PinMenuItem.IsChecked = _pinned;
+    }
+
     private void SettingsMenuItem_Click(object sender, RoutedEventArgs e)
     {
         if (_settingsWindow is not null)
@@ -651,8 +664,7 @@ public sealed partial class MainWindow : Window
         _settingsWindow = new Views.SettingsWindow(
             _settings,
             OnSettingsChanged,
-            ExportDataAsync,
-            pinned => ApplyPin(pinned, persist: true));
+            ExportDataAsync);
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         _settingsWindow.ShowOver(_appWindow);
     }
@@ -908,7 +920,7 @@ public sealed partial class MainWindow : Window
         var height = _dragStartRect.Bottom - _dragStartRect.Top;
 
         NativeMethods.SetWindowPos(
-            _hwnd, _pinned ? NativeMethods.HWND_BOTTOM : NativeMethods.HWND_TOPMOST,
+            _hwnd, _pinned ? NativeMethods.HWND_BOTTOM : NativeMethods.HWND_NOTOPMOST,
             screenX, screenY, width, height, NativeMethods.SWP_NOACTIVATE);
     }
 

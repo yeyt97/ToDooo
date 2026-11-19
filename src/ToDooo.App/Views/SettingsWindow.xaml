@@ -130,20 +130,6 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Style="{StaticResource LabelText}" Text="钉在桌面" />
-                            <ToggleSwitch
-                                x:Name="PinToggle"
-                                Grid.Column="1"
-                                MinWidth="0"
-                                OffContent=""
-                                OnContent=""
-                                Toggled="PinToggle_Toggled" />
-                        </Grid>
-                        <Grid ColumnSpacing="12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
                             <TextBlock Style="{StaticResource LabelText}" Text="提前提醒" />
                             <ComboBox
                                 x:Name="LeadBox"

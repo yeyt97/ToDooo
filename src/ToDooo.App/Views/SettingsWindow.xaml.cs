@@ -21,7 +21,6 @@ public sealed partial class SettingsWindow : Window
     private readonly SettingsService _settings;
     private readonly Action _settingsChanged;
     private readonly Func<Task> _exportRequested;
-    private readonly Action<bool> _pinChanged;
     private readonly IntPtr _hwnd;
     private readonly AppWindow _appWindow;
     private SystemBackdropConfiguration? _backdropConfig;
@@ -32,13 +31,11 @@ public sealed partial class SettingsWindow : Window
     public SettingsWindow(
         SettingsService settings,
         Action settingsChanged,
-        Func<Task> exportRequested,
-        Action<bool> pinChanged)
+        Func<Task> exportRequested)
     {
         _settings = settings;
         _settingsChanged = settingsChanged;
         _exportRequested = exportRequested;
-        _pinChanged = pinChanged;
 
         InitializeComponent();
         Root.RequestedTheme = Appearance.ToElementTheme((ThemeMode)settings.Current.ThemeMode);
@@ -55,7 +52,6 @@ public sealed partial class SettingsWindow : Window
         OpacitySlider.Value = Math.Clamp(settings.Current.WindowOpacity, 0.4, 1.0);
         OpacityValue.Text = $"{Math.Round(OpacitySlider.Value * 100)}%";
         StartupToggle.IsOn = StartupService.IsEnabled;
-        PinToggle.IsOn = settings.Current.PinnedToDesktop;
         LeadBox.SelectedIndex = Math.Max(0, Array.IndexOf(LeadOptions, settings.Current.ReminderLeadMinutes));
 
         _ready = true;
@@ -250,16 +246,6 @@ public sealed partial class SettingsWindow : Window
         }
 
         StartupService.SetEnabled(StartupToggle.IsOn);
-    }
-
-    private void PinToggle_Toggled(object sender, RoutedEventArgs e)
-    {
-        if (!_ready)
-        {
-            return;
-        }
-
-        _pinChanged(PinToggle.IsOn);
     }
 
     private void LeadBox_SelectionChanged(object sender, SelectionChangedEventArgs e)

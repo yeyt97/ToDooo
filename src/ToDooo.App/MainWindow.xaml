@@ -79,7 +79,9 @@
                         Style="{StaticResource FlatIconButtonStyle}">
                         <FontIcon Glyph="&#xE712;" FontSize="14" />
                         <Button.Flyout>
-                            <MenuFlyout>
+                            <MenuFlyout Opening="MoreFlyout_Opening">
+                                <ToggleMenuFlyoutItem x:Name="PinMenuItem" Text="钉在桌面" Click="PinMenuItem_Click" />
+                                <MenuFlyoutSeparator />
                                 <MenuFlyoutItem Text="设置…" Click="SettingsMenuItem_Click" />
                                 <MenuFlyoutSeparator />
                                 <MenuFlyoutItem Text="退出 ToDooo" Click="ExitMenuItem_Click" />

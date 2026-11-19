@@ -321,16 +321,39 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>托盘右键菜单：用 WinUI MenuFlyout，跟窗口同一套暗色圆角菜单样式。</summary>
+    private bool _trayMenuOpen;
+
+    /// <summary>
+    /// 托盘右键菜单：优先 WinUI MenuFlyout；它一旦抛异常（窗口未激活等），
+    /// 直接退回深色 Win32 菜单，保证菜单一定能出来，顺便把异常记进日志。
+    /// </summary>
     public void ShowTrayMenu()
     {
-        // 内容树还没挂上 XamlRoot 时（启动瞬间）飞来托盘消息，直接跳过，避免 ShowAt 抛异常。
+        // 内容树还没挂上 XamlRoot 时（启动瞬间）飞来托盘消息，直接跳过。
         if (Root.XamlRoot is null)
         {
             return;
         }
 
-        NativeMethods.SetForegroundWindow(_hwnd);
+        _trayMenuOpen = true;
+        try
+        {
+            Activate();
+            NativeMethods.SetForegroundWindow(_hwnd);
+            ShowWinUiTrayMenu();
+            return;
+        }
+        catch (Exception exception)
+        {
+            _trayMenuOpen = false;
+            LogMenuFailure(exception);
+        }
 
+        ShowNativeTrayMenu();
+    }
+
+    private void ShowWinUiTrayMenu()
+    {
         NativeMethods.GetCursorPos(out var cursor);
         NativeMethods.ScreenToClient(_hwnd, ref cursor);
         var scale = NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
@@ -340,14 +363,14 @@ public sealed partial class MainWindow : Window
         var showItem = new MenuFlyoutItem
         {
             Text = "显示待办",
-            Icon = new FontIcon { Glyph = "" },
+            Icon = new FontIcon { Glyph = "\uE7B3" },
         };
         showItem.Click += (_, _) => ShowFromTray();
 
         var addItem = new MenuFlyoutItem
         {
             Text = "添加待办",
-            Icon = new FontIcon { Glyph = "" },
+            Icon = new FontIcon { Glyph = "\uE710" },
         };
         addItem.Click += (_, _) =>
         {
@@ -359,14 +382,14 @@ public sealed partial class MainWindow : Window
         {
             Text = "开机自启",
             IsChecked = StartupService.IsEnabled,
-            Icon = new FontIcon { Glyph = "" },
+            Icon = new FontIcon { Glyph = "\uE768" },
         };
         startupItem.Click += (_, _) => StartupService.SetEnabled(startupItem.IsChecked);
 
         var exitItem = new MenuFlyoutItem
         {
             Text = "退出 ToDooo",
-            Icon = new FontIcon { Glyph = "" },
+            Icon = new FontIcon { Glyph = "\uE7E8" },
         };
         exitItem.Click += (_, _) => ExitApp();
 
@@ -377,10 +400,73 @@ public sealed partial class MainWindow : Window
         flyout.Items.Add(new MenuFlyoutSeparator());
         flyout.Items.Add(exitItem);
 
+        flyout.Closed += (_, _) =>
+        {
+            _trayMenuOpen = false;
+            _dispatcher.TryEnqueue(BedToDesktop);
+        };
+
         flyout.ShowAt(Root, new FlyoutShowOptions
         {
             Position = new Windows.Foundation.Point(cursor.X / scale, cursor.Y / scale),
         });
+    }
+
+    /// <summary>WinUI 菜单不可用时的兜底：系统深色弹出菜单（EnableDarkWin32Menus 已把主题设为 ForceDark）。</summary>
+    private void ShowNativeTrayMenu()
+    {
+        NativeMethods.GetCursorPos(out var point);
+
+        var menu = NativeMethods.CreatePopupMenu();
+        var startupLabel = StartupService.IsEnabled ? "开机自启 · 已开启" : "开机自启 · 已关闭";
+        NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 1, "显示待办");
+        NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 2, "添加待办");
+        NativeMethods.AppendMenuW(menu, NativeMethods.MF_SEPARATOR, 0, null);
+        NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 3, startupLabel);
+        NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 4, "导出数据…");
+        NativeMethods.AppendMenuW(menu, NativeMethods.MF_SEPARATOR, 0, null);
+        NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 5, "退出 ToDooo");
+
+        var command = NativeMethods.TrackPopupMenuEx(
+            menu,
+            NativeMethods.TPM_RETURNCMD | NativeMethods.TPM_RIGHTBUTTON | NativeMethods.TPM_NONOTIFY,
+            point.X, point.Y, _hwnd, IntPtr.Zero);
+
+        NativeMethods.DestroyMenu(menu);
+        NativeMethods.PostMessageW(_hwnd, NativeMethods.WM_NULL, IntPtr.Zero, IntPtr.Zero);
+        BedToDesktop();
+
+        switch (command)
+        {
+            case 1:
+                ShowFromTray();
+                break;
+            case 2:
+                ShowFromTray();
+                _ = AddDetailedAsync();
+                break;
+            case 3:
+                StartupService.SetEnabled(!StartupService.IsEnabled);
+                break;
+            case 4:
+                ExportMenuItem_Click(this, new RoutedEventArgs());
+                break;
+            case 5:
+                ExitApp();
+                break;
+        }
+    }
+
+    private static void LogMenuFailure(Exception exception)
+    {
+        try
+        {
+            File.AppendAllText(AppPaths.LogPath, $"[{DateTime.Now:O}] tray menu failed: {exception}\r\n");
+        }
+        catch
+        {
+            // 日志失败忽略
+        }
     }
 
     private List<TodoItem>? _undoItems;
@@ -564,9 +650,13 @@ public sealed partial class MainWindow : Window
 
             case NativeMethods.WM_ACTIVATE:
                 // 点击激活会把窗口提到应用窗口之上，激活后立即沉回桌面层。
+                // 托盘菜单展开期间例外：沉底会把 flyout 一起收掉，等菜单关了再沉。
                 if ((wParam.ToInt64() & 0xFFFF) != 0)
                 {
-                    _dispatcher.TryEnqueue(BedToDesktop);
+                    if (!_trayMenuOpen)
+                    {
+                        _dispatcher.TryEnqueue(BedToDesktop);
+                    }
                 }
                 else
                 {

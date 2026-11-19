@@ -366,20 +366,30 @@
                                                 Visibility="{x:Bind helpers:Bind.VisibleWhen(HasSubtasks), Mode=OneWay}">
                                                 <Button
                                                     AutomationProperties.Name="展开子任务"
-                                                    HorizontalAlignment="Left"
-                                                    Padding="0,2"
+                                                    Padding="3,2,6,2"
                                                     Click="SubtasksToggle_Click"
-                                                    Style="{StaticResource LinkButtonStyle}">
-                                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                                    Style="{StaticResource SubtaskToggleStyle}">
+                                                    <StackPanel
+                                                        Orientation="Horizontal"
+                                                        Spacing="5"
+                                                        VerticalAlignment="Center">
                                                         <FontIcon
-                                                            Glyph="{x:Bind helpers:Bind.ChevronGlyph(SubtasksExpanded), Mode=OneWay}"
-                                                            FontSize="9"
+                                                            Width="10"
                                                             VerticalAlignment="Center"
-                                                            Foreground="{ThemeResource TextMutedBrush}" />
+                                                            FontSize="8"
+                                                            Foreground="{ThemeResource TextMutedBrush}"
+                                                            Glyph="{x:Bind helpers:Bind.ChevronGlyph(SubtasksExpanded), Mode=OneWay}" />
                                                         <TextBlock
-                                                            Text="{x:Bind SubtaskProgressText, Mode=OneWay}"
+                                                            VerticalAlignment="Center"
                                                             FontSize="11"
-                                                            VerticalAlignment="Center" />
+                                                            Foreground="{ThemeResource TextMutedBrush}"
+                                                            Text="子任务" />
+                                                        <TextBlock
+                                                            VerticalAlignment="Center"
+                                                            FontSize="11"
+                                                            FontWeight="SemiBold"
+                                                            Foreground="{ThemeResource TextSecondaryBrush}"
+                                                            Text="{x:Bind SubtaskProgressText, Mode=OneWay}" />
                                                     </StackPanel>
                                                 </Button>
                                                 <ItemsControl
@@ -389,18 +399,16 @@
                                                         <DataTemplate x:DataType="models:SubtaskItem">
                                                             <Grid
                                                                 Margin="0,1"
-                                                                ColumnSpacing="2">
+                                                                ColumnSpacing="4">
                                                                 <Grid.ColumnDefinitions>
                                                                     <ColumnDefinition Width="Auto" />
                                                                     <ColumnDefinition Width="*" />
                                                                 </Grid.ColumnDefinitions>
                                                                 <CheckBox
-                                                                    MinWidth="0"
-                                                                    MinHeight="0"
-                                                                    Padding="2,0,4,0"
                                                                     AutomationProperties.Name="子任务完成"
                                                                     Click="SubtaskCheck_Click"
                                                                     IsChecked="{x:Bind IsDone, Mode=OneWay}"
+                                                                    Style="{StaticResource TodoCompletionCheckBoxStyle}"
                                                                     VerticalAlignment="Center" />
                                                                 <TextBlock
                                                                     Grid.Column="1"

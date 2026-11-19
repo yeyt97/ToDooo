@@ -1634,12 +1634,50 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void SubtasksToggle_Click(object sender, RoutedEventArgs e)
+    private void SubtaskProgress_PointerEntered(object sender, PointerRoutedEventArgs e) =>
+        SetSubtaskProgressMode(sender, adding: true);
+
+    private void SubtaskProgress_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is Button button)
+        {
+            var point = e.GetCurrentPoint(button).Position;
+            if (point.X >= 0 && point.Y >= 0 &&
+                point.X <= button.ActualWidth && point.Y <= button.ActualHeight)
+            {
+                return;
+            }
+        }
+
+        SetSubtaskProgressMode(sender, adding: false);
+    }
+
+    private static void SetSubtaskProgressMode(object sender, bool adding)
+    {
+        if (sender is not DependencyObject root)
+        {
+            return;
+        }
+
+        if (FindTaggedChild<StackPanel>(root, "SubtaskProgressView") is { } progress)
+        {
+            progress.Visibility = adding ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        if (FindTaggedChild<StackPanel>(root, "SubtaskProgressAdd") is { } hint)
+        {
+            hint.Visibility = adding ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
+
+    // 平时显示“子任务 2/5”，鼠标移上去变成“添加子任务”，点一下直接开始输入。
+    private void SubtaskAddButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button { DataContext: TodoItem item })
         {
-            item.SubtasksExpanded = !item.SubtasksExpanded;
-            ResetSubtaskDragGuardIfCollapsed(item);
+            item.SubtasksExpanded = true;
+            item.SubtaskAddActive = true;
+            DispatcherQueue.TryEnqueue(() => FocusSubtaskAddBox(item));
         }
     }
 

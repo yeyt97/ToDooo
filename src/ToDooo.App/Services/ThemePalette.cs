@@ -83,6 +83,31 @@ public static class ThemePalette
         Argb(0x26, 0x00, 0x00, 0x00),
     };
 
+    /// <summary>
+    /// 输入框的文字色和光标色走 TextControl* 这套框架资源；它们按“应用主题”解析，
+    /// 不会跟着窗口的 RequestedTheme 变（浅色下光标还是白的）。这里用共享画刷覆盖掉，
+    /// 光标和文字都和窗口主题一致。
+    /// </summary>
+    public static void ApplyTextControlPalette(ResourceDictionary resources)
+    {
+        var app = Application.Current.Resources;
+        void Set(string key, string paletteKey)
+        {
+            if (!resources.ContainsKey(key))
+            {
+                resources[key] = app[paletteKey];
+            }
+        }
+
+        Set("TextControlForeground", "TextPrimaryBrush");
+        Set("TextControlForegroundFocused", "TextPrimaryBrush");
+        Set("TextControlForegroundPointerOver", "TextPrimaryBrush");
+        Set("TextControlForegroundDisabled", "TextMutedBrush");
+        Set("TextControlPlaceholderForeground", "TextMutedBrush");
+        Set("TextControlPlaceholderForegroundFocused", "TextMutedBrush");
+        Set("TextControlPlaceholderForegroundPointerOver", "TextMutedBrush");
+    }
+
     public static void Apply(bool dark, double opacity)
     {
         var resources = Application.Current.Resources;

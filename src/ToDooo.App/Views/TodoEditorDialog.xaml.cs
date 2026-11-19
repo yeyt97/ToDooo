@@ -53,6 +53,7 @@ public sealed partial class TodoEditorDialog : Window
         _settings = settings;
         InitializeComponent();
         Root.RequestedTheme = Appearance.ToElementTheme((ThemeMode)settings.Current.ThemeMode);
+        ThemePalette.ApplyTextControlPalette(Root.Resources);
 
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         _appWindow = AppWindow.GetFromWindowId(Win32Interop.GetWindowIdFromWindow(_hwnd));

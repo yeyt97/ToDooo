@@ -57,6 +57,7 @@ public sealed partial class MainWindow : Window
         ViewModel = new MainViewModel(repository);
 
         InitializeComponent();
+        ThemePalette.ApplyTextControlPalette(Root.Resources);
         ViewModel.Load();
 
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);

@@ -42,6 +42,7 @@ public sealed partial class SettingsWindow : Window
 
         InitializeComponent();
         Root.RequestedTheme = Appearance.ToElementTheme((ThemeMode)settings.Current.ThemeMode);
+        ThemePalette.ApplyTextControlPalette(Root.Resources);
 
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         _appWindow = AppWindow.GetFromWindowId(Microsoft.UI.Win32Interop.GetWindowIdFromWindow(_hwnd));

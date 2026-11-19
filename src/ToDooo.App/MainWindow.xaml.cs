@@ -1018,14 +1018,12 @@ public sealed partial class MainWindow : Window
 
     private void UpdateTagVisuals()
     {
-        // 选中态是一块中性灰底，不再给色条套外框。
-        var selected = (Brush)Application.Current.Resources["SegmentSelectedBrush"];
+        // 选中只显示圆点里的对勾，不加灰底。
         var transparent = (Brush)Application.Current.Resources["TransparentBrush"];
         for (var i = 0; i < _tagButtons.Count; i++)
         {
-            var isSelected = ViewModel.SelectedTag == i;
-            _tagChecks[i].Visibility = isSelected ? Visibility.Visible : Visibility.Collapsed;
-            _tagButtons[i].Background = isSelected ? selected : transparent;
+            _tagChecks[i].Visibility = ViewModel.SelectedTag == i ? Visibility.Visible : Visibility.Collapsed;
+            _tagButtons[i].Background = transparent;
         }
 
         if (_tagClearButton is not null)

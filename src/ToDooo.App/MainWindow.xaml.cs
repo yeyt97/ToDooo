@@ -1652,6 +1652,7 @@ public sealed partial class MainWindow : Window
         SetSubtaskProgressMode(sender, adding: false);
     }
 
+    // 用透明度切换而不是显隐，避免切换瞬间布局重排导致指针“离开”按钮、状态卡住。
     private static void SetSubtaskProgressMode(object sender, bool adding)
     {
         if (sender is not DependencyObject root)
@@ -1661,12 +1662,12 @@ public sealed partial class MainWindow : Window
 
         if (FindTaggedChild<StackPanel>(root, "SubtaskProgressView") is { } progress)
         {
-            progress.Visibility = adding ? Visibility.Collapsed : Visibility.Visible;
+            progress.Opacity = adding ? 0 : 1;
         }
 
-        if (FindTaggedChild<StackPanel>(root, "SubtaskProgressAdd") is { } hint)
+        if (FindTaggedChild<TextBlock>(root, "SubtaskProgressAdd") is { } hint)
         {
-            hint.Visibility = adding ? Visibility.Visible : Visibility.Collapsed;
+            hint.Opacity = adding ? 1 : 0;
         }
     }
 

@@ -43,6 +43,7 @@ public static class Bind
     public static Visibility VisibleWhen(bool condition) =>
         condition ? Visibility.Visible : Visibility.Collapsed;
 
+
     public static Brush TagBrush(int tagIndex) =>
         tagIndex >= 0 && tagIndex < TagBrushes.Length ? TagBrushes[tagIndex] : TransparentBrush;
 

@@ -125,6 +125,7 @@ public sealed partial class MainWindow : Window
     public void ShowFromTray()
     {
         NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_SHOW);
+        ExpandDock();
         if (!_pinned)
         {
             Activate();
@@ -701,11 +702,19 @@ public sealed partial class MainWindow : Window
 
     private void MoreFlyout_Opening(object sender, object e)
     {
-        PinMenuItem.IsChecked = _pinned;
+        PinMenuItem.IsChecked = _settings.Current.PinnedToDesktop;
+        _moreMenuOpen = true;
+        CancelDockRetract();
+    }
+
+    private void MoreFlyout_Closed(object sender, object e)
+    {
+        _moreMenuOpen = false;
     }
 
     private void PinMenuItem_Click(object sender, RoutedEventArgs e)
     {
+        Undock();
         ApplyPin(PinMenuItem.IsChecked, persist: true);
         // 钉住失败（找不到桌面图标层）时回滚勾选状态。
         PinMenuItem.IsChecked = _pinned;
@@ -725,6 +734,7 @@ public sealed partial class MainWindow : Window
             ExportDataAsync);
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         _settingsWindow.ShowOver(_appWindow);
+        TopmostDialogIfDocked(_settingsWindow);
     }
 
     private void OnSettingsChanged()
@@ -748,6 +758,7 @@ public sealed partial class MainWindow : Window
         }
 
         _exiting = true;
+        ExpandDock();
         SavePosition();
         _tray?.Dispose();
         _reminder.Dispose();
@@ -950,6 +961,7 @@ public sealed partial class MainWindow : Window
         _dragging = false;
         ((UIElement)sender).ReleasePointerCapture(e.Pointer);
         SavePosition();
+        TryDockToEdge();
         e.Handled = true;
     }
 
@@ -1202,6 +1214,28 @@ public sealed partial class MainWindow : Window
     }
 
     private bool _sizing;
+    private bool _moreMenuOpen;
+    private bool _contextMenuOpen;
+
+    private enum EdgeDock
+    {
+        None,
+        Left,
+        Right,
+        Top,
+    }
+
+    private EdgeDock _dockEdge;
+    private bool _dockRetracted;
+    private NativeMethods.RECT _dockRect;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _dockTimer;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _dockAnimTimer;
+    private PointInt32 _animStart;
+    private PointInt32 _animTarget;
+    private int _animStep = -1;
+    private int _animWidth;
+    private int _animHeight;
+
     private int _resizeHit;
     private NativeMethods.POINT _resizeStartCursor;
     private NativeMethods.RECT _resizeStartRect;
@@ -1211,12 +1245,15 @@ public sealed partial class MainWindow : Window
     {
         AnimateRootOpacity(1);
         UpdateResizeCursor(e.GetCurrentPoint(Root).Position);
+        CancelDockRetract();
+        ExpandDock();
     }
 
     private void Root_PointerExited(object sender, PointerRoutedEventArgs e)
     {
-        AnimateRootOpacity(_settings.Current.AutoHide ? 0.25 : 1);
+        AnimateRootOpacity(_settings.Current.AutoHide && _dockEdge == EdgeDock.None ? 0.25 : 1);
         Root.SetCursor(null);
+        ScheduleDockRetract();
     }
 
     // 无边框窗口的内容层拿不到系统边缘命中，这里自己按位置判断贴边并手动缩放。
@@ -1379,6 +1416,240 @@ public sealed partial class MainWindow : Window
         var storyboard = new Storyboard();
         storyboard.Children.Add(animation);
         storyboard.Begin();
+    }
+
+    // 拖到屏幕左/右/上边缘附近松手就收进去，只留一条薄边；收进去后置顶，悬停边缘即可呼出。
+    private void TryDockToEdge()
+    {
+        if (_hwnd == IntPtr.Zero || !NativeMethods.GetWindowRect(_hwnd, out var rect))
+        {
+            return;
+        }
+
+        var scale = NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
+        var midX = rect.Left + (rect.Right - rect.Left) / 2;
+        var area = DisplayArea.GetFromPoint(
+            new PointInt32(midX, rect.Top + 20), DisplayAreaFallback.Nearest).WorkArea;
+        var threshold = (int)Math.Round(12 * scale);
+
+        if (rect.Left - area.X <= threshold)
+        {
+            DockToEdge(EdgeDock.Left, rect);
+        }
+        else if (area.X + area.Width - rect.Right <= threshold)
+        {
+            DockToEdge(EdgeDock.Right, rect);
+        }
+        else if (rect.Top - area.Y <= threshold)
+        {
+            DockToEdge(EdgeDock.Top, rect);
+        }
+        else
+        {
+            Undock();
+        }
+    }
+
+    private void DockToEdge(EdgeDock edge, NativeMethods.RECT rect)
+    {
+        _dockEdge = edge;
+        _dockRect = ClampRectToWorkArea(rect);
+        _dockRetracted = false;
+
+        // 收边期间脱离桌面层，允许置顶盖住其他窗口。
+        NativeMethods.SetWindowLongPtr(_hwnd, NativeMethods.GWLP_HWNDPARENT, IntPtr.Zero);
+        _hostHwnd = IntPtr.Zero;
+        _pinned = false;
+
+        Root.Opacity = 1;
+        RetractDock();
+    }
+
+    private void RetractDock()
+    {
+        if (_dockEdge == EdgeDock.None || _dockRetracted)
+        {
+            return;
+        }
+
+        _dockRetracted = true;
+        AnimateRootOpacity(1);
+        SlideTo(GetRetractPoint(), animate: true);
+    }
+
+    private void ExpandDock()
+    {
+        if (_dockEdge == EdgeDock.None || !_dockRetracted)
+        {
+            return;
+        }
+
+        _dockRetracted = false;
+        CancelDockAnimation();
+        Root.Opacity = 1;
+        _dockRect = ClampRectToWorkArea(_dockRect);
+        NativeMethods.SetWindowPos(
+            _hwnd, NativeMethods.HWND_TOPMOST,
+            _dockRect.Left, _dockRect.Top,
+            _dockRect.Right - _dockRect.Left, _dockRect.Bottom - _dockRect.Top,
+            NativeMethods.SWP_NOACTIVATE);
+    }
+
+    private void Undock()
+    {
+        if (_dockEdge == EdgeDock.None)
+        {
+            return;
+        }
+
+        _dockEdge = EdgeDock.None;
+        _dockRetracted = false;
+        CancelDockRetract();
+        CancelDockAnimation();
+        Root.Opacity = 1;
+
+        if (_started)
+        {
+            ApplyPin(_settings.Current.PinnedToDesktop, persist: false);
+        }
+    }
+
+    private NativeMethods.RECT ClampRectToWorkArea(NativeMethods.RECT rect)
+    {
+        var width = rect.Right - rect.Left;
+        var height = rect.Bottom - rect.Top;
+        var area = DisplayArea.GetFromPoint(
+            new PointInt32(rect.Left + width / 2, rect.Top + Math.Min(20, height / 2)),
+            DisplayAreaFallback.Nearest).WorkArea;
+
+        var left = Math.Clamp(rect.Left, area.X, area.X + Math.Max(0, area.Width - width));
+        var top = Math.Clamp(rect.Top, area.Y, area.Y + Math.Max(0, area.Height - height));
+        return new NativeMethods.RECT
+        {
+            Left = left,
+            Top = top,
+            Right = left + width,
+            Bottom = top + height,
+        };
+    }
+
+    private PointInt32 GetRetractPoint()
+    {
+        var scale = NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
+        var strip = Math.Max(2, (int)Math.Round(6 * scale));
+        var width = _dockRect.Right - _dockRect.Left;
+        var height = _dockRect.Bottom - _dockRect.Top;
+        var area = DisplayArea.GetFromPoint(
+            new PointInt32(_dockRect.Left + width / 2, _dockRect.Top + 20),
+            DisplayAreaFallback.Nearest).WorkArea;
+
+        return _dockEdge switch
+        {
+            EdgeDock.Left => new PointInt32(area.X - width + strip, _dockRect.Top),
+            EdgeDock.Right => new PointInt32(area.X + area.Width - strip, _dockRect.Top),
+            EdgeDock.Top => new PointInt32(_dockRect.Left, area.Y - height + strip),
+            _ => new PointInt32(_dockRect.Left, _dockRect.Top),
+        };
+    }
+
+    private void SlideTo(PointInt32 target, bool animate)
+    {
+        if (!NativeMethods.GetWindowRect(_hwnd, out var current))
+        {
+            return;
+        }
+
+        var width = current.Right - current.Left;
+        var height = current.Bottom - current.Top;
+
+        if (!animate)
+        {
+            CancelDockAnimation();
+            NativeMethods.SetWindowPos(
+                _hwnd, NativeMethods.HWND_TOPMOST, target.X, target.Y, width, height,
+                NativeMethods.SWP_NOACTIVATE);
+            return;
+        }
+
+        _animStart = new PointInt32(current.Left, current.Top);
+        _animTarget = target;
+        _animWidth = width;
+        _animHeight = height;
+        _animStep = 0;
+
+        if (_dockAnimTimer is null)
+        {
+            _dockAnimTimer = _dispatcher.CreateTimer();
+            _dockAnimTimer.Interval = TimeSpan.FromMilliseconds(12);
+            _dockAnimTimer.Tick += OnDockAnimationTick;
+        }
+
+        _dockAnimTimer.Start();
+    }
+
+    private void OnDockAnimationTick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
+    {
+        const int totalSteps = 8;
+        _animStep++;
+        var x = _animStart.X + (_animTarget.X - _animStart.X) * _animStep / totalSteps;
+        var y = _animStart.Y + (_animTarget.Y - _animStart.Y) * _animStep / totalSteps;
+        NativeMethods.SetWindowPos(
+            _hwnd, NativeMethods.HWND_TOPMOST, x, y, _animWidth, _animHeight,
+            NativeMethods.SWP_NOACTIVATE);
+
+        if (_animStep >= totalSteps)
+        {
+            CancelDockAnimation();
+        }
+    }
+
+    private void CancelDockAnimation()
+    {
+        _dockAnimTimer?.Stop();
+        _animStep = -1;
+    }
+
+    private void ScheduleDockRetract()
+    {
+        if (_dockEdge == EdgeDock.None || _dockRetracted ||
+            _editor is not null || _settingsWindow is not null ||
+            _moreMenuOpen || _contextMenuOpen || _trayMenuOpen ||
+            _sizing || _resizeHit != 0 || _dragging)
+        {
+            return;
+        }
+
+        if (_dockTimer is null)
+        {
+            _dockTimer = _dispatcher.CreateTimer();
+            _dockTimer.Interval = TimeSpan.FromMilliseconds(500);
+            _dockTimer.Tick += (_, _) =>
+            {
+                _dockTimer.Stop();
+                if (!_dockRetracted && _dockEdge != EdgeDock.None)
+                {
+                    RetractDock();
+                }
+            };
+        }
+
+        _dockTimer.Start();
+    }
+
+    private void CancelDockRetract() => _dockTimer?.Stop();
+
+    // 收边时主窗口是置顶的，设置/编辑窗口也得置顶，否则会被压在下面。
+    private void TopmostDialogIfDocked(Window dialog)
+    {
+        if (_dockEdge == EdgeDock.None)
+        {
+            return;
+        }
+
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(dialog);
+        NativeMethods.SetWindowPos(
+            hwnd, NativeMethods.HWND_TOPMOST, 0, 0, 0, 0,
+            NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE);
     }
 
     private void SnoozeReminder(long id)
@@ -1571,6 +1842,7 @@ public sealed partial class MainWindow : Window
         try
         {
             dialog.ShowOver(_appWindow);
+            TopmostDialogIfDocked(dialog);
             return await dialog.Result;
         }
         finally
@@ -1652,6 +1924,9 @@ public sealed partial class MainWindow : Window
         SetSubtaskProgressMode(sender, adding: false);
     }
 
+    private void SubtaskAddControl_Loaded(object sender, RoutedEventArgs e) =>
+        SetSubtaskProgressMode(sender, adding: false);
+
     // 用透明度切换而不是显隐，避免切换瞬间布局重排导致指针“离开”按钮、状态卡住。
     private static void SetSubtaskProgressMode(object sender, bool adding)
     {
@@ -1669,13 +1944,15 @@ public sealed partial class MainWindow : Window
         {
             hint.Opacity = adding ? 1 : 0;
         }
+
     }
 
     // 平时显示“子任务 2/5”，鼠标移上去变成“添加子任务”，点一下直接开始输入。
     private void SubtaskAddButton_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { DataContext: TodoItem item })
+        if (sender is Button { DataContext: TodoItem item } button)
         {
+            SetSubtaskProgressMode(button, adding: false);
             item.SubtasksExpanded = true;
             item.SubtaskAddActive = true;
             DispatcherQueue.TryEnqueue(() => FocusSubtaskAddBox(item));
@@ -1884,6 +2161,9 @@ public sealed partial class MainWindow : Window
 
     private void SubtaskFlyout_Opening(object sender, object e)
     {
+        _contextMenuOpen = true;
+        CancelDockRetract();
+
         if (sender is MenuFlyout { Target: FrameworkElement target } &&
             target.DataContext is SubtaskItem subtask)
         {
@@ -1899,10 +2179,56 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        await ConfirmDeleteSubtaskAsync(item, subtask);
+    }
+
+    private async void SubtaskRowDelete_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: SubtaskItem subtask } button &&
+            FindOwnerTodo(button) is { } item)
+        {
+            await ConfirmDeleteSubtaskAsync(item, subtask);
+        }
+    }
+
+    private async Task ConfirmDeleteSubtaskAsync(TodoItem item, SubtaskItem subtask)
+    {
         var dialog = CreateCardDialog("删除子任务", $"确定删除「{subtask.Title}」吗？", "删除");
         if (await dialog.ShowAsync() == ContentDialogResult.Primary)
         {
             ViewModel.DeleteSubtask(item, subtask);
+        }
+    }
+
+    private void SubtaskRow_PointerEntered(object sender, PointerRoutedEventArgs e) =>
+        ShowSubtaskDeleteButton(sender, true);
+
+    private void SubtaskRow_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is Grid row)
+        {
+            var point = e.GetCurrentPoint(row).Position;
+            if (point.X >= 0 && point.Y >= 0 &&
+                point.X <= row.ActualWidth && point.Y <= row.ActualHeight)
+            {
+                return;
+            }
+        }
+
+        ShowSubtaskDeleteButton(sender, false);
+    }
+
+    private static void ShowSubtaskDeleteButton(object sender, bool show)
+    {
+        if (sender is not DependencyObject root)
+        {
+            return;
+        }
+
+        if (FindTaggedChild<Button>(root, "SubtaskDeleteButton") is { } button)
+        {
+            button.Opacity = show ? 1 : 0;
+            button.IsHitTestVisible = show;
         }
     }
 
@@ -1952,6 +2278,7 @@ public sealed partial class MainWindow : Window
             star.Opacity = 1;
             star.IsHitTestVisible = true;
         }
+
     }
 
     private void TodoCard_PointerExited(object sender, PointerRoutedEventArgs e)
@@ -1970,6 +2297,7 @@ public sealed partial class MainWindow : Window
             star.Opacity = pinned ? 1 : 0;
             star.IsHitTestVisible = pinned;
         }
+
     }
 
     private static T? FindTaggedChild<T>(DependencyObject root, string tag) where T : FrameworkElement
@@ -2046,8 +2374,15 @@ public sealed partial class MainWindow : Window
 
     private TodoItem? _menuItem;
 
+    private void RowFlyout_Closed(object sender, object e) => _contextMenuOpen = false;
+
+    private void SubtaskFlyout_Closed(object sender, object e) => _contextMenuOpen = false;
+
     private void RowFlyout_Opening(object sender, object e)
     {
+        _contextMenuOpen = true;
+        CancelDockRetract();
+
         if (sender is MenuFlyout { Target: FrameworkElement target })
         {
             _menuItem = target.DataContext as TodoItem;

@@ -29,6 +29,7 @@ public sealed partial class MainWindow : Window
     private readonly Microsoft.UI.Dispatching.DispatcherQueue _dispatcher =
         Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
     private readonly List<Button> _tagButtons = new();
+    private Button? _tagClearButton;
 
     private NativeMethods.SUBCLASSPROC? _subclassProc;
     private DesktopAcrylicController? _acrylic;
@@ -913,9 +914,6 @@ public sealed partial class MainWindow : Window
     {
         var style = (Style)Application.Current.Resources["TagDotButtonStyle"];
 
-        // 最前面的“无颜色”：和彩色条同形的灰色短横条，不是图标。
-        AddTagButton(style, -2, (Brush)Application.Current.Resources["TextMutedBrush"], "无颜色");
-
         for (var i = 0; i < MainViewModel.TagColors.Length; i++)
         {
             var hex = MainViewModel.TagColors[i];
@@ -926,6 +924,43 @@ public sealed partial class MainWindow : Window
                 Convert.ToByte(hex.Substring(5, 2), 16)));
             AddTagButton(style, i, color, $"标签 {i + 1}");
         }
+
+        // 选中某个颜色后，末尾才出现的“清除颜色”按钮（圆圈 + 叉）。
+        var clearIcon = new Grid
+        {
+            Width = 18,
+            Height = 18,
+        };
+        clearIcon.Children.Add(new Border
+        {
+            Width = 18,
+            Height = 18,
+            CornerRadius = new CornerRadius(9),
+            BorderThickness = new Thickness(1),
+            BorderBrush = (Brush)Application.Current.Resources["TextMutedBrush"],
+        });
+        clearIcon.Children.Add(new FontIcon
+        {
+            Glyph = "\uE711",
+            FontSize = 7,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = (Brush)Application.Current.Resources["TextMutedBrush"],
+        });
+
+        _tagClearButton = new Button
+        {
+            Style = style,
+            Content = clearIcon,
+            Visibility = Visibility.Collapsed,
+        };
+        _tagClearButton.Click += (_, _) =>
+        {
+            ViewModel.SelectTag(-1);
+            UpdateTagVisuals();
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(_tagClearButton, "清除颜色筛选");
+        TagPanel.Children.Add(_tagClearButton);
     }
 
     private void AddTagButton(Style style, int index, Brush color, string name)
@@ -966,8 +1001,12 @@ public sealed partial class MainWindow : Window
         var transparent = (Brush)Application.Current.Resources["TransparentBrush"];
         for (var i = 0; i < _tagButtons.Count; i++)
         {
-            var index = i == 0 ? -2 : i - 1;
-            _tagButtons[i].Background = ViewModel.SelectedTag == index ? selected : transparent;
+            _tagButtons[i].Background = ViewModel.SelectedTag == i ? selected : transparent;
+        }
+
+        if (_tagClearButton is not null)
+        {
+            _tagClearButton.Visibility = ViewModel.SelectedTag >= 0 ? Visibility.Visible : Visibility.Collapsed;
         }
     }
 

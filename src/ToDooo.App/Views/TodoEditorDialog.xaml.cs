@@ -32,6 +32,7 @@ public sealed partial class TodoEditorDialog : Window
     private readonly TaskCompletionSource<bool> _result = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly List<Button> _tagButtons = new();
     private readonly List<FontIcon> _tagChecks = new();
+    private Button? _clearTagButton;
     private readonly IntPtr _hwnd;
     private readonly AppWindow _appWindow;
     private DesktopAcrylicController? _acrylic;
@@ -370,17 +371,6 @@ public sealed partial class TodoEditorDialog : Window
 
     private void BuildTagButtons()
     {
-        // 最前面的“无颜色”：和色点同形的灰色短横条。
-        AddTagButton(-1, new Border
-        {
-            Width = 14,
-            Height = 6,
-            CornerRadius = new CornerRadius(3),
-            Background = (Brush)Application.Current.Resources["TextMutedBrush"],
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-        });
-
         for (var i = 0; i < MainViewModel.TagColors.Length; i++)
         {
             var color = Color.FromArgb(
@@ -405,6 +395,38 @@ public sealed partial class TodoEditorDialog : Window
                 VerticalAlignment = VerticalAlignment.Center,
             }, checkColor);
         }
+
+        var clearIcon = new Grid { Width = 18, Height = 18 };
+        clearIcon.Children.Add(new Border
+        {
+            Width = 18,
+            Height = 18,
+            CornerRadius = new CornerRadius(9),
+            BorderThickness = new Thickness(1),
+            BorderBrush = (Brush)Application.Current.Resources["TextMutedBrush"],
+        });
+        clearIcon.Children.Add(new FontIcon
+        {
+            Glyph = "\uE711",
+            FontSize = 7,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = (Brush)Application.Current.Resources["TextMutedBrush"],
+        });
+
+        _clearTagButton = new Button
+        {
+            Style = (Style)Root.Resources["TagRingButton"],
+            Content = clearIcon,
+            Visibility = Visibility.Collapsed,
+        };
+        _clearTagButton.Click += (_, _) =>
+        {
+            _tagIndex = -1;
+            UpdateTagVisuals();
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(_clearTagButton, "清除标签");
+        TagPanel.Children.Add(_clearTagButton);
     }
 
     private void AddTagButton(int index, UIElement content, Color? checkColor = null)
@@ -453,12 +475,16 @@ public sealed partial class TodoEditorDialog : Window
         var transparent = (Brush)Application.Current.Resources["TransparentBrush"];
         for (var i = 0; i < _tagButtons.Count; i++)
         {
-            var index = i == 0 ? -1 : i - 1;
-            var selected = _tagIndex == index;
+            var selected = _tagIndex == i;
 
             // 选中：对勾 + 中性灰底，不再套外框。
-            _tagChecks[i].Visibility = selected && index >= 0 ? Visibility.Visible : Visibility.Collapsed;
+            _tagChecks[i].Visibility = selected ? Visibility.Visible : Visibility.Collapsed;
             _tagButtons[i].BorderBrush = transparent;
             _tagButtons[i].Background = selected ? selectedBrush : transparent;
+        }
+
+        if (_clearTagButton is not null)
+        {
+            _clearTagButton.Visibility = _tagIndex >= 0 ? Visibility.Visible : Visibility.Collapsed;
         }
     }}

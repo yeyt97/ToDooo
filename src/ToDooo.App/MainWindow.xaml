@@ -306,7 +306,11 @@
                                             <MenuFlyoutItem Text="删除" Click="RowDelete_Click" />
                                         </MenuFlyout>
                                     </Border.ContextFlyout>
-                                    <Grid ColumnSpacing="2">
+                                    <Grid VerticalAlignment="Center" ColumnSpacing="2">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="32" />
                                             <ColumnDefinition Width="Auto" />
@@ -328,7 +332,7 @@
                                             Grid.Column="1"
                                             Width="3"
                                             Height="20"
-                                            Margin="0,1,5,0"
+                                            Margin="0,-1,5,0"
                                             VerticalAlignment="Top"
                                             Background="{x:Bind helpers:Bind.TagBrush(TagIndex), Mode=OneWay}"
                                             CornerRadius="1.5"
@@ -362,75 +366,78 @@
                                                     TextTrimming="CharacterEllipsis"
                                                     Foreground="{x:Bind helpers:Bind.DueBrush(IsOverdue), Mode=OneWay}" />
                                             </StackPanel>
+                                        </StackPanel>
 
-                                            <!--  子任务：默认只显示进度，点开在卡片里直接勾选  -->
-                                            <StackPanel
-                                                Spacing="2"
-                                                Visibility="{x:Bind helpers:Bind.VisibleWhen(HasSubtasks), Mode=OneWay}">
-                                                <Button
-                                                    AutomationProperties.Name="展开子任务"
-                                                    Padding="3,2,6,2"
-                                                    Click="SubtasksToggle_Click"
-                                                    Style="{StaticResource SubtaskToggleStyle}">
-                                                    <StackPanel
-                                                        Orientation="Horizontal"
-                                                        Spacing="5"
-                                                        VerticalAlignment="Center">
-                                                        <FontIcon
-                                                            Width="10"
-                                                            VerticalAlignment="Center"
-                                                            FontSize="8"
-                                                            Foreground="{ThemeResource TextMutedBrush}"
-                                                            Glyph="{x:Bind helpers:Bind.ChevronGlyph(SubtasksExpanded), Mode=OneWay}" />
-                                                        <TextBlock
-                                                            VerticalAlignment="Center"
-                                                            FontSize="11"
-                                                            Foreground="{ThemeResource TextMutedBrush}"
-                                                            Text="子任务" />
-                                                        <TextBlock
-                                                            VerticalAlignment="Center"
-                                                            FontSize="11"
-                                                            FontWeight="SemiBold"
-                                                            Foreground="{ThemeResource TextSecondaryBrush}"
-                                                            Text="{x:Bind SubtaskProgressText, Mode=OneWay}" />
-                                                    </StackPanel>
-                                                </Button>
-                                                <ItemsControl
-                                                    ItemsSource="{x:Bind Subtasks, Mode=OneWay}"
-                                                    Visibility="{x:Bind helpers:Bind.VisibleWhen(SubtasksExpanded), Mode=OneWay}">
-                                                    <ItemsControl.ItemTemplate>
-                                                        <DataTemplate x:DataType="models:SubtaskItem">
-                                                            <Grid
-                                                                Margin="0,1"
-                                                                ColumnSpacing="4">
-                                                                <Grid.ContextFlyout>
-                                                                    <MenuFlyout Opening="SubtaskFlyout_Opening">
-                                                                        <MenuFlyoutItem Text="删除子任务" Click="SubtaskDelete_Click" />
-                                                                    </MenuFlyout>
-                                                                </Grid.ContextFlyout>
-                                                                <Grid.ColumnDefinitions>
-                                                                    <ColumnDefinition Width="Auto" />
-                                                                    <ColumnDefinition Width="*" />
-                                                                </Grid.ColumnDefinitions>
-                                                                <CheckBox
-                                                                    AutomationProperties.Name="子任务完成"
-                                                                    Click="SubtaskCheck_Click"
-                                                                    IsChecked="{x:Bind IsDone, Mode=OneWay}"
-                                                                    Style="{StaticResource TodoCompletionCheckBoxStyle}"
-                                                                    VerticalAlignment="Center" />
-                                                                <TextBlock
-                                                                    Grid.Column="1"
-                                                                    VerticalAlignment="Center"
-                                                                    FontSize="12"
-                                                                    Text="{x:Bind Title, Mode=OneWay}"
-                                                                    TextDecorations="{x:Bind helpers:Bind.Deco(IsDone), Mode=OneWay}"
-                                                                    TextWrapping="Wrap"
-                                                                    Foreground="{x:Bind helpers:Bind.SubtaskBrush(IsDone), Mode=OneWay}" />
-                                                            </Grid>
-                                                        </DataTemplate>
-                                                    </ItemsControl.ItemTemplate>
-                                                </ItemsControl>
-                                            </StackPanel>
+                                        <!--  子任务单独占第二行：展开变高也不会把勾选框带下去  -->
+                                        <StackPanel
+                                            Grid.Row="1"
+                                            Grid.Column="2"
+                                            Margin="0,2,0,0"
+                                            Spacing="2"
+                                            Visibility="{x:Bind helpers:Bind.VisibleWhen(HasSubtasks), Mode=OneWay}">
+                                            <Button
+                                                AutomationProperties.Name="展开子任务"
+                                                Padding="3,2,6,2"
+                                                Click="SubtasksToggle_Click"
+                                                Style="{StaticResource SubtaskToggleStyle}">
+                                                <StackPanel
+                                                    Orientation="Horizontal"
+                                                    Spacing="5"
+                                                    VerticalAlignment="Center">
+                                                    <FontIcon
+                                                        Width="10"
+                                                        VerticalAlignment="Center"
+                                                        FontSize="8"
+                                                        Foreground="{ThemeResource TextMutedBrush}"
+                                                        Glyph="{x:Bind helpers:Bind.ChevronGlyph(SubtasksExpanded), Mode=OneWay}" />
+                                                    <TextBlock
+                                                        VerticalAlignment="Center"
+                                                        FontSize="11"
+                                                        Foreground="{ThemeResource TextMutedBrush}"
+                                                        Text="子任务" />
+                                                    <TextBlock
+                                                        VerticalAlignment="Center"
+                                                        FontSize="11"
+                                                        FontWeight="SemiBold"
+                                                        Foreground="{ThemeResource TextSecondaryBrush}"
+                                                        Text="{x:Bind SubtaskProgressText, Mode=OneWay}" />
+                                                </StackPanel>
+                                            </Button>
+                                            <ItemsControl
+                                                ItemsSource="{x:Bind Subtasks, Mode=OneWay}"
+                                                Visibility="{x:Bind helpers:Bind.VisibleWhen(SubtasksExpanded), Mode=OneWay}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate x:DataType="models:SubtaskItem">
+                                                        <Grid
+                                                            Margin="0,1"
+                                                            ColumnSpacing="4">
+                                                            <Grid.ContextFlyout>
+                                                                <MenuFlyout Opening="SubtaskFlyout_Opening">
+                                                                    <MenuFlyoutItem Text="删除子任务" Click="SubtaskDelete_Click" />
+                                                                </MenuFlyout>
+                                                            </Grid.ContextFlyout>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="*" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <CheckBox
+                                                                AutomationProperties.Name="子任务完成"
+                                                                Click="SubtaskCheck_Click"
+                                                                IsChecked="{x:Bind IsDone, Mode=OneWay}"
+                                                                Style="{StaticResource TodoCompletionCheckBoxStyle}"
+                                                                VerticalAlignment="Center" />
+                                                            <TextBlock
+                                                                Grid.Column="1"
+                                                                VerticalAlignment="Center"
+                                                                FontSize="12"
+                                                                Text="{x:Bind Title, Mode=OneWay}"
+                                                                TextDecorations="{x:Bind helpers:Bind.Deco(IsDone), Mode=OneWay}"
+                                                                TextWrapping="Wrap"
+                                                                Foreground="{x:Bind helpers:Bind.SubtaskBrush(IsDone), Mode=OneWay}" />
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
                                         </StackPanel>
 
                                         <!--
@@ -444,7 +451,7 @@
                                             Style="{StaticResource CardActionButtonStyle}"
                                             Click="QuickImportant_Click"
                                             VerticalAlignment="Top"
-                                            Margin="0,-2,0,0"
+                                            Margin="0,-4,0,0"
                                             Background="Transparent"
                                             BorderThickness="0"
                                             IsHitTestVisible="{x:Bind IsImportant, Mode=OneWay}"

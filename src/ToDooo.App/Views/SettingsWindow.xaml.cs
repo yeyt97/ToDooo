@@ -47,7 +47,7 @@ public sealed partial class SettingsWindow : Window
 
         ConfigureWindow();
 
-        AboutText.Text = "ToDooo 1.0.0 · WinUI 3\n数据目录：%LocalAppData%\\ToDooo";
+        AboutText.Text = "ToDooo 1.1.0 · WinUI 3\n数据目录：%LocalAppData%\\ToDooo";
 
         ThemeBox.SelectedIndex = settings.Current.ThemeMode;
         OpacitySlider.Value = Math.Clamp(settings.Current.WindowOpacity, 0.1, 1.0);

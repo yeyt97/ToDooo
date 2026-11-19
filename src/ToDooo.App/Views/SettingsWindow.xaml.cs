@@ -75,22 +75,31 @@ public sealed partial class SettingsWindow : Window
 
         if (_appWindow.Presenter is OverlappedPresenter presenter)
         {
-            presenter.SetBorderAndTitleBar(true, true);
+            presenter.SetBorderAndTitleBar(false, false);
             presenter.IsResizable = false;
             presenter.IsMaximizable = false;
             presenter.IsMinimizable = false;
         }
+
+        var style = NativeMethods.GetWindowLongPtr(_hwnd, NativeMethods.GWL_STYLE).ToInt64();
+        style &= ~(NativeMethods.WS_THICKFRAME | NativeMethods.WS_DLGFRAME
+            | NativeMethods.WS_CAPTION | NativeMethods.WS_BORDER);
+        NativeMethods.SetWindowLongPtr(_hwnd, NativeMethods.GWL_STYLE, new IntPtr(style));
+
+        var round = NativeMethods.DWMWCP_ROUND;
+        NativeMethods.DwmSetWindowAttribute(
+            _hwnd, NativeMethods.DWMWA_WINDOW_CORNER_PREFERENCE, ref round, sizeof(int));
+        var noBorder = NativeMethods.DWMWA_COLOR_NONE;
+        NativeMethods.DwmSetWindowAttribute(
+            _hwnd, NativeMethods.DWMWA_BORDER_COLOR, ref noBorder, sizeof(int));
 
         var scale = NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
         _appWindow.Resize(new SizeInt32(
             (int)Math.Round(LogicalWidth * scale),
             (int)Math.Round(LogicalHeight * scale)));
 
-        ExtendsContentIntoTitleBar = true;
-        SetTitleBar(HeaderBar);
-        _appWindow.TitleBar.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
-        _appWindow.TitleBar.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
-        HeaderBar.Padding = new Thickness(18, 0, Math.Max(12, _appWindow.TitleBar.RightInset), 0);
+        ExtendsContentIntoTitleBar = false;
+        HeaderBar.Padding = new Thickness(18, 0, 12, 0);
 
         ApplyWindowMaterial();
     }
@@ -120,6 +129,58 @@ public sealed partial class SettingsWindow : Window
             _backdropConfig.Theme = dark ? SystemBackdropTheme.Dark : SystemBackdropTheme.Light;
         }
     }
+
+    private bool _dragging;
+    private NativeMethods.POINT _dragStartCursor;
+    private NativeMethods.RECT _dragStartRect;
+
+    private void HeaderBar_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (!e.GetCurrentPoint((UIElement)sender).Properties.IsLeftButtonPressed ||
+            !NativeMethods.GetCursorPos(out _dragStartCursor) ||
+            !NativeMethods.GetWindowRect(_hwnd, out _dragStartRect))
+        {
+            return;
+        }
+
+        _dragging = ((UIElement)sender).CapturePointer(e.Pointer);
+        e.Handled = true;
+    }
+
+    private void HeaderBar_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_dragging)
+        {
+            return;
+        }
+
+        if (NativeMethods.GetCursorPos(out var cursor))
+        {
+            NativeMethods.SetWindowPos(
+                _hwnd, IntPtr.Zero,
+                _dragStartRect.Left + cursor.X - _dragStartCursor.X,
+                _dragStartRect.Top + cursor.Y - _dragStartCursor.Y,
+                _dragStartRect.Right - _dragStartRect.Left,
+                _dragStartRect.Bottom - _dragStartRect.Top,
+                NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
+        }
+
+        e.Handled = true;
+    }
+
+    private void HeaderBar_PointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_dragging)
+        {
+            return;
+        }
+
+        _dragging = false;
+        ((UIElement)sender).ReleasePointerCapture(e.Pointer);
+        e.Handled = true;
+    }
+
+    private void HeaderBar_PointerCaptureLost(object sender, PointerRoutedEventArgs e) => _dragging = false;
 
     private void MoveNextTo(AppWindow? owner)
     {

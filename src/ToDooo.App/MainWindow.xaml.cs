@@ -441,8 +441,6 @@ public sealed partial class MainWindow : Window
         flyout.Items.Add(showItem);
         flyout.Items.Add(addItem);
         flyout.Items.Add(new MenuFlyoutSeparator());
-        flyout.Items.Add(startupItem);
-        flyout.Items.Add(new MenuFlyoutSeparator());
         flyout.Items.Add(exitItem);
 
         flyout.Closed += (_, _) =>
@@ -463,14 +461,10 @@ public sealed partial class MainWindow : Window
         NativeMethods.GetCursorPos(out var point);
 
         var menu = NativeMethods.CreatePopupMenu();
-        var startupLabel = StartupService.IsEnabled ? "开机自启 · 已开启" : "开机自启 · 已关闭";
         NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 1, "显示待办");
         NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 2, "添加待办");
         NativeMethods.AppendMenuW(menu, NativeMethods.MF_SEPARATOR, 0, null);
-        NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 3, startupLabel);
-        NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 4, "导出数据…");
-        NativeMethods.AppendMenuW(menu, NativeMethods.MF_SEPARATOR, 0, null);
-        NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 5, "退出 ToDooo");
+        NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 3, "退出 ToDooo");
 
         var command = NativeMethods.TrackPopupMenuEx(
             menu,
@@ -491,12 +485,6 @@ public sealed partial class MainWindow : Window
                 _ = AddDetailedAsync();
                 break;
             case 3:
-                StartupService.SetEnabled(!StartupService.IsEnabled);
-                break;
-            case 4:
-                ExportMenuItem_Click(this, new RoutedEventArgs());
-                break;
-            case 5:
                 ExitApp();
                 break;
         }
@@ -611,8 +599,6 @@ public sealed partial class MainWindow : Window
         });
         UpdateFilterVisuals();
     }
-
-    private async void ExportMenuItem_Click(object sender, RoutedEventArgs e) => await ExportDataAsync();
 
     public async Task ExportDataAsync()
     {
@@ -1369,20 +1355,6 @@ public sealed partial class MainWindow : Window
     {
         var ordered = ViewModel.Items.ToList();
         DispatcherQueue.TryEnqueue(() => ViewModel.PersistReorder(ordered));
-    }
-
-    private void MoreFlyout_Opening(object sender, object e)
-    {
-        PinMenuItem.IsChecked = _pinned;
-        StartupMenuItem.IsChecked = StartupService.IsEnabled;
-    }
-
-    private void PinMenuItem_Click(object sender, RoutedEventArgs e)
-        => ApplyPin(PinMenuItem.IsChecked, persist: true);
-
-    private void StartupMenuItem_Click(object sender, RoutedEventArgs e)
-    {
-        StartupService.SetEnabled(StartupMenuItem.IsChecked);
     }
 
     private void ExitMenuItem_Click(object sender, RoutedEventArgs e) => ExitApp();

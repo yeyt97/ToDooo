@@ -87,7 +87,11 @@
             x:Name="HeaderBar"
             Height="44"
             Padding="18,0,12,0"
-            Background="Transparent">
+            Background="Transparent"
+            PointerCaptureLost="HeaderBar_PointerCaptureLost"
+            PointerMoved="HeaderBar_PointerMoved"
+            PointerPressed="HeaderBar_PointerPressed"
+            PointerReleased="HeaderBar_PointerReleased">
             <TextBlock
                 x:Name="HeaderTitle"
                 VerticalAlignment="Center"

@@ -31,6 +31,7 @@ public sealed partial class TodoEditorDialog : Window
     // 让后续逻辑排在关窗之后的下一轮消息里跑，别卡在关窗过程中重入 UI。
     private readonly TaskCompletionSource<bool> _result = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly List<Button> _tagButtons = new();
+    private readonly List<FontIcon> _tagChecks = new();
     private readonly IntPtr _hwnd;
     private readonly AppWindow _appWindow;
     private DesktopAcrylicController? _acrylic;
@@ -146,25 +147,86 @@ public sealed partial class TodoEditorDialog : Window
 
         if (_appWindow.Presenter is OverlappedPresenter presenter)
         {
-            // 保留系统尺寸边框：Win11 才会给窗口裁圆角、画阴影。
-            presenter.SetBorderAndTitleBar(true, true);
+            // 无边框、无系统标题按钮：只靠底部按钮/ Esc 关闭，外观和主窗口一致。
+            presenter.SetBorderAndTitleBar(false, false);
             presenter.IsResizable = false;
             presenter.IsMaximizable = false;
             presenter.IsMinimizable = false;
         }
+
+        // 剥掉隐形 resize 边框，让 XAML 内容铺满窗口，圆角只由 DWM 裁一次。
+        var style = NativeMethods.GetWindowLongPtr(_hwnd, NativeMethods.GWL_STYLE).ToInt64();
+        style &= ~(NativeMethods.WS_THICKFRAME | NativeMethods.WS_DLGFRAME
+            | NativeMethods.WS_CAPTION | NativeMethods.WS_BORDER);
+        NativeMethods.SetWindowLongPtr(_hwnd, NativeMethods.GWL_STYLE, new IntPtr(style));
+
+        var round = NativeMethods.DWMWCP_ROUND;
+        NativeMethods.DwmSetWindowAttribute(
+            _hwnd, NativeMethods.DWMWA_WINDOW_CORNER_PREFERENCE, ref round, sizeof(int));
+        var noBorder = NativeMethods.DWMWA_COLOR_NONE;
+        NativeMethods.DwmSetWindowAttribute(
+            _hwnd, NativeMethods.DWMWA_BORDER_COLOR, ref noBorder, sizeof(int));
 
         var scale = NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
         _appWindow.Resize(new SizeInt32(
             (int)Math.Round(LogicalWidth * scale),
             (int)Math.Round(CollapsedHeight * scale)));
 
-        // 自绘标题栏：只留系统的最小化/最大化/关闭按钮里的「关闭」，标题由 XAML 画。
-        ExtendsContentIntoTitleBar = true;
-        SetTitleBar(HeaderBar);
-        _appWindow.TitleBar.ButtonBackgroundColor = Colors.Transparent;
-        _appWindow.TitleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
-        HeaderBar.Padding = new Thickness(18, 0, Math.Max(12, _appWindow.TitleBar.RightInset), 0);
+        ExtendsContentIntoTitleBar = false;
+        HeaderBar.Padding = new Thickness(18, 0, 12, 0);
     }
+
+    private bool _dragging;
+    private NativeMethods.POINT _dragStartCursor;
+    private NativeMethods.RECT _dragStartRect;
+
+    private void HeaderBar_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (!e.GetCurrentPoint((UIElement)sender).Properties.IsLeftButtonPressed ||
+            !NativeMethods.GetCursorPos(out _dragStartCursor) ||
+            !NativeMethods.GetWindowRect(_hwnd, out _dragStartRect))
+        {
+            return;
+        }
+
+        _dragging = ((UIElement)sender).CapturePointer(e.Pointer);
+        e.Handled = true;
+    }
+
+    private void HeaderBar_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_dragging)
+        {
+            return;
+        }
+
+        if (NativeMethods.GetCursorPos(out var cursor))
+        {
+            NativeMethods.SetWindowPos(
+                _hwnd, IntPtr.Zero,
+                _dragStartRect.Left + cursor.X - _dragStartCursor.X,
+                _dragStartRect.Top + cursor.Y - _dragStartCursor.Y,
+                _dragStartRect.Right - _dragStartRect.Left,
+                _dragStartRect.Bottom - _dragStartRect.Top,
+                NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
+        }
+
+        e.Handled = true;
+    }
+
+    private void HeaderBar_PointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_dragging)
+        {
+            return;
+        }
+
+        _dragging = false;
+        ((UIElement)sender).ReleasePointerCapture(e.Pointer);
+        e.Handled = true;
+    }
+
+    private void HeaderBar_PointerCaptureLost(object sender, PointerRoutedEventArgs e) => _dragging = false;
 
     private void MoveNextTo(AppWindow? owner)
     {
@@ -316,15 +378,21 @@ public sealed partial class TodoEditorDialog : Window
                 Convert.ToByte(MainViewModel.TagColors[i].Substring(3, 2), 16),
                 Convert.ToByte(MainViewModel.TagColors[i].Substring(5, 2), 16));
 
+            // 亮色圆点配深色对勾，深色圆点配白色对勾。
+            var luminance = 0.299 * color.R + 0.587 * color.G + 0.114 * color.B;
+            var checkColor = luminance > 150
+                ? Color.FromArgb(255, 0x26, 0x2B, 0x33)
+                : Color.FromArgb(255, 0xFF, 0xFF, 0xFF);
+
             AddTagButton(i, new Border
             {
-                Width = 14,
-                Height = 14,
-                CornerRadius = new CornerRadius(7),
+                Width = 18,
+                Height = 18,
+                CornerRadius = new CornerRadius(9),
                 Background = new SolidColorBrush(color),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
-            });
+            }, checkColor);
         }
 
         AddTagButton(-1, new FontIcon
@@ -337,12 +405,26 @@ public sealed partial class TodoEditorDialog : Window
         });
     }
 
-    private void AddTagButton(int index, UIElement content)
+    private void AddTagButton(int index, UIElement content, Color? checkColor = null)
     {
+        var check = new FontIcon
+        {
+            Glyph = "\uE73E",
+            FontSize = 11,
+            Foreground = new SolidColorBrush(checkColor ?? Colors.White),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Visibility = Visibility.Collapsed,
+        };
+
+        var stack = new Grid();
+        stack.Children.Add(content);
+        stack.Children.Add(check);
+
         var host = new Button
         {
             Style = (Style)Root.Resources["TagRingButton"],
-            Content = content,
+            Content = stack,
             Tag = index,
             BorderBrush = new SolidColorBrush(Colors.Transparent),
             Background = new SolidColorBrush(Colors.Transparent),
@@ -360,17 +442,20 @@ public sealed partial class TodoEditorDialog : Window
         };
 
         _tagButtons.Add(host);
+        _tagChecks.Add(check);
         TagPanel.Children.Add(host);
     }
 
     private void UpdateTagVisuals()
     {
+        var light = Root.ActualTheme == ElementTheme.Light;
         for (var i = 0; i < _tagButtons.Count; i++)
         {
             var index = i == _tagButtons.Count - 1 ? -1 : i;
             var selected = _tagIndex == index;
-            // 选中用一圈对比色描边 + 淡底色：系统强调色可能是灰的，只靠配色看不出选没选。
-            var light = Root.ActualTheme == ElementTheme.Light;
+
+            // 选中：圆点里出现对勾 + 一圈对比色描边 + 淡底色，比单加一圈线明显得多。
+            _tagChecks[i].Visibility = selected && index >= 0 ? Visibility.Visible : Visibility.Collapsed;
             ((SolidColorBrush)_tagButtons[i].BorderBrush).Color = selected
                 ? light ? Color.FromArgb(255, 0x2A, 0x2A, 0x2E) : Color.FromArgb(255, 0xE9, 0xEC, 0xF0)
                 : Color.FromArgb(0, 0, 0, 0);

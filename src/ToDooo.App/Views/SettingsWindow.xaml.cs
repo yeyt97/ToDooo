@@ -59,6 +59,25 @@ public sealed partial class SettingsWindow : Window
 
         _ready = true;
         Closed += (_, _) => _acrylic = null;
+        Activated += SettingsWindow_Activated;
+    }
+
+    private bool _hasFocus;
+    private bool _suppressDeactivateClose;
+
+    private void SettingsWindow_Activated(object sender, WindowActivatedEventArgs args)
+    {
+        if (args.WindowActivationState != WindowActivationState.Deactivated)
+        {
+            _hasFocus = true;
+            return;
+        }
+
+        // 第一次显示前也会收到失活事件，拿到过焦点之后再按“点别处即关闭”处理。
+        if (_hasFocus && !_suppressDeactivateClose)
+        {
+            Close();
+        }
     }
 
     public void ShowOver(AppWindow? owner)
@@ -384,7 +403,19 @@ public sealed partial class SettingsWindow : Window
         _settingsChanged();
     }
 
-    private async void ExportButton_Click(object sender, RoutedEventArgs e) => await _exportRequested();
+    private async void ExportButton_Click(object sender, RoutedEventArgs e)
+    {
+        // 文件选择器会带走焦点，别把设置窗口关掉。
+        _suppressDeactivateClose = true;
+        try
+        {
+            await _exportRequested();
+        }
+        finally
+        {
+            _suppressDeactivateClose = false;
+        }
+    }
 
     private void OpenFolderButton_Click(object sender, RoutedEventArgs e)
     {

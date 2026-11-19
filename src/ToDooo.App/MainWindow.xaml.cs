@@ -1557,14 +1557,6 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void TodoList_ItemClick(object sender, ItemClickEventArgs e)
-    {
-        if (e.ClickedItem is TodoItem item)
-        {
-            _ = EditItemAsync(item);
-        }
-    }
-
     // DataTemplate 刚生成时 x:Bind 可能还没求值，IsChecked 会短暂停在 null（三态）。
     private void DoneCheckBox_Loaded(object sender, RoutedEventArgs e)
     {

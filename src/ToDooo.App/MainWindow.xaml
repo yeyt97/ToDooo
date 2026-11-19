@@ -285,8 +285,7 @@
                         CanDragItems="True"
                         CanReorderItems="True"
                         DragItemsCompleted="TodoList_DragItemsCompleted"
-                        IsItemClickEnabled="True"
-                        ItemClick="TodoList_ItemClick"
+                        IsItemClickEnabled="False"
                         ItemsSource="{x:Bind ViewModel.Items, Mode=OneWay}"
                         SelectionMode="None"
                         ScrollViewer.VerticalScrollBarVisibility="Hidden">

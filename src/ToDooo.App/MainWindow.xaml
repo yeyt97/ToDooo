@@ -16,8 +16,8 @@
         MinHeight="360">
         <Border
             CornerRadius="{StaticResource CardCornerRadius}"
-            Background="{StaticResource CardBrush}"
-            BorderBrush="{StaticResource CardStrokeBrush}"
+            Background="{ThemeResource CardBrush}"
+            BorderBrush="{ThemeResource CardStrokeBrush}"
             BorderThickness="1">
             <Grid>
                 <Grid.RowDefinitions>
@@ -52,16 +52,16 @@
                                 Width="22"
                                 Height="22"
                                 CornerRadius="7"
-                                Background="{StaticResource LayerFillSecondaryBrush}"
-                                BorderBrush="{StaticResource LayerStrokeBrush}"
+                                Background="{ThemeResource LayerFillSecondaryBrush}"
+                                BorderBrush="{ThemeResource LayerStrokeBrush}"
                                 BorderThickness="1">
-                                <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
+                                <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="{ThemeResource TextSecondaryBrush}" />
                             </Border>
                             <TextBlock
                                 Text="ToDooo"
                                 FontSize="15"
                                 FontWeight="SemiBold"
-                                Foreground="{StaticResource TextPrimaryBrush}"
+                                Foreground="{ThemeResource TextPrimaryBrush}"
                                 VerticalAlignment="Center" />
                         </StackPanel>
                     </Grid>
@@ -84,6 +84,7 @@
                                 <ToggleMenuFlyoutItem x:Name="PinMenuItem" Text="钉在桌面" Click="PinMenuItem_Click" />
                                 <ToggleMenuFlyoutItem x:Name="StartupMenuItem" Text="开机自启" Click="StartupMenuItem_Click" />
                                 <MenuFlyoutSeparator />
+                                <MenuFlyoutItem Text="设置…" Click="SettingsMenuItem_Click" />
                                 <MenuFlyoutItem Text="导出数据…" Click="ExportMenuItem_Click" />
                                 <MenuFlyoutSeparator />
                                 <MenuFlyoutItem Text="退出 ToDooo" Click="ExitMenuItem_Click" />
@@ -97,8 +98,8 @@
                     Grid.Row="1"
                     Margin="12,0,12,8"
                     Padding="3"
-                    Background="{StaticResource SegmentBarBrush}"
-                    BorderBrush="{StaticResource LayerStrokeBrush}"
+                    Background="{ThemeResource SegmentBarBrush}"
+                    BorderBrush="{ThemeResource LayerStrokeBrush}"
                     BorderThickness="1"
                     CornerRadius="{StaticResource SegmentCornerRadius}">
                     <Grid ColumnSpacing="2">
@@ -175,8 +176,8 @@
                     Margin="12,0,12,8"
                     Visibility="Collapsed">
                     <Border
-                        Background="{StaticResource ItemCardBrush}"
-                        BorderBrush="{StaticResource ItemCardStrokeBrush}"
+                        Background="{ThemeResource ItemCardBrush}"
+                        BorderBrush="{ThemeResource ItemCardStrokeBrush}"
                         BorderThickness="1"
                         CornerRadius="{StaticResource ItemCornerRadius}" />
                     <Grid Padding="10,0" ColumnSpacing="8">
@@ -188,7 +189,7 @@
                             Glyph="&#xE721;"
                             FontSize="12"
                             VerticalAlignment="Center"
-                            Foreground="{StaticResource TextMutedBrush}" />
+                            Foreground="{ThemeResource TextMutedBrush}" />
                         <TextBox
                             x:Name="SearchBox"
                             Grid.Column="1"
@@ -223,8 +224,8 @@
                     </Grid.ColumnDefinitions>
                     <Border
                         Grid.ColumnSpan="4"
-                        Background="{StaticResource ItemCardBrush}"
-                        BorderBrush="{StaticResource ItemCardStrokeBrush}"
+                        Background="{ThemeResource ItemCardBrush}"
+                        BorderBrush="{ThemeResource ItemCardStrokeBrush}"
                         BorderThickness="1"
                         CornerRadius="{StaticResource ItemCornerRadius}" />
                     <FontIcon
@@ -233,7 +234,7 @@
                         FontSize="13"
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center"
-                        Foreground="{StaticResource TextSecondaryBrush}" />
+                        Foreground="{ThemeResource TextSecondaryBrush}" />
                     <TextBox
                         x:Name="AddTextBox"
                         Grid.Column="1"
@@ -386,14 +387,14 @@
                             Glyph="&#xE73E;"
                             FontSize="28"
                             HorizontalAlignment="Center"
-                            Foreground="{StaticResource TextMutedBrush}"
+                            Foreground="{ThemeResource TextMutedBrush}"
                             Opacity="0.6" />
                         <TextBlock
                             Text="{x:Bind ViewModel.EmptyTitle, Mode=OneWay}"
                             FontSize="14"
                             FontWeight="SemiBold"
                             HorizontalAlignment="Center"
-                            Foreground="{StaticResource TextSecondaryBrush}" />
+                            Foreground="{ThemeResource TextSecondaryBrush}" />
                         <TextBlock
                             Text="{x:Bind ViewModel.EmptyDescription, Mode=OneWay}"
                             FontSize="12"
@@ -401,7 +402,7 @@
                             TextAlignment="Center"
                             TextWrapping="Wrap"
                             HorizontalAlignment="Center"
-                            Foreground="{StaticResource TextMutedBrush}" />
+                            Foreground="{ThemeResource TextMutedBrush}" />
                     </StackPanel>
                 </Grid>
 
@@ -425,8 +426,8 @@
             Margin="12,0,12,10"
             Padding="12,8,10,8"
             VerticalAlignment="Bottom"
-            Background="{StaticResource OverlaySurfaceBrush}"
-            BorderBrush="{StaticResource LayerStrokeBrush}"
+            Background="{ThemeResource OverlaySurfaceBrush}"
+            BorderBrush="{ThemeResource LayerStrokeBrush}"
             BorderThickness="1"
             CornerRadius="8"
             Visibility="Collapsed">
@@ -439,7 +440,7 @@
                     x:Name="UndoText"
                     VerticalAlignment="Center"
                     FontSize="12"
-                    Foreground="{StaticResource TextPrimaryBrush}"
+                    Foreground="{ThemeResource TextPrimaryBrush}"
                     TextTrimming="CharacterEllipsis" />
                 <Button
                     Grid.Column="1"

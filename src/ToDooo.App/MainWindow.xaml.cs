@@ -32,6 +32,8 @@ public sealed partial class MainWindow : Window
 
     private NativeMethods.SUBCLASSPROC? _subclassProc;
     private DesktopAcrylicController? _acrylic;
+    private Microsoft.UI.Composition.SystemBackdrops.SystemBackdropConfiguration? _backdropConfig;
+    private Views.SettingsWindow? _settingsWindow;
     private TrayIcon? _tray;
     private uint _taskbarCreatedMessage;
     private bool _pinned;
@@ -93,6 +95,7 @@ public sealed partial class MainWindow : Window
 
         CreateTray();
         StartupService.EnsureMatchesCurrentProcess();
+        _reminder.LeadMinutes = _settings.Current.ReminderLeadMinutes;
         _reminder.Start();
     }
 
@@ -128,6 +131,7 @@ public sealed partial class MainWindow : Window
             presenter.PreferredMinimumHeight = 360;
         }
 
+        Root.RequestedTheme = Appearance.ToElementTheme((ThemeMode)_settings.Current.ThemeMode);
         ApplyAcrylicMaterial();
 
         var exStyle = NativeMethods.GetWindowLongPtr(_hwnd, NativeMethods.GWL_EXSTYLE).ToInt64();
@@ -139,9 +143,7 @@ public sealed partial class MainWindow : Window
         // 最小化/最大化按钮已由 OverlappedPresenter 关掉，这里只处理扩展样式。
 
         ApplyCornerMask();
-        var dark = 1;
-        NativeMethods.DwmSetWindowAttribute(
-            _hwnd, NativeMethods.DWMWA_USE_IMMERSIVE_DARK_MODE, ref dark, sizeof(int));
+        ApplyDwmTheme(Appearance.IsDark((ThemeMode)_settings.Current.ThemeMode));
 
         var icon = Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico");
         if (File.Exists(icon))
@@ -158,25 +160,70 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var config = new SystemBackdropConfiguration
+        var dark = Appearance.IsDark((ThemeMode)_settings.Current.ThemeMode);
+        _backdropConfig = new Microsoft.UI.Composition.SystemBackdrops.SystemBackdropConfiguration
         {
             IsInputActive = true,
-            Theme = SystemBackdropTheme.Dark,
+            Theme = dark
+                ? Microsoft.UI.Composition.SystemBackdrops.SystemBackdropTheme.Dark
+                : Microsoft.UI.Composition.SystemBackdrops.SystemBackdropTheme.Light,
         };
 
-        _acrylic = new DesktopAcrylicController
-        {
-            Kind = DesktopAcrylicKind.Base,
-            TintColor = Color.FromArgb(255, 0x2A, 0x30, 0x38),
-            // tint 太厚会把模糊的桌面纹理糊成一片纯色，调到能透出磨砂颗粒感。
-            TintOpacity = 0.42f,
-            LuminosityOpacity = 0.64f,
-            FallbackColor = Color.FromArgb(255, 0x20, 0x25, 0x2C),
-        };
+        _acrylic = new DesktopAcrylicController { Kind = DesktopAcrylicKind.Base };
+        WindowAcrylic.ApplyTint(_acrylic, Appearance.TintForOpacity(_settings.Current.WindowOpacity), dark);
         _acrylic.AddSystemBackdropTarget(
             ((object)this).As<Microsoft.UI.Composition.ICompositionSupportsSystemBackdrop>());
-        _acrylic.SetSystemBackdropConfiguration(config);
+        _acrylic.SetSystemBackdropConfiguration(_backdropConfig);
     }
+
+    /// <summary>设置页改动后重刷外观：主题、亚克力浓淡、代码里写死的颜色。</summary>
+    public void ApplyAppearance()
+    {
+        Root.RequestedTheme = Appearance.ToElementTheme((ThemeMode)_settings.Current.ThemeMode);
+        var dark = Appearance.IsDark((ThemeMode)_settings.Current.ThemeMode);
+        ApplyDwmTheme(dark);
+
+        if (_acrylic is not null)
+        {
+            WindowAcrylic.ApplyTint(_acrylic, Appearance.TintForOpacity(_settings.Current.WindowOpacity), dark);
+            if (_backdropConfig is not null)
+            {
+                _backdropConfig.Theme = dark
+                    ? Microsoft.UI.Composition.SystemBackdrops.SystemBackdropTheme.Dark
+                    : Microsoft.UI.Composition.SystemBackdrops.SystemBackdropTheme.Light;
+            }
+        }
+
+        UpdateFilterVisuals();
+        UpdateTagVisuals();
+    }
+
+    private void ApplyDwmTheme(bool dark)
+    {
+        var value = dark ? 1 : 0;
+        NativeMethods.DwmSetWindowAttribute(
+            _hwnd, NativeMethods.DWMWA_USE_IMMERSIVE_DARK_MODE, ref value, sizeof(int));
+    }
+
+    /// <summary>按当前窗口实际主题取主题字典里的画刷，供代码创建/设置的视觉使用。</summary>
+    private Brush PaletteBrush(string key)
+    {
+        var themeKey = Root.ActualTheme == ElementTheme.Light ? "Light" : "Default";
+        if (Application.Current.Resources.ThemeDictionaries.TryGetValue(themeKey, out var dictionary) &&
+            dictionary is ResourceDictionary themeDictionary &&
+            themeDictionary.TryGetValue(key, out var value) &&
+            value is Brush brush)
+        {
+            return brush;
+        }
+
+        return (Brush)Application.Current.Resources[key];
+    }
+
+    private Color NeutralRingColor()
+        => Root.ActualTheme == ElementTheme.Light
+            ? Color.FromArgb(255, 0x2A, 0x2A, 0x2E)
+            : Color.FromArgb(255, 0xE9, 0xEC, 0xF0);
 
     private void InstallSubclass()
     {
@@ -575,7 +622,9 @@ public sealed partial class MainWindow : Window
         UpdateFilterVisuals();
     }
 
-    private async void ExportMenuItem_Click(object sender, RoutedEventArgs e)
+    private async void ExportMenuItem_Click(object sender, RoutedEventArgs e) => await ExportDataAsync();
+
+    public async Task ExportDataAsync()
     {
         try
         {
@@ -615,6 +664,29 @@ public sealed partial class MainWindow : Window
         {
             ShowBalloon("导出失败", "换个位置再试试");
         }
+    }
+
+    private void SettingsMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (_settingsWindow is not null)
+        {
+            _settingsWindow.Activate();
+            return;
+        }
+
+        _settingsWindow = new Views.SettingsWindow(
+            _settings,
+            OnSettingsChanged,
+            ExportDataAsync,
+            pinned => ApplyPin(pinned, persist: true));
+        _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+        _settingsWindow.ShowOver(_appWindow);
+    }
+
+    private void OnSettingsChanged()
+    {
+        ApplyAppearance();
+        _reminder.LeadMinutes = _settings.Current.ReminderLeadMinutes;
     }
 
     private void ExitApp()
@@ -912,7 +984,7 @@ public sealed partial class MainWindow : Window
         for (var i = 0; i < _tagRings.Count; i++)
         {
             ((SolidColorBrush)_tagRings[i].BorderBrush).Color = ViewModel.SelectedTag == i
-                ? Color.FromArgb(255, 233, 236, 240)
+                ? NeutralRingColor()
                 : Color.FromArgb(0, 0, 0, 0);
         }
     }
@@ -931,11 +1003,10 @@ public sealed partial class MainWindow : Window
     }
 
     // 分段筛选的选中态是一块中性高亮，而不是强调色或透明度差异。
-    private static void SetStatVisual(Button button, bool active)
+    private void SetStatVisual(Button button, bool active)
     {
-        var resources = Application.Current.Resources;
-        button.Background = (Brush)resources[active ? "SegmentSelectedBrush" : "TransparentBrush"];
-        button.Foreground = (Brush)resources[active ? "TextPrimaryBrush" : "TextMutedBrush"];
+        button.Background = active ? PaletteBrush("SegmentSelectedBrush") : PaletteBrush("TransparentBrush");
+        button.Foreground = PaletteBrush(active ? "TextPrimaryBrush" : "TextMutedBrush");
     }
 
     private void AllFilter_Click(object sender, RoutedEventArgs e)
@@ -1081,7 +1152,7 @@ public sealed partial class MainWindow : Window
         var initialDue = ToDooo.Helpers.NaturalDateParser.TryParse(draft, DateTime.Now, out var parsedDue, out var cleanedDraft)
             ? parsedDue
             : (DateTime?)null;
-        var dialog = new TodoEditorDialog(initialDue is null ? draft : cleanedDraft, initialDue);
+        var dialog = new TodoEditorDialog(_settings, initialDue is null ? draft : cleanedDraft, initialDue);
 
         if (await ShowEditorAsync(dialog))
         {
@@ -1294,7 +1365,7 @@ public sealed partial class MainWindow : Window
 
     private async Task EditItemAsync(TodoItem item)
     {
-        var dialog = new TodoEditorDialog(item);
+        var dialog = new TodoEditorDialog(_settings, item);
 
         if (await ShowEditorAsync(dialog))
         {

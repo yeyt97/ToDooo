@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml.Media;
 using ToDooo.Helpers;
 using ToDooo.Interop;
 using ToDooo.Models;
+using ToDooo.Services;
 using ToDooo.ViewModels;
 using Windows.Graphics;
 using Windows.UI;
@@ -33,27 +34,34 @@ public sealed partial class TodoEditorDialog : Window
     private readonly IntPtr _hwnd;
     private readonly AppWindow _appWindow;
     private DesktopAcrylicController? _acrylic;
+    private readonly SettingsService _settings;
     private int _tagIndex = -1;
     private bool _finished;
     private bool _ready;
     private bool _dueTouched;
     private bool _saved;
 
-    public TodoEditorDialog() : this(string.Empty)
+    public TodoEditorDialog(SettingsService settings) : this(settings, string.Empty)
     {
     }
 
     /// <summary>新建：把添加框里已经敲好的草稿带过来；草稿里识别到的日期直接预填。</summary>
-    public TodoEditorDialog(string initialTitle, DateTime? initialDue = null)
+    public TodoEditorDialog(SettingsService settings, string initialTitle, DateTime? initialDue = null)
     {
+        _settings = settings;
         InitializeComponent();
+        Root.RequestedTheme = Appearance.ToElementTheme((ThemeMode)settings.Current.ThemeMode);
 
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         _appWindow = AppWindow.GetFromWindowId(Win32Interop.GetWindowIdFromWindow(_hwnd));
 
         ConfigureWindow();
-        // 弹窗面积小、下面压着主界面，tint 比主窗口厚一点才不会把身后的待办文字透出来。
-        _acrylic = WindowAcrylic.Apply(this, tintOpacity: 0.5f);
+        var dark = Appearance.IsDark((ThemeMode)settings.Current.ThemeMode);
+        _acrylic = WindowAcrylic.Apply(
+            this, Appearance.TintForOpacity(settings.Current.WindowOpacity), dark);
+        var darkFlag = dark ? 1 : 0;
+        NativeMethods.DwmSetWindowAttribute(
+            _hwnd, NativeMethods.DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkFlag, sizeof(int));
 
         HeaderTitle.Text = "新建待办";
         TitleBox.Text = initialTitle ?? string.Empty;
@@ -76,7 +84,7 @@ public sealed partial class TodoEditorDialog : Window
         Closed += OnClosed;
     }
 
-    public TodoEditorDialog(TodoItem item) : this(item.Title)
+    public TodoEditorDialog(SettingsService settings, TodoItem item) : this(settings, item.Title)
     {
         HeaderTitle.Text = "编辑待办";
         TitleBox.Text = item.Title;
@@ -144,10 +152,6 @@ public sealed partial class TodoEditorDialog : Window
             presenter.IsMaximizable = false;
             presenter.IsMinimizable = false;
         }
-
-        var dark = 1;
-        NativeMethods.DwmSetWindowAttribute(
-            _hwnd, NativeMethods.DWMWA_USE_IMMERSIVE_DARK_MODE, ref dark, sizeof(int));
 
         var scale = NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
         _appWindow.Resize(new SizeInt32(
@@ -365,12 +369,13 @@ public sealed partial class TodoEditorDialog : Window
         {
             var index = i == _tagButtons.Count - 1 ? -1 : i;
             var selected = _tagIndex == index;
-            // 选中用一圈亮描边 + 淡底色：系统强调色可能是灰的，只靠配色看不出选没选。
+            // 选中用一圈对比色描边 + 淡底色：系统强调色可能是灰的，只靠配色看不出选没选。
+            var light = Root.ActualTheme == ElementTheme.Light;
             ((SolidColorBrush)_tagButtons[i].BorderBrush).Color = selected
-                ? Color.FromArgb(255, 0xE9, 0xEC, 0xF0)
+                ? light ? Color.FromArgb(255, 0x2A, 0x2A, 0x2E) : Color.FromArgb(255, 0xE9, 0xEC, 0xF0)
                 : Color.FromArgb(0, 0, 0, 0);
             ((SolidColorBrush)_tagButtons[i].Background).Color = selected
-                ? Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF)
+                ? light ? Color.FromArgb(0x1F, 0x00, 0x00, 0x00) : Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF)
                 : Color.FromArgb(0, 0, 0, 0);
         }
     }

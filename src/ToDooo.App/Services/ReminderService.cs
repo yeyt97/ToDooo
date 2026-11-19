@@ -20,6 +20,9 @@ public sealed class ReminderService : IDisposable
 
     public Func<IReadOnlyList<TodoItem>>? Source { get; set; }
 
+    /// <summary>提前多少分钟提醒；0 = 到期时提醒。</summary>
+    public int LeadMinutes { get; set; }
+
     public void Start()
     {
         _timer = _dispatcher.CreateTimer();
@@ -53,7 +56,7 @@ public sealed class ReminderService : IDisposable
                 continue;
             }
 
-            if (due > now)
+            if (now < due.AddMinutes(-Math.Max(0, LeadMinutes)))
             {
                 continue;
             }
@@ -64,7 +67,10 @@ public sealed class ReminderService : IDisposable
             // 超过一小时才发现的到期项不逐条弹，攒起来在开机后汇总一条。
             if ((now - due).TotalHours <= 1)
             {
-                _notifier.Show("待办到期", $"{item.Title}（截止 {due:HH:mm}）");
+                var message = now < due
+                    ? $"{item.Title}（{Math.Ceiling((due - now).TotalMinutes)} 分钟后到期）"
+                    : $"{item.Title}（截止 {due:HH:mm}）";
+                _notifier.Show("待办提醒", message);
             }
             else
             {

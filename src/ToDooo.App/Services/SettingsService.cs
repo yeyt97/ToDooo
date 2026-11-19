@@ -3,6 +3,13 @@ using System.Text.Json;
 
 namespace ToDooo.Services;
 
+public enum ThemeMode
+{
+    System = 0,
+    Dark = 1,
+    Light = 2,
+}
+
 public sealed class AppSettings
 {
     public int? WindowX { get; set; }
@@ -14,6 +21,14 @@ public sealed class AppSettings
     public int WindowHeight { get; set; } = 716;
 
     public bool PinnedToDesktop { get; set; } = true;
+
+    public int ThemeMode { get; set; }
+
+    /// <summary>窗口不透明度：0.4–1.0，默认 0.8。</summary>
+    public double WindowOpacity { get; set; } = 0.8;
+
+    /// <summary>提前多少分钟提醒：0 = 到期时提醒。</summary>
+    public int ReminderLeadMinutes { get; set; }
 }
 
 public sealed class SettingsService

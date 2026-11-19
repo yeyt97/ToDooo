@@ -6,48 +6,85 @@
     <!-- DeskBox-inspired neutral slate palette.
          Widget 本体是深色亚克力，内容靠「半透明层次」而不是强调色区分：
          窗口底 -> 分段条 -> 任务卡片 -> 悬停层，逐级提亮。 -->
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Default">
+            <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F5F5F5" />
+            <SolidColorBrush x:Key="TextSecondaryBrush" Color="#C9D0D8" />
+            <SolidColorBrush x:Key="TextMutedBrush" Color="#939DA9" />
+            <SolidColorBrush x:Key="DividerBrush" Color="#1AFFFFFF" />
+            <SolidColorBrush x:Key="OverdueBrush" Color="#F2C94C" />
+            <SolidColorBrush x:Key="HoverBrush" Color="#14FFFFFF" />
+            <SolidColorBrush x:Key="PressedBrush" Color="#20FFFFFF" />
+            <SolidColorBrush x:Key="LayerFillSecondaryBrush" Color="#0BFFFFFF" />
+            <SolidColorBrush x:Key="LayerStrokeBrush" Color="#14FFFFFF" />
+            <SolidColorBrush x:Key="ItemCardBrush" Color="#12FFFFFF" />
+            <SolidColorBrush x:Key="ItemCardHoverBrush" Color="#1EFFFFFF" />
+            <SolidColorBrush x:Key="ItemCardStrokeBrush" Color="#0CFFFFFF" />
+            <SolidColorBrush x:Key="SegmentBarBrush" Color="#0AFFFFFF" />
+            <SolidColorBrush x:Key="SegmentSelectedBrush" Color="#26FFFFFF" />
+            <SolidColorBrush x:Key="OverlaySurfaceBrush" Color="#2A3038" />
+            <SolidColorBrush x:Key="NeutralCheckFillBrush" Color="#EDEFF2" />
+            <SolidColorBrush x:Key="CheckGlyphBrush" Color="#262B33" />
+            <SolidColorBrush x:Key="CheckBorderBrush" Color="#7A828E" />
+
+            <LinearGradientBrush x:Key="CardBrush" StartPoint="0,0" EndPoint="0.35,1">
+                <GradientStop Color="#5E2E343D" Offset="0" />
+                <GradientStop Color="#542A3038" Offset="0.55" />
+                <GradientStop Color="#5E262B33" Offset="1" />
+            </LinearGradientBrush>
+
+            <LinearGradientBrush x:Key="CardStrokeBrush" StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Color="#18FFFFFF" Offset="0" />
+                <GradientStop Color="#0AFFFFFF" Offset="0.5" />
+                <GradientStop Color="#14FFFFFF" Offset="1" />
+            </LinearGradientBrush>
+        </ResourceDictionary>
+
+        <ResourceDictionary x:Key="Light">
+            <SolidColorBrush x:Key="TextPrimaryBrush" Color="#1B1B1F" />
+            <SolidColorBrush x:Key="TextSecondaryBrush" Color="#43464C" />
+            <SolidColorBrush x:Key="TextMutedBrush" Color="#6C7077" />
+            <SolidColorBrush x:Key="DividerBrush" Color="#14000000" />
+            <SolidColorBrush x:Key="OverdueBrush" Color="#A15E00" />
+            <SolidColorBrush x:Key="HoverBrush" Color="#0F000000" />
+            <SolidColorBrush x:Key="PressedBrush" Color="#1A000000" />
+            <SolidColorBrush x:Key="LayerFillSecondaryBrush" Color="#08000000" />
+            <SolidColorBrush x:Key="LayerStrokeBrush" Color="#12000000" />
+            <SolidColorBrush x:Key="ItemCardBrush" Color="#0D000000" />
+            <SolidColorBrush x:Key="ItemCardHoverBrush" Color="#17000000" />
+            <SolidColorBrush x:Key="ItemCardStrokeBrush" Color="#0F000000" />
+            <SolidColorBrush x:Key="SegmentBarBrush" Color="#08000000" />
+            <SolidColorBrush x:Key="SegmentSelectedBrush" Color="#1A000000" />
+            <SolidColorBrush x:Key="OverlaySurfaceBrush" Color="#F3F3F6" />
+            <SolidColorBrush x:Key="NeutralCheckFillBrush" Color="#2A2A2E" />
+            <SolidColorBrush x:Key="CheckGlyphBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="CheckBorderBrush" Color="#8A8A92" />
+
+            <LinearGradientBrush x:Key="CardBrush" StartPoint="0,0" EndPoint="0.35,1">
+                <GradientStop Color="#66FFFFFF" Offset="0" />
+                <GradientStop Color="#5CF7F7FA" Offset="0.55" />
+                <GradientStop Color="#66F0F0F4" Offset="1" />
+            </LinearGradientBrush>
+
+            <LinearGradientBrush x:Key="CardStrokeBrush" StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Color="#33000000" Offset="0" />
+                <GradientStop Color="#16000000" Offset="0.5" />
+                <GradientStop Color="#26000000" Offset="1" />
+            </LinearGradientBrush>
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+
     <!-- 与 Windows 11 窗口自身的圆角半径(≈8)对齐，避免系统圆角和卡片圆角叠成「双层厚角」。 -->
     <CornerRadius x:Key="CardCornerRadius">8</CornerRadius>
     <CornerRadius x:Key="ItemCornerRadius">6</CornerRadius>
     <CornerRadius x:Key="SegmentCornerRadius">8</CornerRadius>
 
-    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F5F5F5" />
-    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#C9D0D8" />
-    <SolidColorBrush x:Key="TextMutedBrush" Color="#939DA9" />
-    <SolidColorBrush x:Key="DividerBrush" Color="#1AFFFFFF" />
-    <SolidColorBrush x:Key="OverdueBrush" Color="#F2C94C" />
-    <SolidColorBrush x:Key="HoverBrush" Color="#14FFFFFF" />
-    <SolidColorBrush x:Key="PressedBrush" Color="#20FFFFFF" />
+    <!-- 主题色板：Default = 深色，Light = 浅色；随窗口 Root.RequestedTheme 切换。
+         AccentBrush / AccentGradientBrush 保持主题无关（强调色两套主题通用）。 -->
+
+    <!-- 主题无关：强调色跟随系统，透明画刷两套主题通用。 -->
     <SolidColorBrush x:Key="AccentBrush" Color="#4D8FE3" />
     <SolidColorBrush x:Key="TransparentBrush" Color="Transparent" />
-
-    <!-- 半透明层次 -->
-    <SolidColorBrush x:Key="LayerFillSecondaryBrush" Color="#0BFFFFFF" />
-    <SolidColorBrush x:Key="LayerStrokeBrush" Color="#14FFFFFF" />
-    <SolidColorBrush x:Key="ItemCardBrush" Color="#12FFFFFF" />
-    <SolidColorBrush x:Key="ItemCardHoverBrush" Color="#1EFFFFFF" />
-    <SolidColorBrush x:Key="ItemCardStrokeBrush" Color="#0CFFFFFF" />
-    <SolidColorBrush x:Key="SegmentBarBrush" Color="#0AFFFFFF" />
-    <SolidColorBrush x:Key="SegmentSelectedBrush" Color="#26FFFFFF" />
-    <SolidColorBrush x:Key="OverlaySurfaceBrush" Color="#2A3038" />
-
-    <!-- 中性完成态：DeskBox 用 TextFillColorPrimary 作为选中填充，勾用背景色 -->
-    <SolidColorBrush x:Key="NeutralCheckFillBrush" Color="#EDEFF2" />
-    <SolidColorBrush x:Key="CheckGlyphBrush" Color="#262B33" />
-    <SolidColorBrush x:Key="CheckBorderBrush" Color="#7A828E" />
-
-    <!-- 半透明：窗口级亚克力需要能透过 XAML 根层，否则磨砂会被完全盖住。 -->
-    <LinearGradientBrush x:Key="CardBrush" StartPoint="0,0" EndPoint="0.35,1">
-        <GradientStop Color="#5E2E343D" Offset="0" />
-        <GradientStop Color="#542A3038" Offset="0.55" />
-        <GradientStop Color="#5E262B33" Offset="1" />
-    </LinearGradientBrush>
-
-    <LinearGradientBrush x:Key="CardStrokeBrush" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#18FFFFFF" Offset="0" />
-        <GradientStop Color="#0AFFFFFF" Offset="0.5" />
-        <GradientStop Color="#14FFFFFF" Offset="1" />
-    </LinearGradientBrush>
 
     <LinearGradientBrush x:Key="AccentGradientBrush" StartPoint="0,0" EndPoint="1,1">
         <GradientStop Color="#5C9BEA" Offset="0" />
@@ -79,12 +116,12 @@
                                 <VisualState x:Name="Normal" />
                                 <VisualState x:Name="PointerOver">
                                     <VisualState.Setters>
-                                        <Setter Target="Root.Background" Value="{StaticResource HoverBrush}" />
+                                        <Setter Target="Root.Background" Value="{ThemeResource HoverBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="Pressed">
                                     <VisualState.Setters>
-                                        <Setter Target="Root.Background" Value="{StaticResource PressedBrush}" />
+                                        <Setter Target="Root.Background" Value="{ThemeResource PressedBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="Disabled">
@@ -114,7 +151,7 @@
         <Setter Property="HorizontalAlignment" Value="Stretch" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
-        <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource TextMutedBrush}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
@@ -124,12 +161,12 @@
                                 <VisualState x:Name="Normal" />
                                 <VisualState x:Name="PointerOver">
                                     <VisualState.Setters>
-                                        <Setter Target="Root.Background" Value="{StaticResource HoverBrush}" />
+                                        <Setter Target="Root.Background" Value="{ThemeResource HoverBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="Pressed">
                                     <VisualState.Setters>
-                                        <Setter Target="Root.Background" Value="{StaticResource PressedBrush}" />
+                                        <Setter Target="Root.Background" Value="{ThemeResource PressedBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="Disabled" />
@@ -159,7 +196,7 @@
         <Setter Property="Padding" Value="0" />
         <Setter Property="MinHeight" Value="0" />
         <Setter Property="FontSize" Value="13" />
-        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource TextPrimaryBrush}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="TextBox">
@@ -185,13 +222,13 @@
     </Style>
 
     <Style x:Key="AddButtonStyle" TargetType="Button">
-        <Setter Property="Background" Value="{StaticResource ItemCardBrush}" />
+        <Setter Property="Background" Value="{ThemeResource ItemCardBrush}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="HorizontalAlignment" Value="Stretch" />
         <Setter Property="HorizontalContentAlignment" Value="Left" />
         <Setter Property="Padding" Value="8,5" />
         <Setter Property="MinHeight" Value="46" />
-        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource TextSecondaryBrush}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
@@ -201,12 +238,12 @@
                                 <VisualState x:Name="Normal" />
                                 <VisualState x:Name="PointerOver">
                                     <VisualState.Setters>
-                                        <Setter Target="Root.Background" Value="{StaticResource ItemCardHoverBrush}" />
+                                        <Setter Target="Root.Background" Value="{ThemeResource ItemCardHoverBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="Pressed">
                                     <VisualState.Setters>
-                                        <Setter Target="Root.Background" Value="{StaticResource PressedBrush}" />
+                                        <Setter Target="Root.Background" Value="{ThemeResource PressedBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="Disabled" />
@@ -228,7 +265,7 @@
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Padding" Value="8,4" />
-        <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource TextMutedBrush}" />
         <Setter Property="FontSize" Value="12" />
         <Setter Property="Template">
             <Setter.Value>
@@ -239,13 +276,13 @@
                                 <VisualState x:Name="Normal" />
                                 <VisualState x:Name="PointerOver">
                                     <VisualState.Setters>
-                                        <Setter Target="Root.Background" Value="{StaticResource HoverBrush}" />
-                                        <Setter Target="Content.Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                        <Setter Target="Root.Background" Value="{ThemeResource HoverBrush}" />
+                                        <Setter Target="Content.Foreground" Value="{ThemeResource TextPrimaryBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="Pressed">
                                     <VisualState.Setters>
-                                        <Setter Target="Root.Background" Value="{StaticResource PressedBrush}" />
+                                        <Setter Target="Root.Background" Value="{ThemeResource PressedBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="Disabled">
@@ -286,12 +323,12 @@
                                 <VisualState x:Name="Normal" />
                                 <VisualState x:Name="PointerOver">
                                     <VisualState.Setters>
-                                        <Setter Target="Root.Background" Value="{StaticResource HoverBrush}" />
+                                        <Setter Target="Root.Background" Value="{ThemeResource HoverBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="Pressed">
                                     <VisualState.Setters>
-                                        <Setter Target="Root.Background" Value="{StaticResource PressedBrush}" />
+                                        <Setter Target="Root.Background" Value="{ThemeResource PressedBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="Disabled" />
@@ -316,7 +353,7 @@
         <Setter Property="Padding" Value="0" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource TextSecondaryBrush}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
@@ -326,12 +363,12 @@
                                 <VisualState x:Name="Normal" />
                                 <VisualState x:Name="PointerOver">
                                     <VisualState.Setters>
-                                        <Setter Target="Root.Background" Value="{StaticResource HoverBrush}" />
+                                        <Setter Target="Root.Background" Value="{ThemeResource HoverBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="Pressed">
                                     <VisualState.Setters>
-                                        <Setter Target="Root.Background" Value="{StaticResource PressedBrush}" />
+                                        <Setter Target="Root.Background" Value="{ThemeResource PressedBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="Disabled" />
@@ -378,7 +415,7 @@
                                 <VisualState x:Name="Indeterminate" />
                                 <VisualState x:Name="Checked">
                                     <VisualState.Setters>
-                                        <Setter Target="Box.Background" Value="{StaticResource NeutralCheckFillBrush}" />
+                                        <Setter Target="Box.Background" Value="{ThemeResource NeutralCheckFillBrush}" />
                                         <Setter Target="Box.BorderBrush" Value="Transparent" />
                                         <Setter Target="Check.Opacity" Value="1" />
                                     </VisualState.Setters>
@@ -391,7 +428,7 @@
                             Height="18"
                             CornerRadius="4"
                             BorderThickness="1.5"
-                            BorderBrush="{StaticResource CheckBorderBrush}"
+                            BorderBrush="{ThemeResource CheckBorderBrush}"
                             Background="Transparent"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center" />
@@ -399,7 +436,7 @@
                             x:Name="Check"
                             Glyph="&#xE73E;"
                             FontSize="10"
-                            Foreground="{StaticResource CheckGlyphBrush}"
+                            Foreground="{ThemeResource CheckGlyphBrush}"
                             Opacity="0"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center" />
@@ -481,7 +518,7 @@
                                 <VisualState x:Name="Indeterminate" />
                                 <VisualState x:Name="Checked">
                                     <VisualState.Setters>
-                                        <Setter Target="Box.Background" Value="{StaticResource NeutralCheckFillBrush}" />
+                                        <Setter Target="Box.Background" Value="{ThemeResource NeutralCheckFillBrush}" />
                                         <Setter Target="Box.BorderBrush" Value="Transparent" />
                                         <Setter Target="Check.Opacity" Value="1" />
                                     </VisualState.Setters>
@@ -493,7 +530,7 @@
                             Width="20"
                             Height="20"
                             CornerRadius="6"
-                            Background="{StaticResource HoverBrush}"
+                            Background="{ThemeResource HoverBrush}"
                             Opacity="0" />
                         <Border
                             x:Name="Box"
@@ -501,7 +538,7 @@
                             Height="18"
                             CornerRadius="4"
                             BorderThickness="1.5"
-                            BorderBrush="{StaticResource CheckBorderBrush}"
+                            BorderBrush="{ThemeResource CheckBorderBrush}"
                             Background="Transparent"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center" />
@@ -509,7 +546,7 @@
                             x:Name="Check"
                             Glyph="&#xE73E;"
                             FontSize="10"
-                            Foreground="{StaticResource CheckGlyphBrush}"
+                            Foreground="{ThemeResource CheckGlyphBrush}"
                             Opacity="0"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center" />
@@ -523,8 +560,8 @@
         <Setter Property="MinHeight" Value="50" />
         <Setter Property="Padding" Value="8,6" />
         <Setter Property="Margin" Value="0,2" />
-        <Setter Property="Background" Value="{StaticResource ItemCardBrush}" />
-        <Setter Property="BorderBrush" Value="{StaticResource ItemCardStrokeBrush}" />
+        <Setter Property="Background" Value="{ThemeResource ItemCardBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource ItemCardStrokeBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="{StaticResource ItemCornerRadius}" />
     </Style>

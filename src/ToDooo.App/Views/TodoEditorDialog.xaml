@@ -17,7 +17,7 @@
         <Grid.Resources>
             <Style x:Key="LabelText" TargetType="TextBlock">
                 <Setter Property="FontSize" Value="13" />
-                <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource TextSecondaryBrush}" />
                 <Setter Property="VerticalAlignment" Value="Center" />
             </Style>
 
@@ -41,12 +41,12 @@
                                         <VisualState x:Name="Normal" />
                                         <VisualState x:Name="PointerOver">
                                             <VisualState.Setters>
-                                                <Setter Target="Root.Background" Value="{StaticResource HoverBrush}" />
+                                                <Setter Target="Root.Background" Value="{ThemeResource HoverBrush}" />
                                             </VisualState.Setters>
                                         </VisualState>
                                         <VisualState x:Name="Pressed">
                                             <VisualState.Setters>
-                                                <Setter Target="Root.Background" Value="{StaticResource PressedBrush}" />
+                                                <Setter Target="Root.Background" Value="{ThemeResource PressedBrush}" />
                                             </VisualState.Setters>
                                         </VisualState>
                                         <VisualState x:Name="Disabled" />
@@ -93,7 +93,7 @@
                 VerticalAlignment="Center"
                 FontSize="14"
                 FontWeight="SemiBold"
-                Foreground="{StaticResource TextPrimaryBrush}" />
+                Foreground="{ThemeResource TextPrimaryBrush}" />
         </Grid>
 
         <ScrollViewer
@@ -119,8 +119,8 @@
                 <!--  分组 1：截止时间 + 重复  -->
                 <Border
                     Padding="14,10,14,12"
-                    Background="{StaticResource ItemCardBrush}"
-                    BorderBrush="{StaticResource ItemCardStrokeBrush}"
+                    Background="{ThemeResource ItemCardBrush}"
+                    BorderBrush="{ThemeResource ItemCardStrokeBrush}"
                     BorderThickness="1"
                     CornerRadius="8">
                     <StackPanel Spacing="10">
@@ -206,8 +206,8 @@
                 <!--  分组 2：重要 + 标签  -->
                 <Border
                     Padding="14,10,14,12"
-                    Background="{StaticResource ItemCardBrush}"
-                    BorderBrush="{StaticResource ItemCardStrokeBrush}"
+                    Background="{ThemeResource ItemCardBrush}"
+                    BorderBrush="{ThemeResource ItemCardStrokeBrush}"
                     BorderThickness="1"
                     CornerRadius="8">
                     <StackPanel Spacing="10">

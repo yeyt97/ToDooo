@@ -1577,6 +1577,15 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    // 点整行只展开/收起子任务，不再打开编辑窗口。
+    private void TodoList_ItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is TodoItem { HasSubtasks: true } item)
+        {
+            item.SubtasksExpanded = !item.SubtasksExpanded;
+        }
+    }
+
     private void SubtasksToggle_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button { DataContext: TodoItem item })

@@ -108,7 +108,7 @@ public sealed partial class TodoEditorDialog : Window
 
         foreach (var subtask in item.Subtasks)
         {
-            _subtaskDrafts.Add(new SubtaskDraft(subtask.Id, subtask.Title, subtask.IsDone));
+            _subtaskDrafts.Add(new SubtaskDraft(subtask.Id, subtask.Title, subtask.IsDone, subtask.DueAt));
         }
 
         RenderSubtasks();
@@ -611,19 +611,77 @@ public sealed partial class TodoEditorDialog : Window
                 RenderSubtasks();
             };
 
+            var dueButton = new Button
+            {
+                Height = 26,
+                MinWidth = 0,
+                Padding = new Thickness(6, 0, 6, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Background = new SolidColorBrush(Colors.Transparent),
+                BorderThickness = new Thickness(0),
+                Opacity = draft.DueAt is null ? 0.65 : 1,
+            };
+            var dueContent = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 3,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            dueContent.Children.Add(new FontIcon
+            {
+                Glyph = "\uE823",
+                FontSize = 10,
+                Foreground = (Brush)Application.Current.Resources["TextSecondaryBrush"],
+            });
+            if (draft.DueAt is { } due)
+            {
+                dueContent.Children.Add(new TextBlock
+                {
+                    Text = due.ToString("M/d HH:mm"),
+                    FontSize = 10,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = (Brush)Application.Current.Resources["TextSecondaryBrush"],
+                });
+            }
+            dueButton.Content = dueContent;
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(dueButton, "设置子任务时间");
+            dueButton.Click += async (_, _) => await EditSubtaskDueAsync(index);
+
             var row = new Grid { ColumnSpacing = 6 };
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             Grid.SetColumn(title, 1);
-            Grid.SetColumn(delete, 2);
+            Grid.SetColumn(dueButton, 2);
+            Grid.SetColumn(delete, 3);
             row.Children.Add(check);
             row.Children.Add(title);
+            row.Children.Add(dueButton);
             row.Children.Add(delete);
             SubtaskPanel.Children.Add(row);
         }
 
         UpdateSubtaskCount();
+    }
+
+    private async Task EditSubtaskDueAsync(int index)
+    {
+        if (index < 0 || index >= _subtaskDrafts.Count)
+        {
+            return;
+        }
+
+        var draft = _subtaskDrafts[index];
+        var (confirmed, dueAt) = await SubtaskDuePrompt.ShowAsync(
+            Root.XamlRoot, Root.RequestedTheme, draft.DueAt);
+        if (!confirmed || index >= _subtaskDrafts.Count)
+        {
+            return;
+        }
+
+        _subtaskDrafts[index] = _subtaskDrafts[index] with { DueAt = dueAt };
+        RenderSubtasks();
     }
 
     private void UpdateSubtaskCount() =>

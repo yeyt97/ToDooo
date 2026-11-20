@@ -16,7 +16,7 @@ using Windows.UI;
 
 namespace ToDooo.Views;
 
-/// <summary>月历视图：按截止日期归组现有待办，点条目直接打开编辑窗口。</summary>
+/// <summary>月历视图：按截止日期归组现有待办，点条目先查看详情，可再进入编辑。</summary>
 public sealed partial class CalendarWindow : Window
 {
     private const int LogicalWidth = 860;
@@ -28,7 +28,8 @@ public sealed partial class CalendarWindow : Window
     private readonly Action<TodoItem, DateTime> _rescheduleRequested;
     private readonly Action<DateTime> _createRequested;
     private const string DragKey = "ToDoooCalendarTask";
-    private TodoItem? _draggedItem;
+    private CalendarEntry? _draggedEntry;
+    private bool _previewOpen;
     private readonly IntPtr _hwnd;
     private readonly AppWindow _appWindow;
     private DesktopAcrylicController? _acrylic;
@@ -226,22 +227,63 @@ public sealed partial class CalendarWindow : Window
 
         MonthTitle.Text = $"{_month:yyyy 年 M 月}";
 
-        var dated = _viewModel.AllItems
-            .Where(item => item.DueAt is not null)
-            .GroupBy(item => item.DueAt!.Value.Date)
+        var entries = BuildEntries();
+        var dated = entries
+            .Where(entry => entry.DueAt is not null)
+            .GroupBy(entry => entry.DueAt!.Value.Date)
             .ToDictionary(group => group.Key, group => group
-                .OrderBy(item => item.DueAt)
-                .ThenBy(item => item.Title)
+                .OrderBy(entry => entry.DueAt)
+                .ThenBy(entry => entry.Title)
                 .ToList());
 
         BuildMonthCells(dated);
-        ShowSelectedDay(dated.TryGetValue(_selected, out var dayItems) ? dayItems : new List<TodoItem>());
+        ShowSelectedDay(dated.TryGetValue(_selected, out var dayEntries) ? dayEntries : new List<CalendarEntry>());
 
-        var undated = _viewModel.AllItems.Count(item => item.DueAt is null && !item.IsDone);
-        UndatedText.Text = undated > 0 ? $"另有 {undated} 条无截止日期，未显示" : string.Empty;
+        var undated = _viewModel.AllItems
+            .Where(item => item.DueAt is null && !item.IsDone)
+            .Select(item => new CalendarEntry(item, null))
+            .ToList();
+        ShowUndated(undated);
     }
 
-    private void BuildMonthCells(Dictionary<DateTime, List<TodoItem>> dated)
+    private List<CalendarEntry> BuildEntries()
+    {
+        var entries = new List<CalendarEntry>();
+        foreach (var item in _viewModel.AllItems)
+        {
+            if (item.DueAt is not null)
+            {
+                entries.Add(new CalendarEntry(item, null));
+            }
+
+            foreach (var subtask in item.Subtasks)
+            {
+                if (subtask.DueAt is not null)
+                {
+                    entries.Add(new CalendarEntry(item, subtask));
+                }
+            }
+        }
+
+        return entries;
+    }
+
+    private sealed record CalendarEntry(TodoItem Parent, SubtaskItem? Subtask)
+    {
+        public DateTime? DueAt => Subtask is { } subtask ? subtask.DueAt : Parent.DueAt;
+
+        public bool IsDone => Subtask is { } subtask ? subtask.IsDone : Parent.IsDone;
+
+        public bool IsOverdue => !IsDone && DueAt is { } due && due < DateTime.Now;
+
+        public int TagIndex => Parent.TagIndex;
+
+        public string Title => Subtask?.Title ?? Parent.Title;
+
+        public string FullTitle => Subtask is null ? Parent.Title : $"{Parent.Title} › {Subtask.Title}";
+    }
+
+    private void BuildMonthCells(Dictionary<DateTime, List<CalendarEntry>> dated)
     {
         DaysGrid.Children.Clear();
         DaysGrid.RowDefinitions.Clear();
@@ -272,7 +314,7 @@ public sealed partial class CalendarWindow : Window
         }
     }
 
-    private Border BuildCell(DateTime date, List<TodoItem>? items)
+    private Border BuildCell(DateTime date, List<CalendarEntry>? entries)
     {
         var inMonth = date.Month == _month.Month;
         var isSelected = date == _selected;
@@ -297,7 +339,7 @@ public sealed partial class CalendarWindow : Window
         };
         content.Children.Add(dayNumber);
 
-        if (items is { Count: > 0 })
+        if (entries is { Count: > 0 })
         {
             var chips = new StackPanel
             {
@@ -306,18 +348,16 @@ public sealed partial class CalendarWindow : Window
             };
             Grid.SetRow(chips, 1);
 
-            foreach (var item in items.Take(3))
+            foreach (var entry in entries.Take(3))
             {
-                var chip = BuildChip(item);
-                chip.IsHitTestVisible = false;
-                chips.Children.Add(chip);
+                chips.Children.Add(BuildChip(entry));
             }
 
-            if (items.Count > 3)
+            if (entries.Count > 3)
             {
                 chips.Children.Add(new TextBlock
                 {
-                    Text = $"+{items.Count - 3}",
+                    Text = $"+{entries.Count - 3}",
                     FontSize = 9,
                     Foreground = (Brush)Application.Current.Resources["TextMutedBrush"],
                 });
@@ -379,17 +419,50 @@ public sealed partial class CalendarWindow : Window
 
         cell.DragLeave += (_, _) => cell.Background = GetCellBackground(date == _selected);
 
-        cell.Drop += (sender, args) =>
+        cell.Drop += async (sender, args) =>
         {
             cell.Background = GetCellBackground(date == _selected);
-            if (_draggedItem is not { } item || sender is not FrameworkElement { Tag: DateTime target })
+            if (_draggedEntry is not { } entry || sender is not FrameworkElement { Tag: DateTime target })
             {
                 return;
             }
 
             args.Handled = true;
-            _draggedItem = null;
-            _rescheduleRequested(item, target);
+            _draggedEntry = null;
+
+            if (entry.Subtask is { } subtask)
+            {
+                if (subtask.DueAt is null)
+                {
+                    var dueAt = await PromptForTimeAsync(target);
+                    if (dueAt is { } value)
+                    {
+                        _viewModel.SetSubtaskDue(entry.Parent, subtask, value);
+                        Refresh();
+                    }
+
+                    return;
+                }
+
+                var next = target.Date + subtask.DueAt.Value.TimeOfDay;
+                _viewModel.SetSubtaskDue(entry.Parent, subtask, next);
+                Refresh();
+                return;
+            }
+
+            if (entry.Parent.DueAt is null)
+            {
+                var dueAt = await PromptForTimeAsync(target);
+                if (dueAt is { } value)
+                {
+                    _viewModel.ScheduleAt(entry.Parent, value);
+                    Refresh();
+                }
+
+                return;
+            }
+
+            _rescheduleRequested(entry.Parent, target);
             Refresh();
         };
 
@@ -411,12 +484,12 @@ public sealed partial class CalendarWindow : Window
 
     private void ShowDetailsForSelected()
     {
-        var items = _viewModel.AllItems
-            .Where(item => item.DueAt is not null && item.DueAt.Value.Date == _selected)
-            .OrderBy(item => item.DueAt)
-            .ThenBy(item => item.Title)
+        var entries = BuildEntries()
+            .Where(entry => entry.DueAt is not null && entry.DueAt.Value.Date == _selected)
+            .OrderBy(entry => entry.DueAt)
+            .ThenBy(entry => entry.Title)
             .ToList();
-        ShowSelectedDay(items);
+        ShowSelectedDay(entries);
     }
 
     private static Brush GetCellBackground(bool selected) =>
@@ -424,37 +497,72 @@ public sealed partial class CalendarWindow : Window
             ? (Brush)Application.Current.Resources["SegmentSelectedBrush"]
             : (Brush)Application.Current.Resources["TransparentBrush"];
 
-    private UIElement BuildChip(TodoItem item)
+    private UIElement BuildChip(CalendarEntry entry)
     {
         var chip = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             Spacing = 3,
-            Opacity = item.IsDone ? 0.45 : 1,
+            Opacity = entry.IsDone ? 0.45 : 1,
+            Background = (Brush)Application.Current.Resources["TransparentBrush"],
+            CanDrag = true,
         };
-
-        chip.Children.Add(new Border
+        chip.DragStarting += (_, args) =>
         {
-            Width = 5,
-            Height = 5,
-            CornerRadius = new CornerRadius(2.5),
-            VerticalAlignment = VerticalAlignment.Center,
-            Background = new SolidColorBrush(TagColor(item.TagIndex)),
-        });
+            _draggedEntry = entry;
+            args.Data.Properties[DragKey] = true;
+            args.Data.RequestedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
+        };
+        chip.DropCompleted += (_, _) => _draggedEntry = null;
 
-        chip.Children.Add(new TextBlock
+        if (entry.Subtask is not null)
         {
-            Text = item.Title,
+            chip.Children.Add(new TextBlock
+            {
+                Text = "\u21B3",
+                FontSize = 9,
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = new SolidColorBrush(TagColor(entry.TagIndex)),
+            });
+        }
+        else
+        {
+            chip.Children.Add(new Border
+            {
+                Width = 5,
+                Height = 5,
+                CornerRadius = new CornerRadius(2.5),
+                VerticalAlignment = VerticalAlignment.Center,
+                Background = new SolidColorBrush(TagColor(entry.TagIndex)),
+            });
+        }
+
+        var title = new TextBlock
+        {
+            Text = entry.Title,
             FontSize = 9,
             MaxLines = 1,
-            MaxWidth = 58,
+            MaxWidth = entry.Subtask is null ? 58 : 50,
             TextTrimming = TextTrimming.CharacterEllipsis,
-            TextDecorations = item.IsDone ? Windows.UI.Text.TextDecorations.Strikethrough : Windows.UI.Text.TextDecorations.None,
+            TextDecorations = entry.IsDone ? Windows.UI.Text.TextDecorations.Strikethrough : Windows.UI.Text.TextDecorations.None,
             Foreground = (Brush)Application.Current.Resources["TextSecondaryBrush"],
-        });
+        };
+        SetTitleToolTip(title, entry.FullTitle);
+        chip.Children.Add(title);
 
         return chip;
     }
+
+    private static void SetTitleToolTip(DependencyObject target, string title) =>
+        ToolTipService.SetToolTip(target, new ToolTip
+        {
+            Content = new TextBlock
+            {
+                Text = title,
+                MaxWidth = 280,
+                TextWrapping = TextWrapping.Wrap,
+            },
+        });
 
     private static Color TagColor(int tagIndex)
     {
@@ -471,12 +579,12 @@ public sealed partial class CalendarWindow : Window
             Convert.ToByte(hex.Substring(5, 2), 16));
     }
 
-    private void ShowSelectedDay(List<TodoItem> items)
+    private void ShowSelectedDay(List<CalendarEntry> entries)
     {
         SelectedDateText.Text = _selected.ToString("M 月 d 日 dddd");
         DetailsPanel.Children.Clear();
 
-        if (items.Count == 0)
+        if (entries.Count == 0)
         {
             DetailsPanel.Children.Add(new TextBlock
             {
@@ -487,73 +595,503 @@ public sealed partial class CalendarWindow : Window
             return;
         }
 
-        foreach (var item in items)
+        var parentsDueToday = entries
+            .Where(entry => entry.Subtask is null)
+            .Select(entry => entry.Parent.Id)
+            .ToHashSet();
+
+        foreach (var entry in entries)
         {
-            var row = new Grid
+            if (entry.Subtask is not null && parentsDueToday.Contains(entry.Parent.Id))
             {
-                Padding = new Thickness(6, 5, 6, 5),
-                Background = (Brush)Application.Current.Resources["TransparentBrush"],
-                CanDrag = true,
-            };
-            row.Tapped += (_, _) => _editRequested(item);
-            row.PointerEntered += (_, _) =>
-                row.Background = (Brush)Application.Current.Resources["HoverBrush"];
-            row.PointerExited += (_, _) =>
-                row.Background = (Brush)Application.Current.Resources["TransparentBrush"];
-            row.DragStarting += (sender, args) =>
-            {
-                _draggedItem = item;
-                args.Data.Properties[DragKey] = true;
-                args.Data.RequestedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
-            };
-            row.DropCompleted += (_, _) => _draggedItem = null;
+                continue;
+            }
 
-            var content = new Grid { ColumnSpacing = 6 };
-            content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            DetailsPanel.Children.Add(BuildDetailRow(entry));
 
-            var dot = new Border
+            if (entry.Subtask is null)
             {
-                Width = 7,
-                Height = 7,
-                CornerRadius = new CornerRadius(3.5),
-                VerticalAlignment = VerticalAlignment.Center,
-                Background = new SolidColorBrush(TagColor(item.TagIndex)),
-            };
-            content.Children.Add(dot);
+                AddSubtaskRows(DetailsPanel, entry.Parent, _selected, undatedOnly: false);
+            }
+        }
+    }
 
-            var title = new TextBlock
+    private void ShowUndated(List<CalendarEntry> entries)
+    {
+        UndatedCountText.Text = entries.Count > 0 ? $"{entries.Count} 条" : string.Empty;
+        UndatedPanel.Children.Clear();
+
+        if (entries.Count == 0)
+        {
+            UndatedPanel.Children.Add(new TextBlock
             {
-                Text = item.Title,
+                Text = "没有未安排日期的待办",
                 FontSize = 12,
-                MaxLines = 2,
-                TextWrapping = TextWrapping.Wrap,
+                Foreground = (Brush)Application.Current.Resources["TextMutedBrush"],
+            });
+            return;
+        }
+
+        foreach (var entry in entries)
+        {
+            UndatedPanel.Children.Add(BuildDetailRow(entry));
+            AddSubtaskRows(UndatedPanel, entry.Parent, null, undatedOnly: true, showUndated: false);
+        }
+    }
+
+    private async Task<DateTime?> PromptForTimeAsync(DateTime date)
+    {
+        var timePicker = new TimePicker
+        {
+            ClockIdentifier = "24HourClock",
+            MinuteIncrement = 5,
+            SelectedTime = RoundToFiveMinutes(DateTime.Now.TimeOfDay),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+
+        var panel = new StackPanel { Spacing = 10 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = $"{date:M 月 d 日 dddd}",
+            FontSize = 12,
+            Foreground = (Brush)Application.Current.Resources["TextSecondaryBrush"],
+        });
+        panel.Children.Add(timePicker);
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = "设置时间",
+            Content = panel,
+            PrimaryButtonText = "确定",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        dialog.RequestedTheme = Root.RequestedTheme == ElementTheme.Default
+            ? Appearance.ToElementTheme((ThemeMode)_settings.Current.ThemeMode)
+            : Root.RequestedTheme;
+        ThemePalette.ApplyTextControlPalette(dialog.Resources);
+        dialog.Resources["ContentDialogBackground"] = Application.Current.Resources["DialogAcrylicBrush"];
+        dialog.Resources["ContentDialogBorderBrush"] = Application.Current.Resources["CardStrokeBrush"];
+        dialog.Resources["ContentDialogCornerRadius"] = new CornerRadius(8);
+        dialog.Resources["ContentDialogSmokeFill"] = new SolidColorBrush(Color.FromArgb(0x33, 0x00, 0x00, 0x00));
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary ||
+            timePicker.SelectedTime is not { } time)
+        {
+            return null;
+        }
+
+        return date.Date + time;
+    }
+
+    private static TimeSpan RoundToFiveMinutes(TimeSpan value)
+    {
+        var minutes = (int)Math.Round(value.TotalMinutes / 5.0) * 5;
+        return TimeSpan.FromMinutes(minutes % (24 * 60));
+    }
+
+    private Grid BuildDetailRow(CalendarEntry entry)
+    {
+        var row = new Grid
+        {
+            Padding = new Thickness(6, 5, 6, 5),
+            Background = (Brush)Application.Current.Resources["TransparentBrush"],
+            CanDrag = true,
+        };
+        row.Tapped += async (_, _) => await ShowItemPreviewAsync(entry);
+        row.PointerEntered += (_, _) =>
+            row.Background = (Brush)Application.Current.Resources["HoverBrush"];
+        row.PointerExited += (_, _) =>
+            row.Background = (Brush)Application.Current.Resources["TransparentBrush"];
+        row.DragStarting += (sender, args) =>
+        {
+            _draggedEntry = entry;
+            args.Data.Properties[DragKey] = true;
+            args.Data.RequestedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
+        };
+        row.DropCompleted += (_, _) => _draggedEntry = null;
+
+        var content = new Grid { ColumnSpacing = 6 };
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var dot = new Border
+        {
+            Width = 7,
+            Height = 7,
+            CornerRadius = new CornerRadius(3.5),
+            VerticalAlignment = VerticalAlignment.Center,
+            Background = new SolidColorBrush(TagColor(entry.TagIndex)),
+        };
+        content.Children.Add(dot);
+
+        var textStack = new StackPanel
+        {
+            Spacing = 1,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        var title = new TextBlock
+        {
+            Text = entry.Title,
+            FontSize = 12,
+            MaxLines = 2,
+            TextWrapping = TextWrapping.Wrap,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Foreground = (Brush)Application.Current.Resources[
+                entry.IsDone ? "TextMutedBrush" : "TextPrimaryBrush"],
+            TextDecorations = entry.IsDone
+                ? Windows.UI.Text.TextDecorations.Strikethrough
+                : Windows.UI.Text.TextDecorations.None,
+        };
+        SetTitleToolTip(title, entry.FullTitle);
+        textStack.Children.Add(title);
+
+        if (entry.Subtask is not null)
+        {
+            var parentLine = new Grid { ColumnSpacing = 3 };
+            parentLine.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            parentLine.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            var marker = new TextBlock
+            {
+                Text = "\u21B3",
+                FontSize = 9,
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = (Brush)Application.Current.Resources["TextMutedBrush"],
+            };
+            parentLine.Children.Add(marker);
+
+            var parentTitle = new TextBlock
+            {
+                Text = entry.Parent.Title,
+                FontSize = 10,
+                MaxLines = 1,
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 VerticalAlignment = VerticalAlignment.Center,
-                Foreground = (Brush)Application.Current.Resources[
-                    item.IsDone ? "TextMutedBrush" : "TextPrimaryBrush"],
-                TextDecorations = item.IsDone
-                    ? Windows.UI.Text.TextDecorations.Strikethrough
-                    : Windows.UI.Text.TextDecorations.None,
+                Foreground = (Brush)Application.Current.Resources["TextMutedBrush"],
             };
-            Grid.SetColumn(title, 1);
-            content.Children.Add(title);
+            SetTitleToolTip(parentTitle, entry.Parent.Title);
+            Grid.SetColumn(parentTitle, 1);
+            parentLine.Children.Add(parentTitle);
 
+            textStack.Children.Add(parentLine);
+        }
+
+        Grid.SetColumn(textStack, 1);
+        content.Children.Add(textStack);
+
+        var time = new TextBlock
+        {
+            Text = entry.DueAt?.ToString("HH:mm") ?? string.Empty,
+            FontSize = 11,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = (Brush)Application.Current.Resources[
+                entry.IsOverdue ? "OverdueBrush" : "TextMutedBrush"],
+        };
+        Grid.SetColumn(time, 2);
+        content.Children.Add(time);
+
+        row.Children.Add(content);
+        return row;
+    }
+
+    private void AddSubtaskRows(
+        StackPanel panel,
+        TodoItem parent,
+        DateTime? selectedDate,
+        bool undatedOnly,
+        bool showUndated = true)
+    {
+        foreach (var subtask in parent.Subtasks)
+        {
+            if (undatedOnly && (subtask.DueAt is not null || subtask.IsDone))
+            {
+                continue;
+            }
+
+            panel.Children.Add(BuildSubtaskRow(parent, subtask, selectedDate, showUndated));
+        }
+    }
+
+    private Grid BuildSubtaskRow(
+        TodoItem parent,
+        SubtaskItem subtask,
+        DateTime? selectedDate,
+        bool showUndated = true)
+    {
+        var entry = new CalendarEntry(parent, subtask);
+        var row = new Grid
+        {
+            Padding = new Thickness(18, 3, 6, 3),
+            Background = (Brush)Application.Current.Resources["TransparentBrush"],
+            CanDrag = true,
+        };
+        row.Tapped += async (_, _) => await ShowItemPreviewAsync(entry);
+        row.PointerEntered += (_, _) =>
+            row.Background = (Brush)Application.Current.Resources["HoverBrush"];
+        row.PointerExited += (_, _) =>
+            row.Background = (Brush)Application.Current.Resources["TransparentBrush"];
+        row.DragStarting += (sender, args) =>
+        {
+            _draggedEntry = entry;
+            args.Data.Properties[DragKey] = true;
+            args.Data.RequestedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
+        };
+        row.DropCompleted += (_, _) => _draggedEntry = null;
+
+        var content = new Grid { ColumnSpacing = 6 };
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        content.Children.Add(new TextBlock
+        {
+            Text = "\u21B3",
+            FontSize = 9,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = new SolidColorBrush(TagColor(parent.TagIndex)),
+        });
+
+        var title = new TextBlock
+        {
+            Text = subtask.Title,
+            FontSize = 11,
+            MaxLines = 1,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = (Brush)Application.Current.Resources[
+                subtask.IsDone ? "TextMutedBrush" : "TextPrimaryBrush"],
+            TextDecorations = subtask.IsDone
+                ? Windows.UI.Text.TextDecorations.Strikethrough
+                : Windows.UI.Text.TextDecorations.None,
+        };
+        SetTitleToolTip(title, entry.FullTitle);
+        Grid.SetColumn(title, 1);
+        content.Children.Add(title);
+
+        var due = subtask.DueAt;
+        var otherDay = due is { } dueValue && selectedDate is { } day && dueValue.Date != day.Date;
+        var timeText = due is null
+            ? showUndated ? "未定" : string.Empty
+            : otherDay
+                ? $"→ {due.Value:M/d HH:mm}"
+                : selectedDate is null
+                    ? due.Value.ToString("M/d HH:mm")
+                    : due.Value.ToString("HH:mm");
+        if (timeText.Length > 0)
+        {
             var time = new TextBlock
             {
-                Text = item.DueAt?.ToString("HH:mm") ?? string.Empty,
-                FontSize = 11,
+                Text = timeText,
+                FontSize = 10,
                 VerticalAlignment = VerticalAlignment.Center,
+                FontStyle = otherDay
+                    ? Windows.UI.Text.FontStyle.Italic
+                    : Windows.UI.Text.FontStyle.Normal,
                 Foreground = (Brush)Application.Current.Resources[
-                    item.IsOverdue ? "OverdueBrush" : "TextMutedBrush"],
+                    entry.IsOverdue ? "OverdueBrush" : "TextMutedBrush"],
             };
             Grid.SetColumn(time, 2);
             content.Children.Add(time);
-
-            row.Children.Add(content);
-            DetailsPanel.Children.Add(row);
         }
+
+        row.Children.Add(content);
+        return row;
+    }
+
+    private async Task ShowItemPreviewAsync(CalendarEntry entry)
+    {
+        if (_previewOpen || _closed)
+        {
+            return;
+        }
+
+        _previewOpen = true;
+        try
+        {
+            var panel = new StackPanel { Spacing = 12 };
+
+            var header = new Grid { ColumnSpacing = 8 };
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            header.Children.Add(new Border
+            {
+                Width = 8,
+                Height = 8,
+                CornerRadius = new CornerRadius(4),
+                VerticalAlignment = VerticalAlignment.Center,
+                Background = new SolidColorBrush(TagColor(entry.TagIndex)),
+            });
+            var title = new TextBlock
+            {
+                Text = entry.Title,
+                FontSize = 15,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                TextWrapping = TextWrapping.Wrap,
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = (Brush)Application.Current.Resources["TextPrimaryBrush"],
+            };
+            Grid.SetColumn(title, 1);
+            header.Children.Add(title);
+            panel.Children.Add(header);
+
+            if (entry.Subtask is not null)
+            {
+                AddPreviewRow(panel, "主任务", entry.Parent.Title);
+            }
+
+            var due = entry.DueAt;
+            AddPreviewRow(
+                panel,
+                "时间",
+                due is { } dueValue ? dueValue.ToString("yyyy/M/d HH:mm") : "无截止时间",
+                due is not null && entry.IsOverdue
+                    ? (Brush)Application.Current.Resources["OverdueBrush"]
+                    : null);
+            AddPreviewRow(
+                panel,
+                "状态",
+                entry.IsDone ? "已完成" : entry.IsOverdue ? "已逾期" : "未完成",
+                entry.IsOverdue
+                    ? (Brush)Application.Current.Resources["OverdueBrush"]
+                    : null);
+
+            if (entry.Subtask is null)
+            {
+                var parent = entry.Parent;
+                if (parent.Recurrence != TodoRecurrence.None)
+                {
+                    AddPreviewRow(panel, "重复", parent.RecurrenceText);
+                }
+
+                if (parent.IsImportant)
+                {
+                    AddPreviewRow(panel, "标记", "重要");
+                }
+
+                if (parent.Subtasks.Count > 0)
+                {
+                    AddPreviewRow(panel, "子任务", parent.SubtaskProgressText);
+                    var list = new StackPanel { Spacing = 6, Margin = new Thickness(0, 2, 0, 0) };
+                    foreach (var subtask in parent.Subtasks)
+                    {
+                        list.Children.Add(BuildSubtaskPreviewRow(subtask));
+                    }
+
+                    panel.Children.Add(list);
+                }
+            }
+
+            var dialog = new ContentDialog
+            {
+                XamlRoot = Root.XamlRoot,
+                Title = entry.Subtask is null ? "任务详情" : "子任务详情",
+                Content = new ScrollViewer
+                {
+                    Content = panel,
+                    MaxHeight = 380,
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                },
+                PrimaryButtonText = "编辑",
+                CloseButtonText = "关闭",
+                DefaultButton = ContentDialogButton.Close,
+            };
+            dialog.RequestedTheme = Root.RequestedTheme == ElementTheme.Default
+                ? Appearance.ToElementTheme((ThemeMode)_settings.Current.ThemeMode)
+                : Root.RequestedTheme;
+            ThemePalette.ApplyTextControlPalette(dialog.Resources);
+            dialog.Resources["ContentDialogBackground"] = Application.Current.Resources["DialogAcrylicBrush"];
+            dialog.Resources["ContentDialogBorderBrush"] = Application.Current.Resources["CardStrokeBrush"];
+            dialog.Resources["ContentDialogCornerRadius"] = new CornerRadius(8);
+            dialog.Resources["ContentDialogSmokeFill"] = new SolidColorBrush(Color.FromArgb(0x33, 0x00, 0x00, 0x00));
+
+            if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+            {
+                // 等对话框完全收掉再开编辑窗口，避免和这次点击的收尾抢输入队列。
+                DispatcherQueue.TryEnqueue(() => _editRequested(entry.Parent));
+            }
+        }
+        finally
+        {
+            _previewOpen = false;
+        }
+    }
+
+    private static void AddPreviewRow(StackPanel panel, string label, string value, Brush? valueBrush = null)
+    {
+        var row = new Grid { ColumnSpacing = 10 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(56) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.Children.Add(new TextBlock
+        {
+            Text = label,
+            FontSize = 11,
+            VerticalAlignment = VerticalAlignment.Top,
+            Foreground = (Brush)Application.Current.Resources["TextMutedBrush"],
+        });
+        var valueText = new TextBlock
+        {
+            Text = value,
+            FontSize = 12,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = valueBrush ?? (Brush)Application.Current.Resources["TextPrimaryBrush"],
+        };
+        Grid.SetColumn(valueText, 1);
+        row.Children.Add(valueText);
+        panel.Children.Add(row);
+    }
+
+    private static Grid BuildSubtaskPreviewRow(SubtaskItem subtask)
+    {
+        var primary = (Brush)Application.Current.Resources["TextPrimaryBrush"];
+        var secondary = (Brush)Application.Current.Resources["TextSecondaryBrush"];
+        var muted = (Brush)Application.Current.Resources["TextMutedBrush"];
+        var overdue = (Brush)Application.Current.Resources["OverdueBrush"];
+
+        var row = new Grid { ColumnSpacing = 8 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        row.Children.Add(new TextBlock
+        {
+            Text = subtask.IsDone ? "✓" : "○",
+            FontSize = 11,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = subtask.IsDone ? muted : secondary,
+        });
+
+        var title = new TextBlock
+        {
+            Text = subtask.Title,
+            FontSize = 11,
+            MaxLines = 2,
+            TextWrapping = TextWrapping.Wrap,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = subtask.IsDone ? muted : primary,
+            TextDecorations = subtask.IsDone
+                ? Windows.UI.Text.TextDecorations.Strikethrough
+                : Windows.UI.Text.TextDecorations.None,
+        };
+        SetTitleToolTip(title, subtask.Title);
+        Grid.SetColumn(title, 1);
+        row.Children.Add(title);
+
+        var time = new TextBlock
+        {
+            Text = subtask.DueAt is { } due ? due.ToString("M/d HH:mm") : "无截止",
+            FontSize = 10,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = subtask.IsOverdue ? overdue : muted,
+        };
+        Grid.SetColumn(time, 2);
+        row.Children.Add(time);
+
+        return row;
     }
 
     private void PrevMonth_Click(object sender, RoutedEventArgs e)
@@ -587,7 +1125,56 @@ public sealed partial class CalendarWindow : Window
 
     private void Root_Drop(object sender, DragEventArgs e)
     {
-        _draggedItem = null;
+        _draggedEntry = null;
+    }
+
+    private void UndatedDropZone_DragOver(object sender, DragEventArgs e)
+    {
+        if (!e.DataView.Properties.ContainsKey(DragKey))
+        {
+            e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.None;
+            return;
+        }
+
+        e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
+        e.DragUIOverride.IsCaptionVisible = false;
+        e.DragUIOverride.IsGlyphVisible = false;
+        UndatedDropZone.Background = (Brush)Application.Current.Resources["HoverBrush"];
+    }
+
+    private void UndatedDropZone_DragLeave(object sender, DragEventArgs e) =>
+        UndatedDropZone.Background = (Brush)Application.Current.Resources["TransparentBrush"];
+
+    private void UndatedDropZone_Drop(object sender, DragEventArgs e)
+    {
+        UndatedDropZone.Background = (Brush)Application.Current.Resources["TransparentBrush"];
+
+        if (!e.DataView.Properties.ContainsKey(DragKey) || _draggedEntry is not { } entry)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        _draggedEntry = null;
+
+        if (entry.Subtask is { } subtask)
+        {
+            if (subtask.DueAt is not null)
+            {
+                _viewModel.SetSubtaskDue(entry.Parent, subtask, null);
+                Refresh();
+            }
+
+            return;
+        }
+
+        if (entry.Parent.DueAt is null)
+        {
+            return;
+        }
+
+        _viewModel.ClearDue(entry.Parent);
+        Refresh();
     }
 
     private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();

@@ -789,7 +789,7 @@ public sealed partial class MainWindow : Window
         PinMenuItem.IsChecked = _pinned;
     }
 
-    private void CalendarMenuItem_Click(object sender, RoutedEventArgs e)
+    private void CalendarButton_Click(object sender, RoutedEventArgs e)
     {
         if (_calendarWindow is not null)
         {
@@ -1980,6 +1980,7 @@ public sealed partial class MainWindow : Window
                 {
                     Title = title,
                     IsDone = subtaskDraft.Done,
+                    DueAt = subtaskDraft.DueAt,
                     SortOrder = item.Subtasks.Count,
                 });
             }
@@ -1994,7 +1995,7 @@ public sealed partial class MainWindow : Window
 
     private async Task AddTaskAtAsync(DateTime date)
     {
-        var dialog = new TodoEditorDialog(_settings, string.Empty, date.Date + TimeSpan.FromHours(9));
+        var dialog = new TodoEditorDialog(_settings, string.Empty, date.Date + DateTime.Now.TimeOfDay);
         if (!await ShowEditorAsync(dialog))
         {
             return;
@@ -2021,6 +2022,7 @@ public sealed partial class MainWindow : Window
             {
                 Title = title,
                 IsDone = draft.Done,
+                DueAt = draft.DueAt,
                 SortOrder = item.Subtasks.Count,
             });
         }
@@ -2414,7 +2416,7 @@ public sealed partial class MainWindow : Window
 
     }
 
-    // 平时显示“子任务 2/5”，鼠标悬停整张卡片时变成“添加子任务”，点一下直接开始输入。
+    // 平时显示“2/5”，鼠标悬停整张卡片时变成“子任务”，点一下直接开始输入。
     private void SubtaskAddButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button { DataContext: TodoItem item } button)
@@ -2673,6 +2675,32 @@ public sealed partial class MainWindow : Window
         await ConfirmDeleteSubtaskAsync(item, subtask);
     }
 
+    private async void SubtaskDue_Click(object sender, RoutedEventArgs e)
+    {
+        if (_menuSubtask is not { } subtask || _menuItem is not { } item)
+        {
+            return;
+        }
+
+        _dialogOpen = true;
+        CancelDockRetract();
+        try
+        {
+            var (confirmed, dueAt) = await SubtaskDuePrompt.ShowAsync(
+                Root.XamlRoot, Root.RequestedTheme, subtask.DueAt);
+            if (!confirmed)
+            {
+                return;
+            }
+
+            ViewModel.SetSubtaskDue(item, subtask, dueAt);
+        }
+        finally
+        {
+            _dialogOpen = false;
+        }
+    }
+
     private async void SubtaskRowDelete_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button { DataContext: SubtaskItem subtask } button &&
@@ -2787,7 +2815,7 @@ public sealed partial class MainWindow : Window
             star.IsHitTestVisible = true;
         }
 
-        // 子任务按钮和星标同步：鼠标进卡片就把“子任务 x/y”换成“添加子任务”。
+        // 子任务按钮和星标同步：鼠标进卡片就把“x/y”换成“子任务”。
         if (FindTaggedChild<Button>(card, "SubtaskAddControl") is { } subtaskButton)
         {
             SetSubtaskProgressMode(subtaskButton, adding: true);

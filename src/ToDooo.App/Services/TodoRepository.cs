@@ -46,7 +46,8 @@ public sealed class TodoRepository
                 todo_id     INTEGER NOT NULL,
                 title       TEXT    NOT NULL,
                 is_done     INTEGER NOT NULL DEFAULT 0,
-                sort_order  REAL    NOT NULL DEFAULT 0
+                sort_order  REAL    NOT NULL DEFAULT 0,
+                due_at      TEXT    NULL
             );
 
             CREATE INDEX IF NOT EXISTS idx_subtasks_todo ON subtasks(todo_id);
@@ -58,6 +59,17 @@ public sealed class TodoRepository
         {
             using var alter = connection.CreateCommand();
             alter.CommandText = "ALTER TABLE todos ADD COLUMN snooze_until TEXT NULL";
+            alter.ExecuteNonQuery();
+        }
+        catch
+        {
+            // 列已存在
+        }
+
+        try
+        {
+            using var alter = connection.CreateCommand();
+            alter.CommandText = "ALTER TABLE subtasks ADD COLUMN due_at TEXT NULL";
             alter.ExecuteNonQuery();
         }
         catch
@@ -99,7 +111,7 @@ public sealed class TodoRepository
         var byId = items.ToDictionary(item => item.Id);
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, todo_id, title, is_done, sort_order
+            SELECT id, todo_id, title, is_done, sort_order, due_at
             FROM subtasks
             ORDER BY todo_id ASC, sort_order ASC, id ASC
             """;
@@ -118,6 +130,7 @@ public sealed class TodoRepository
                 Title = reader.GetString(2),
                 IsDone = reader.GetInt64(3) != 0,
                 SortOrder = reader.GetDouble(4),
+                DueAt = reader.IsDBNull(5) ? null : FromDb(reader.GetString(5)),
             });
         }
 
@@ -152,14 +165,15 @@ public sealed class TodoRepository
 
         using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO subtasks (todo_id, title, is_done, sort_order)
-            VALUES ($todo, $title, $done, $order);
+            INSERT INTO subtasks (todo_id, title, is_done, sort_order, due_at)
+            VALUES ($todo, $title, $done, $order, $due);
             SELECT last_insert_rowid();
             """;
         var todoParameter = command.Parameters.Add("$todo", SqliteType.Integer);
         var titleParameter = command.Parameters.Add("$title", SqliteType.Text);
         var doneParameter = command.Parameters.Add("$done", SqliteType.Integer);
         var orderParameter = command.Parameters.Add("$order", SqliteType.Real);
+        var dueParameter = command.Parameters.Add("$due", SqliteType.Text);
 
         foreach (var subtask in item.Subtasks)
         {
@@ -167,6 +181,7 @@ public sealed class TodoRepository
             titleParameter.Value = subtask.Title;
             doneParameter.Value = subtask.IsDone ? 1 : 0;
             orderParameter.Value = subtask.SortOrder;
+            dueParameter.Value = (object?)ToDb(subtask.DueAt) ?? DBNull.Value;
             subtask.Id = (long)(command.ExecuteScalar() ?? 0L);
         }
     }
@@ -176,14 +191,15 @@ public sealed class TodoRepository
         using var connection = Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO subtasks (todo_id, title, is_done, sort_order)
-            VALUES ($todo, $title, $done, $order);
+            INSERT INTO subtasks (todo_id, title, is_done, sort_order, due_at)
+            VALUES ($todo, $title, $done, $order, $due);
             SELECT last_insert_rowid();
             """;
         command.Parameters.AddWithValue("$todo", todoId);
         command.Parameters.AddWithValue("$title", subtask.Title);
         command.Parameters.AddWithValue("$done", subtask.IsDone ? 1 : 0);
         command.Parameters.AddWithValue("$order", subtask.SortOrder);
+        command.Parameters.AddWithValue("$due", (object?)ToDb(subtask.DueAt) ?? DBNull.Value);
         subtask.Id = (long)(command.ExecuteScalar() ?? 0L);
     }
 
@@ -195,12 +211,14 @@ public sealed class TodoRepository
             UPDATE subtasks SET
                 title = $title,
                 is_done = $done,
-                sort_order = $order
+                sort_order = $order,
+                due_at = $due
             WHERE id = $id
             """;
         command.Parameters.AddWithValue("$title", subtask.Title);
         command.Parameters.AddWithValue("$done", subtask.IsDone ? 1 : 0);
         command.Parameters.AddWithValue("$order", subtask.SortOrder);
+        command.Parameters.AddWithValue("$due", (object?)ToDb(subtask.DueAt) ?? DBNull.Value);
         command.Parameters.AddWithValue("$id", subtask.Id);
         command.ExecuteNonQuery();
     }

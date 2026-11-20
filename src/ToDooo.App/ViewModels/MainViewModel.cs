@@ -344,6 +344,19 @@ public sealed partial class MainViewModel : ObservableObject
         item.RaiseSubtasksChanged();
     }
 
+    /// <summary>给子任务设置或清除截止时间。</summary>
+    public void SetSubtaskDue(TodoItem item, SubtaskItem subtask, DateTime? dueAt)
+    {
+        subtask.DueAt = dueAt;
+        if (subtask.Id > 0)
+        {
+            _repository.UpdateSubtask(subtask);
+        }
+
+        item.RaiseSubtasksChanged();
+        SyncVisible(item);
+    }
+
     public void DeleteSubtask(TodoItem item, SubtaskItem subtask)
     {
         if (subtask.Id > 0)
@@ -378,6 +391,26 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         item.DueAt = next;
+        item.DueNotified = false;
+        item.SnoozeUntil = null;
+        _repository.Update(item);
+        SyncVisible(item);
+    }
+
+    /// <summary>给无截止日期的待办指定具体日期和时间。</summary>
+    public void ScheduleAt(TodoItem item, DateTime dueAt)
+    {
+        item.DueAt = dueAt;
+        item.DueNotified = false;
+        item.SnoozeUntil = null;
+        _repository.Update(item);
+        SyncVisible(item);
+    }
+
+    /// <summary>把待办移回无截止日期。</summary>
+    public void ClearDue(TodoItem item)
+    {
+        item.DueAt = null;
         item.DueNotified = false;
         item.SnoozeUntil = null;
         _repository.Update(item);
@@ -457,6 +490,7 @@ public sealed partial class MainViewModel : ObservableObject
             {
                 subtask.Title = title;
                 subtask.IsDone = draft.Done;
+                subtask.DueAt = draft.DueAt;
                 subtask.SortOrder = index++;
                 _repository.UpdateSubtask(subtask);
                 ordered.Add(subtask);
@@ -467,6 +501,7 @@ public sealed partial class MainViewModel : ObservableObject
             {
                 Title = title,
                 IsDone = draft.Done,
+                DueAt = draft.DueAt,
                 SortOrder = index++,
             };
             _repository.AddSubtask(item.Id, created);

@@ -22,11 +22,26 @@ public partial class SubtaskItem : ObservableObject
     private bool isDone;
 
     [ObservableProperty]
+    private DateTime? dueAt;
+
+    [ObservableProperty]
     private double sortOrder;
+
+    public bool IsOverdue => !IsDone && DueAt is { } due && due < DateTime.Now;
+
+    public string DueText => DueAt is { } due ? due.ToString("M/d HH:mm") : string.Empty;
+
+    partial void OnDueAtChanged(DateTime? value)
+    {
+        OnPropertyChanged(nameof(IsOverdue));
+        OnPropertyChanged(nameof(DueText));
+    }
+
+    partial void OnIsDoneChanged(bool value) => OnPropertyChanged(nameof(IsOverdue));
 }
 
 /// <summary>编辑弹窗里子任务的中间态：Id 为 0 表示这次新加的。</summary>
-public sealed record SubtaskDraft(long Id, string Title, bool Done);
+public sealed record SubtaskDraft(long Id, string Title, bool Done, DateTime? DueAt = null);
 
 public partial class TodoItem : ObservableObject
 {
@@ -149,13 +164,15 @@ public partial class TodoItem : ObservableObject
             CreatedAt = DateTime.Now,
         };
 
-        // 重复任务的下一轮把子任务带上，但全部重置为未完成。
+        // 重复任务的下一轮把子任务带上，保留相对父任务的时间差。
+        var shift = DueAt is { } oldDue ? nextDue - oldDue : TimeSpan.Zero;
         foreach (var subtask in Subtasks)
         {
             next.Subtasks.Add(new SubtaskItem
             {
                 Title = subtask.Title,
                 SortOrder = subtask.SortOrder,
+                DueAt = subtask.DueAt is { } subtaskDue ? subtaskDue + shift : null,
             });
         }
 

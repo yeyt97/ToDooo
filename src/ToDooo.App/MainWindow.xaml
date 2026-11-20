@@ -89,6 +89,7 @@
                             <MenuFlyout Opening="MoreFlyout_Opening" Closed="MoreFlyout_Closed">
                                 <ToggleMenuFlyoutItem x:Name="PinMenuItem" Text="钉在桌面" Click="PinMenuItem_Click" />
                                 <MenuFlyoutSeparator />
+                                <MenuFlyoutItem Text="日历…" Click="CalendarMenuItem_Click" />
                                 <MenuFlyoutItem Text="设置…" Click="SettingsMenuItem_Click" />
                                 <MenuFlyoutSeparator />
                                 <MenuFlyoutItem Text="退出 ToDooo" Click="ExitMenuItem_Click" />
@@ -333,7 +334,7 @@
                                     <Border.ContextFlyout>
                                         <MenuFlyout Opening="RowFlyout_Opening" Closed="RowFlyout_Closed">
                                             <MenuFlyoutItem Text="编辑…" Click="RowEdit_Click" />
-                                            <MenuFlyoutItem Text="添加子任务" Click="RowAddSubtask_Click" />
+                                            <MenuFlyoutSubItem Text="设置颜色" />
                                             <MenuFlyoutItem Text="10 分钟后再提醒" Click="RowSnooze_Click" />
                                             <MenuFlyoutSeparator />
                                             <MenuFlyoutItem Text="删除" Click="RowDelete_Click" />
@@ -376,14 +377,29 @@
                                             Spacing="3"
                                             VerticalAlignment="Center"
                                             Opacity="{x:Bind helpers:Bind.DoneOpacity(IsDone), Mode=OneWay}">
-                                            <TextBlock
-                                                Text="{x:Bind Title, Mode=OneWay}"
-                                                FontSize="13"
-                                                MaxLines="2"
-                                                TextTrimming="CharacterEllipsis"
-                                                TextWrapping="Wrap"
-                                                Foreground="{x:Bind helpers:Bind.TitleBrush(IsDone), Mode=OneWay}"
-                                                TextDecorations="{x:Bind helpers:Bind.Deco(IsDone), Mode=OneWay}" />
+                                            <Grid Tag="TaskTitleArea" ColumnSpacing="4">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <FontIcon
+                                                    Grid.Column="0"
+                                                    Glyph="&#xE735;"
+                                                    FontSize="10"
+                                                    VerticalAlignment="Center"
+                                                    Foreground="{ThemeResource AccentBrush}"
+                                                    Visibility="{x:Bind helpers:Bind.VisibleWhen(IsImportant), Mode=OneWay}" />
+                                                <TextBlock
+                                                    Grid.Column="1"
+                                                    Tag="TaskTitleText"
+                                                    Text="{x:Bind Title, Mode=OneWay}"
+                                                    FontSize="13"
+                                                    MaxLines="2"
+                                                    TextTrimming="CharacterEllipsis"
+                                                    TextWrapping="Wrap"
+                                                    Foreground="{x:Bind helpers:Bind.TitleBrush(IsDone), Mode=OneWay}"
+                                                    TextDecorations="{x:Bind helpers:Bind.Deco(IsDone), Mode=OneWay}" />
+                                            </Grid>
                                             <StackPanel
                                                 Orientation="Horizontal"
                                                 Spacing="6"
@@ -401,9 +417,9 @@
                                             </StackPanel>
                                         </StackPanel>
 
-                                        <!--  子任务进度跟标题同一行，展开的清单落在第二行  -->
+                                        <!--  子任务进度贴最右，展开的清单落在第二行  -->
                                         <Button
-                                            Grid.Column="3"
+                                            Grid.Column="4"
                                             AutomationProperties.Name="添加子任务"
                                             Margin="2,0,0,0"
                                             Padding="4,2,6,2"
@@ -411,7 +427,6 @@
                                             VerticalAlignment="Center"
                                             Click="SubtaskAddButton_Click"
                                             Loaded="SubtaskAddControl_Loaded"
-                                            PointerEntered="SubtaskProgress_PointerEntered"
                                             Style="{StaticResource SubtaskToggleStyle}">
                                             <Grid>
                                                 <StackPanel
@@ -482,14 +497,75 @@
                                                                 IsChecked="{x:Bind IsDone, Mode=OneWay}"
                                                                 Style="{StaticResource TodoCompletionCheckBoxStyle}"
                                                                 VerticalAlignment="Center" />
-                                                            <TextBlock
+                                                            <Grid
                                                                 Grid.Column="1"
-                                                                VerticalAlignment="Center"
-                                                                FontSize="12"
-                                                                Text="{x:Bind Title, Mode=OneWay}"
-                                                                TextDecorations="{x:Bind helpers:Bind.Deco(IsDone), Mode=OneWay}"
-                                                                TextWrapping="Wrap"
-                                                                Foreground="{x:Bind helpers:Bind.SubtaskBrush(IsDone), Mode=OneWay}" />
+                                                                Tag="SubtaskTextArea"
+                                                                ColumnSpacing="4">
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="*" />
+                                                                    <ColumnDefinition Width="Auto" />
+                                                                </Grid.ColumnDefinitions>
+                                                                <TextBlock
+                                                                    Grid.Column="0"
+                                                                    Tag="SubtaskText"
+                                                                    HorizontalAlignment="Left"
+                                                                    VerticalAlignment="Center"
+                                                                    FontSize="12"
+                                                                    Text="{x:Bind Title, Mode=OneWay}"
+                                                                    TextDecorations="{x:Bind helpers:Bind.Deco(IsDone), Mode=OneWay}"
+                                                                    TextWrapping="Wrap"
+                                                                    Foreground="{x:Bind helpers:Bind.SubtaskBrush(IsDone), Mode=OneWay}" />
+                                                                <Button
+                                                                    Grid.Column="1"
+                                                                    Tag="SubtaskEditButton"
+                                                                    Width="18"
+                                                                    Height="18"
+                                                                    MinWidth="0"
+                                                                    MinHeight="0"
+                                                                    Padding="0"
+                                                                    VerticalAlignment="Center"
+                                                                    Opacity="0"
+                                                                    IsHitTestVisible="False"
+                                                                    Style="{StaticResource LinkButtonStyle}"
+                                                                    Loaded="TextEditButton_Loaded"
+                                                                    Click="TextEditButton_Click">
+                                                                    <FontIcon
+                                                                        Glyph="&#xE70F;"
+                                                                        FontSize="9"
+                                                                        Foreground="{ThemeResource TextMutedBrush}" />
+                                                                </Button>
+                                                                <TextBox
+                                                                    Grid.Column="0"
+                                                                    Grid.ColumnSpan="2"
+                                                                    Tag="SubtaskEdit"
+                                                                    Height="20"
+                                                                    FontSize="12"
+                                                                    VerticalAlignment="Center"
+                                                                    Visibility="Collapsed"
+                                                                    Style="{StaticResource AddTextBoxStyle}"
+                                                                    KeyDown="SubtaskEdit_KeyDown"
+                                                                    LostFocus="SubtaskEdit_LostFocus"
+                                                                    TextChanged="TextEdit_TextChanged"
+                                                                    TextCompositionStarted="SubtaskEdit_TextCompositionStarted"
+                                                                    TextCompositionEnded="SubtaskEdit_TextCompositionEnded" />
+                                                                <Canvas Grid.Column="0" Grid.ColumnSpan="2">
+                                                                    <Button
+                                                                        Tag="SubtaskSaveButton"
+                                                                        Width="20"
+                                                                        Height="20"
+                                                                        MinWidth="0"
+                                                                        MinHeight="0"
+                                                                        Padding="0"
+                                                                        Visibility="Collapsed"
+                                                                        Style="{StaticResource LinkButtonStyle}"
+                                                                        Click="SubtaskSaveButton_Click">
+                                                                        <FontIcon
+                                                                            Glyph="&#xE73E;"
+                                                                            FontSize="9"
+                                                                            Foreground="{ThemeResource AccentBrush}" />
+                                                                    </Button>
+                                                                </Canvas>
+                                                            </Grid>
                                                             <Button
                                                                 Grid.Column="2"
                                                                 AutomationProperties.Name="删除子任务"
@@ -521,6 +597,7 @@
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="Auto" />
                                                     <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
                                                 <FontIcon
                                                     VerticalAlignment="Center"
@@ -531,23 +608,39 @@
                                                     Grid.Column="1"
                                                     Height="26"
                                                     Padding="4,0"
+                                                    Margin="0,0,2,0"
                                                     FontSize="12"
                                                     Tag="SubtaskAddBox"
+                                                    GotFocus="SubtaskAddBox_GotFocus"
                                                     KeyDown="SubtaskAddBox_KeyDown"
                                                     LostFocus="SubtaskAddBox_LostFocus"
                                                     TextCompositionStarted="AddTextBox_TextCompositionStarted"
                                                     TextCompositionEnded="AddTextBox_TextCompositionEnded"
                                                     PlaceholderText="添加子任务，回车确认"
                                                     Style="{StaticResource AddTextBoxStyle}" />
+                                                <Button
+                                                    Grid.Column="2"
+                                                    AutomationProperties.Name="保存子任务"
+                                                    Tag="SubtaskAddCheck"
+                                                    Width="20"
+                                                    Height="20"
+                                                    MinWidth="0"
+                                                    MinHeight="0"
+                                                    Padding="0"
+                                                    VerticalAlignment="Center"
+                                                    Style="{StaticResource LinkButtonStyle}"
+                                                    Click="SubtaskAddCheck_Click">
+                                                    <FontIcon
+                                                        Glyph="&#xE73E;"
+                                                        FontSize="9"
+                                                        Foreground="{ThemeResource AccentBrush}" />
+                                                </Button>
                                             </Grid>
                                         </StackPanel>
 
-                                        <!--
-                                            行尾重要开关：无底板、无描边，就是一个图标按钮。
-                                            未标记时悬停才浮现，标记后常亮（Opacity / IsHitTestVisible 跟 IsImportant 走）。
-                                        -->
+                                        <!--  行尾重要星标：排在子任务按钮左侧，只跟悬停显隐，不常驻。  -->
                                         <Button
-                                            Grid.Column="4"
+                                            Grid.Column="3"
                                             AutomationProperties.Name="标记为重要"
                                             Tag="ItemActions"
                                             Style="{StaticResource CardActionButtonStyle}"
@@ -555,8 +648,8 @@
                                             VerticalAlignment="Center"
                                             Background="Transparent"
                                             BorderThickness="0"
-                                            IsHitTestVisible="{x:Bind IsImportant, Mode=OneWay}"
-                                            Opacity="{x:Bind helpers:Bind.ImportantOpacity(IsImportant), Mode=OneWay}">
+                                            IsHitTestVisible="False"
+                                            Opacity="0">
                                             <FontIcon
                                                 Glyph="{x:Bind helpers:Bind.ImportantGlyph(IsImportant), Mode=OneWay}"
                                                 FontSize="13"
@@ -599,8 +692,14 @@
                     </StackPanel>
                 </Grid>
 
-                <!--  底栏：清除已完成  -->
+                <!--  底栏：展开子任务 / 清除已完成  -->
                 <Grid Grid.Row="6" Padding="14,2,10,10">
+                    <Button
+                        AutomationProperties.Name="展开子任务"
+                        HorizontalAlignment="Left"
+                        Click="ToggleAllSubtasks_Click"
+                        Content="展开子任务"
+                        Style="{StaticResource LinkButtonStyle}" />
                     <Button
                         x:Name="ClearCompletedButton"
                         AutomationProperties.Name="清除已完成"

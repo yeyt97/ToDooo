@@ -302,6 +302,77 @@ public sealed class TodoViewModelTests : IDisposable
     }
 
     [Fact]
+    public void Rename_TrimsAndPersists()
+    {
+        var item = new TodoItem { Title = "旧标题" };
+        _viewModel.AddItem(item);
+
+        _viewModel.Rename(item, "  新标题  ");
+
+        Assert.Equal("新标题", item.Title);
+        var reloaded = new MainViewModel(new TodoRepository(_dbPath));
+        reloaded.Load();
+        Assert.Contains(reloaded.AllItems, x => x.Title == "新标题");
+    }
+
+    [Fact]
+    public void SetTag_Persists()
+    {
+        var item = new TodoItem { Title = "上色" };
+        _viewModel.AddItem(item);
+
+        _viewModel.SetTag(item, 3);
+
+        Assert.Equal(3, item.TagIndex);
+        var reloaded = new MainViewModel(new TodoRepository(_dbPath));
+        reloaded.Load();
+        Assert.Contains(reloaded.AllItems, x => x.Title == "上色" && x.TagIndex == 3);
+    }
+
+    [Fact]
+    public void RenameSubtask_TrimsAndPersists()
+    {
+        var item = new TodoItem { Title = "父任务" };
+        _viewModel.AddItem(item);
+        _viewModel.AddSubtask(item, "旧子任务");
+
+        var subtask = item.Subtasks[0];
+        _viewModel.RenameSubtask(item, subtask, "  新子任务  ");
+
+        Assert.Equal("新子任务", subtask.Title);
+        var reloaded = new MainViewModel(new TodoRepository(_dbPath));
+        reloaded.Load();
+        Assert.Contains(reloaded.AllItems, x => x.Subtasks.Any(s => s.Title == "新子任务"));
+    }
+
+    [Fact]
+    public void Rename_IgnoresEmptyTitle()
+    {
+        var item = new TodoItem { Title = "保留" };
+        _viewModel.AddItem(item);
+
+        _viewModel.Rename(item, "   ");
+
+        Assert.Equal("保留", item.Title);
+    }
+
+    [Fact]
+    public void Reschedule_KeepsTimeAndPersists()
+    {
+        var item = new TodoItem { Title = "周会", DueAt = new DateTime(2026, 1, 5, 14, 30, 0) };
+        _viewModel.AddItem(item);
+
+        _viewModel.Reschedule(item, new DateTime(2026, 1, 8));
+
+        Assert.Equal(new DateTime(2026, 1, 8, 14, 30, 0), item.DueAt);
+        Assert.False(item.DueNotified);
+
+        var reloaded = new MainViewModel(_repository);
+        reloaded.Load();
+        Assert.Equal(new DateTime(2026, 1, 8, 14, 30, 0), reloaded.AllItems.Single().DueAt);
+    }
+
+    [Fact]
     public void SmartView_FiltersByDueDate()
     {
         var today = new TodoItem { Title = "今天事", DueAt = DateTime.Now.Date.AddHours(23) };

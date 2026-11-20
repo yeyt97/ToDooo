@@ -3,8 +3,10 @@ using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Markup;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using ToDooo.Interop;
@@ -38,11 +40,13 @@ public sealed partial class MainWindow : Window
     private DesktopAcrylicController? _acrylic;
     private Microsoft.UI.Composition.SystemBackdrops.SystemBackdropConfiguration? _backdropConfig;
     private Views.SettingsWindow? _settingsWindow;
+    private CalendarWindow? _calendarWindow;
     private TrayIcon? _tray;
     private uint _taskbarCreatedMessage;
     private bool _pinned;
     private bool _reparenting;
     private bool _started;
+    private bool _positioned;
     private bool _exiting;
     private bool _dragging;
     private bool _suppressAddCommit;
@@ -223,6 +227,7 @@ public sealed partial class MainWindow : Window
         UpdateFilterVisuals();
         UpdateTagVisuals();
         _settingsWindow?.RefreshTheme();
+        _calendarWindow?.RefreshTheme();
     }
 
     private void ApplyDwmTheme(bool dark)
@@ -281,6 +286,8 @@ public sealed partial class MainWindow : Window
                 (int)Math.Round(_settings.Current.WindowHeight * landedScale),
                 NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
         }
+
+        _positioned = true;
     }
 
     private void ApplyCornerMask()
@@ -378,6 +385,68 @@ public sealed partial class MainWindow : Window
         _settings.Current.WindowWidth = Math.Max(320, (int)Math.Round((rect.Right - rect.Left) / scale));
         _settings.Current.WindowHeight = Math.Max(360, (int)Math.Round((rect.Bottom - rect.Top) / scale));
         _settings.Save();
+    }
+
+    /// <summary>DPI 变化（跨屏、改缩放）已在消息里处理完尺寸，这里把依赖物理像素的状态同步过去。</summary>
+    private void OnDpiChanged()
+    {
+        if (_hwnd == IntPtr.Zero || !NativeMethods.GetWindowRect(_hwnd, out var rect))
+        {
+            return;
+        }
+
+        if (_dockEdge != EdgeDock.None)
+        {
+            // 收边窗口是屏幕外的整宽薄条：按新 DPI 的尺寸重算展开矩形，再贴回原来的边。
+            var width = rect.Right - rect.Left;
+            var height = rect.Bottom - rect.Top;
+            var area = DisplayArea.GetFromPoint(
+                new PointInt32(rect.Left + width / 2, rect.Top + Math.Min(20, height / 2)),
+                DisplayAreaFallback.Nearest).WorkArea;
+            var left = _dockEdge switch
+            {
+                EdgeDock.Left => area.X,
+                EdgeDock.Right => area.X + area.Width - width,
+                _ => rect.Left,
+            };
+            var top = _dockEdge == EdgeDock.Top ? area.Y : rect.Top;
+            _dockRect = ClampRectToWorkArea(new NativeMethods.RECT
+            {
+                Left = left,
+                Top = top,
+                Right = left + width,
+                Bottom = top + height,
+            });
+
+            if (_dockRetracted)
+            {
+                SlideTo(GetRetractPoint(), animate: false);
+            }
+            else
+            {
+                NativeMethods.SetWindowPos(
+                    _hwnd, NativeMethods.HWND_TOPMOST,
+                    _dockRect.Left, _dockRect.Top,
+                    _dockRect.Right - _dockRect.Left, _dockRect.Bottom - _dockRect.Top,
+                    NativeMethods.SWP_NOACTIVATE);
+            }
+        }
+        else if (_dragging && NativeMethods.GetCursorPos(out var dragCursor))
+        {
+            // 拖过屏时物理尺寸变过，重设拖动基准，否则下一步会按旧尺寸跳一下。
+            _dragStartRect = rect;
+            _dragStartCursor = dragCursor;
+        }
+        else if (_resizeHit != 0 && NativeMethods.GetCursorPos(out var resizeCursor))
+        {
+            _resizeStartRect = rect;
+            _resizeStartCursor = resizeCursor;
+        }
+
+        if (!_dragging && _resizeHit == 0)
+        {
+            SavePosition();
+        }
     }
 
     private void CreateTray()
@@ -720,6 +789,25 @@ public sealed partial class MainWindow : Window
         PinMenuItem.IsChecked = _pinned;
     }
 
+    private void CalendarMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (_calendarWindow is not null)
+        {
+            _calendarWindow.Activate();
+            return;
+        }
+
+        _calendarWindow = new CalendarWindow(
+            ViewModel,
+            _settings,
+            item => _ = EditItemAsync(item),
+            (item, date) => ViewModel.Reschedule(item, date),
+            date => _ = AddTaskAtAsync(date));
+        _calendarWindow.Closed += (_, _) => _calendarWindow = null;
+        _calendarWindow.ShowOver(_appWindow);
+        TopmostDialogIfDocked(_calendarWindow);
+    }
+
     private void SettingsMenuItem_Click(object sender, RoutedEventArgs e)
     {
         if (_settingsWindow is not null)
@@ -883,6 +971,22 @@ public sealed partial class MainWindow : Window
             case NativeMethods.WM_EXITSIZEMOVE:
                 _sizing = false;
                 SavePosition();
+                break;
+
+            case NativeMethods.WM_DPICHANGED:
+                // 系统建议矩形 = 新 DPI 下保持同样的逻辑尺寸。启动定位、停靠、拖动、
+                // 贴边缩放期间位置各由自己的几何逻辑接管，这里只负责落尺寸和事后重算。
+                if (_positioned && _dockEdge == EdgeDock.None && !_dragging && _resizeHit == 0)
+                {
+                    var suggested = System.Runtime.InteropServices.Marshal
+                        .PtrToStructure<NativeMethods.RECT>(lParam);
+                    NativeMethods.SetWindowPos(
+                        _hwnd, IntPtr.Zero, suggested.Left, suggested.Top,
+                        suggested.Right - suggested.Left, suggested.Bottom - suggested.Top,
+                        NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
+                }
+
+                _dispatcher.TryEnqueue(OnDpiChanged);
                 break;
 
             case NativeMethods.WM_SETTINGCHANGE:
@@ -1254,19 +1358,33 @@ public sealed partial class MainWindow : Window
     {
         AnimateRootOpacity(_settings.Current.AutoHide && _dockEdge == EdgeDock.None ? 0.25 : 1);
         Root.SetCursor(null);
-        if (_subtaskAddHover is { } hovered)
-        {
-            SetSubtaskProgressMode(hovered, adding: false);
-            _subtaskAddHover = null;
-        }
-
+        HideTextEditButton();
         ScheduleDockRetract();
     }
 
     // 无边框窗口的内容层拿不到系统边缘命中，这里自己按位置判断贴边并手动缩放。
     private void Root_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
-        _pressOnSubtask = IsInsideSubtask(e.OriginalSource as DependencyObject);
+        var source = e.OriginalSource as DependencyObject;
+        _pressOnSubtask = IsInsideSubtask(source);
+        _pressInsideEditBox = IsInsideTagged(source, "SubtaskEdit");
+
+        // 输入框一失去焦点就落盘：点到框外的第一下先提交，这一下也不再触发折叠/展开。
+        _pressWhileEditing = _subtaskEditBox is not null || _subtaskAddBox is not null;
+
+        if (_subtaskEditBox is not null &&
+            !IsInsideTagged(source, "SubtaskEdit") &&
+            !IsInsideTagged(source, "SubtaskSaveButton"))
+        {
+            CommitSubtaskRename();
+        }
+
+        if (_subtaskAddBox is { } addBox &&
+            !IsInsideTagged(source, "SubtaskAddBox") &&
+            !IsInsideTagged(source, "SubtaskAddCheck"))
+        {
+            CommitSubtaskAdd(addBox, keepOpen: false);
+        }
 
         if (!e.GetCurrentPoint(Root).Properties.IsLeftButtonPressed)
         {
@@ -1299,7 +1417,6 @@ public sealed partial class MainWindow : Window
         if (_resizeHit == 0)
         {
             UpdateResizeCursor(local);
-            UpdateSubtaskHover(local);
             return;
         }
 
@@ -1676,11 +1793,8 @@ public sealed partial class MainWindow : Window
 
     private void AddTaskButton_Click(object sender, RoutedEventArgs e)
     {
-        if (AddBar.Visibility == Visibility.Visible)
-        {
-            CloseAddBar();
-        }
-        else
+        // 输入框已经开着就别再切一次，否则会先收起再弹出，闪一下。
+        if (AddBar.Visibility != Visibility.Visible)
         {
             OpenAddBar();
         }
@@ -1689,6 +1803,7 @@ public sealed partial class MainWindow : Window
     private void OpenAddBar()
     {
         AddBar.Visibility = Visibility.Visible;
+        AddTaskButton.IsEnabled = false;
         AddTextBox.Focus(FocusState.Programmatic);
     }
 
@@ -1700,6 +1815,7 @@ public sealed partial class MainWindow : Window
         {
             AddTextBox.Text = string.Empty;
             AddBar.Visibility = Visibility.Collapsed;
+            AddTaskButton.IsEnabled = true;
         }
         finally
         {
@@ -1757,6 +1873,8 @@ public sealed partial class MainWindow : Window
         if (e.WindowActivationState == WindowActivationState.Deactivated)
         {
             CommitAddDraft();
+            CommitSubtaskRename();
+            CommitSubtaskAddDraft();
         }
     }
 
@@ -1874,6 +1992,44 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async Task AddTaskAtAsync(DateTime date)
+    {
+        var dialog = new TodoEditorDialog(_settings, string.Empty, date.Date + TimeSpan.FromHours(9));
+        if (!await ShowEditorAsync(dialog))
+        {
+            return;
+        }
+
+        var item = new TodoItem
+        {
+            Title = dialog.TodoTitle,
+            DueAt = dialog.DueAt,
+            Recurrence = dialog.Recurrence,
+            IsImportant = dialog.IsImportant,
+            TagIndex = dialog.TagIndex,
+        };
+
+        foreach (var draft in dialog.Subtasks)
+        {
+            var title = draft.Title.Trim();
+            if (title.Length == 0)
+            {
+                continue;
+            }
+
+            item.Subtasks.Add(new SubtaskItem
+            {
+                Title = title,
+                IsDone = draft.Done,
+                SortOrder = item.Subtasks.Count,
+            });
+        }
+
+        ViewModel.AddItem(item);
+        UpdateFilterVisuals();
+        UpdateTagVisuals();
+    }
+
     /// <summary>
     /// 显示编辑窗口并等结果。同一时间只允许一个：已经开着就把那个提到前台，
     /// 返回 false（本次没有新建任何东西），避免叠出好几个窗口。
@@ -1933,10 +2089,285 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        // 正在行内编辑时，点输入框本身不算「点行展开」。
+        if (_pressInsideEditBox)
+        {
+            return;
+        }
+
+        // 结束编辑的这一次点击只负责保存，不顺手把子任务面板折叠起来。
+        if (_pressWhileEditing)
+        {
+            return;
+        }
+
         if (e.ClickedItem is TodoItem item && (item.HasSubtasks || item.SubtasksExpanded))
         {
+            // 收起面板前先把没确认的子任务输入落下来，别跟着面板一起消失。
+            if (item.SubtasksExpanded)
+            {
+                CommitSubtaskAddDraft();
+            }
+
             item.SubtasksExpanded = !item.SubtasksExpanded;
             ResetSubtaskDragGuardIfCollapsed(item);
+        }
+    }
+
+    private TextBox? _subtaskEditBox;
+    private TodoItem? _subtaskEditOwner;
+    private SubtaskItem? _subtaskEditTarget;
+    private bool _subtaskComposing;
+
+    private bool _pressInsideEditBox;
+    private bool _pressWhileEditing;
+
+    private Button? _textEditButton;
+
+    // 和星标一样：悬停到卡片/子任务行就浮出编辑图标，移开就收回。
+    private void ShowTextEditButton(Button? button)
+    {
+        if (button is null || _subtaskEditBox is not null)
+        {
+            return;
+        }
+
+        if (!ReferenceEquals(button, _textEditButton))
+        {
+            HideTextEditButton();
+        }
+
+        button.Opacity = 1;
+        button.IsHitTestVisible = true;
+        _textEditButton = button;
+    }
+
+    private void HideTextEditButton()
+    {
+        if (_textEditButton is { } button)
+        {
+            button.Opacity = 0;
+            button.IsHitTestVisible = false;
+        }
+
+        _textEditButton = null;
+    }
+
+    private void TextEditButton_Loaded(object sender, RoutedEventArgs e)
+    {
+        // 模板复用时把它收回初始状态，避免在别的卡片上凭空亮着。
+        if (sender is Button button && !ReferenceEquals(button, _textEditButton))
+        {
+            button.Opacity = 0;
+            button.IsHitTestVisible = false;
+        }
+    }
+
+    private void TextEditButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: SubtaskItem subtask } button ||
+            FindEditArea(button) is not { } area ||
+            FindOwnerTodo(button) is not { } owner)
+        {
+            return;
+        }
+
+        BeginSubtaskEdit(area, owner, subtask);
+    }
+
+    private static Grid? FindEditArea(DependencyObject start)
+    {
+        var current = start;
+        while (current is not null)
+        {
+            if (current is Grid { Tag: "SubtaskTextArea" } grid)
+            {
+                return grid;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return null;
+    }
+
+    private void TextEdit_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (sender is TextBox box)
+        {
+            PositionTextSaveButton(box);
+        }
+    }
+
+    // 勾勾跟在文字最后一个字后面，随输入实时挪位。
+    private static void PositionTextSaveButton(TextBox box)
+    {
+        if (box.Parent is not Grid area || FindChildCanvas(area) is not { } canvas)
+        {
+            return;
+        }
+
+        var saveTag = (box.Tag as string) switch
+        {
+            "SubtaskEdit" => "SubtaskSaveButton",
+            _ => null,
+        };
+
+        if (saveTag is null || FindTaggedChild<Button>(canvas, saveTag) is not { } save)
+        {
+            return;
+        }
+
+        var textWidth = MeasureTextWidth(box.Text, box.FontSize);
+        Canvas.SetLeft(save, Math.Clamp(textWidth + 6, 0, Math.Max(0, area.ActualWidth - save.Width)));
+        Canvas.SetTop(save, Math.Clamp((box.ActualHeight - save.Height) / 2, 0, Math.Max(0, area.ActualHeight - save.Height)));
+    }
+
+    private static double MeasureTextWidth(string? text, double fontSize)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return 0;
+        }
+
+        var probe = new TextBlock { Text = text, FontSize = fontSize };
+        probe.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+        return probe.DesiredSize.Width;
+    }
+
+    private static Canvas? FindChildCanvas(DependencyObject root)
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            if (VisualTreeHelper.GetChild(root, i) is Canvas canvas)
+            {
+                return canvas;
+            }
+        }
+
+        return null;
+    }
+
+    private void BeginSubtaskEdit(Grid area, TodoItem owner, SubtaskItem subtask)
+    {
+        if (FindTaggedChild<TextBox>(area, "SubtaskEdit") is not { } box ||
+            FindTaggedChild<TextBlock>(area, "SubtaskText") is not { } text ||
+            box.Visibility == Visibility.Visible)
+        {
+            return;
+        }
+
+        CommitSubtaskRename();
+        HideTextEditButton();
+
+        _subtaskEditOwner = owner;
+        _subtaskEditTarget = subtask;
+        _subtaskEditBox = box;
+        box.Text = subtask.Title;
+        text.Visibility = Visibility.Collapsed;
+        box.Visibility = Visibility.Visible;
+        if (FindTaggedChild<Button>(area, "SubtaskSaveButton") is { } save)
+        {
+            save.Visibility = Visibility.Visible;
+        }
+
+        PositionTextSaveButton(box);
+
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            box.Focus(FocusState.Programmatic);
+            box.SelectAll();
+        });
+    }
+
+    private void SubtaskEdit_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == VirtualKey.Enter && _subtaskComposing)
+        {
+            return;
+        }
+
+        if (e.Key == VirtualKey.Enter)
+        {
+            e.Handled = true;
+            CommitSubtaskRename();
+        }
+        else if (e.Key == VirtualKey.Escape)
+        {
+            e.Handled = true;
+            CancelSubtaskRename();
+        }
+    }
+
+    private void SubtaskEdit_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (sender is TextBox box && ReferenceEquals(box, _subtaskEditBox))
+        {
+            CommitSubtaskRename();
+        }
+    }
+
+    private void SubtaskEdit_TextCompositionStarted(TextBox sender, TextCompositionStartedEventArgs args) =>
+        _subtaskComposing = true;
+
+    private void SubtaskEdit_TextCompositionEnded(TextBox sender, TextCompositionEndedEventArgs args) =>
+        _subtaskComposing = false;
+
+    private void SubtaskSaveButton_Click(object sender, RoutedEventArgs e) => CommitSubtaskRename();
+
+    private void CommitSubtaskRename()
+    {
+        if (_subtaskEditBox is not { } box)
+        {
+            return;
+        }
+
+        var owner = _subtaskEditOwner;
+        var target = _subtaskEditTarget;
+        _subtaskEditBox = null;
+        _subtaskEditOwner = null;
+        _subtaskEditTarget = null;
+
+        if (owner is not null && target is not null && box.IsLoaded)
+        {
+            var title = box.Text.Trim();
+            if (title.Length > 0 && title != target.Title)
+            {
+                ViewModel.RenameSubtask(owner, target, title);
+            }
+        }
+
+        ShowSubtaskText(box);
+    }
+
+    private void CancelSubtaskRename()
+    {
+        if (_subtaskEditBox is not { } box)
+        {
+            return;
+        }
+
+        _subtaskEditBox = null;
+        _subtaskEditOwner = null;
+        _subtaskEditTarget = null;
+        ShowSubtaskText(box);
+    }
+
+    private static void ShowSubtaskText(TextBox box)
+    {
+        box.Visibility = Visibility.Collapsed;
+        if (box.Parent is Grid area)
+        {
+            if (FindTaggedChild<TextBlock>(area, "SubtaskText") is { } text)
+            {
+                text.Visibility = Visibility.Visible;
+            }
+
+            if (FindTaggedChild<Button>(area, "SubtaskSaveButton") is { } save)
+            {
+                save.Visibility = Visibility.Collapsed;
+            }
         }
     }
 
@@ -1958,45 +2389,9 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private Button? _subtaskAddHover;
-
-    private void SubtaskProgress_PointerEntered(object sender, PointerRoutedEventArgs e)
-    {
-        if (sender is Button button)
-        {
-            _subtaskAddHover = button;
-            SetSubtaskProgressMode(button, adding: true);
-        }
-    }
-
-    // 用根节点的移动事件判断指针是否已经离开按钮，避免 Exited 偶尔丢事件导致文案卡住。
-    private void UpdateSubtaskHover(Windows.Foundation.Point pointInRoot)
-    {
-        if (_subtaskAddHover is not { } button)
-        {
-            return;
-        }
-
-        var bounds = button
-            .TransformToVisual(Root)
-            .TransformBounds(new Windows.Foundation.Rect(0, 0, button.ActualWidth, button.ActualHeight));
-
-        if (bounds.Contains(pointInRoot))
-        {
-            return;
-        }
-
-        SetSubtaskProgressMode(button, adding: false);
-        _subtaskAddHover = null;
-    }
-
     private void SubtaskAddControl_Loaded(object sender, RoutedEventArgs e)
     {
         SetSubtaskProgressMode(sender, adding: false);
-        if (ReferenceEquals(sender, _subtaskAddHover))
-        {
-            _subtaskAddHover = null;
-        }
     }
 
     // 用透明度切换而不是显隐，避免切换瞬间布局重排导致指针“离开”按钮、状态卡住。
@@ -2019,13 +2414,12 @@ public sealed partial class MainWindow : Window
 
     }
 
-    // 平时显示“子任务 2/5”，鼠标移上去变成“添加子任务”，点一下直接开始输入。
+    // 平时显示“子任务 2/5”，鼠标悬停整张卡片时变成“添加子任务”，点一下直接开始输入。
     private void SubtaskAddButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button { DataContext: TodoItem item } button)
         {
             SetSubtaskProgressMode(button, adding: false);
-            _subtaskAddHover = null;
             item.SubtasksExpanded = true;
             item.SubtaskAddActive = true;
             DispatcherQueue.TryEnqueue(() => FocusSubtaskAddBox(item));
@@ -2080,7 +2474,8 @@ public sealed partial class MainWindow : Window
 
     private void TodoList_DragItemsStarting(object sender, DragItemsStartingEventArgs e)
     {
-        if (_pointerOverSubtasks || _subtaskDragActive || _pressOnSubtask)
+        if (_pointerOverSubtasks || _subtaskDragActive || _pressOnSubtask
+            || _subtaskEditBox is not null)
         {
             e.Cancel = true;
         }
@@ -2093,6 +2488,13 @@ public sealed partial class MainWindow : Window
 
     private void SubtaskRow_DragStarting(UIElement sender, DragStartingEventArgs args)
     {
+        // 行内编辑输入框里拖动是选文字，不要变成拖整行子任务。
+        if (_subtaskEditBox is not null)
+        {
+            args.Cancel = true;
+            return;
+        }
+
         if (sender is FrameworkElement { DataContext: SubtaskItem subtask })
         {
             _draggedSubtask = subtask;
@@ -2214,6 +2616,22 @@ public sealed partial class MainWindow : Window
         return false;
     }
 
+    private static bool IsInsideTagged(DependencyObject? start, string tag)
+    {
+        var current = start;
+        while (current is not null)
+        {
+            if (current is FrameworkElement element && element.Tag is string value && value == tag)
+            {
+                return true;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return false;
+    }
+
     private static TodoItem? FindOwnerTodo(DependencyObject start)
     {
         var current = start;
@@ -2273,8 +2691,13 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void SubtaskRow_PointerEntered(object sender, PointerRoutedEventArgs e) =>
+    private void SubtaskRow_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
         ShowSubtaskDeleteButton(sender, true);
+        ShowTextEditButton(sender is DependencyObject root
+            ? FindTaggedChild<Button>(root, "SubtaskEditButton")
+            : null);
+    }
 
     private void SubtaskRow_PointerExited(object sender, PointerRoutedEventArgs e)
     {
@@ -2289,6 +2712,7 @@ public sealed partial class MainWindow : Window
         }
 
         ShowSubtaskDeleteButton(sender, false);
+        HideTextEditButton();
     }
 
     private static void ShowSubtaskDeleteButton(object sender, bool show)
@@ -2363,6 +2787,11 @@ public sealed partial class MainWindow : Window
             star.IsHitTestVisible = true;
         }
 
+        // 子任务按钮和星标同步：鼠标进卡片就把“子任务 x/y”换成“添加子任务”。
+        if (FindTaggedChild<Button>(card, "SubtaskAddControl") is { } subtaskButton)
+        {
+            SetSubtaskProgressMode(subtaskButton, adding: true);
+        }
     }
 
     private void TodoCard_PointerExited(object sender, PointerRoutedEventArgs e)
@@ -2374,14 +2803,19 @@ public sealed partial class MainWindow : Window
 
         card.ClearValue(Border.BackgroundProperty);
 
-        // 标记了重要的行，星标留在原位常亮；没标记的收回悬停态。
+        // 星标和铅笔一样只跟悬停显隐，标记后的状态由标题左侧的星形图标常驻表示。
         if (FindTaggedChild<Button>(card, "ItemActions") is { } star)
         {
-            var pinned = star.DataContext is TodoItem { IsImportant: true };
-            star.Opacity = pinned ? 1 : 0;
-            star.IsHitTestVisible = pinned;
+            star.Opacity = 0;
+            star.IsHitTestVisible = false;
         }
 
+        if (FindTaggedChild<Button>(card, "SubtaskAddControl") is { } subtaskButton)
+        {
+            SetSubtaskProgressMode(subtaskButton, adding: false);
+        }
+
+        HideTextEditButton();
     }
 
     private static T? FindTaggedChild<T>(DependencyObject root, string tag) where T : FrameworkElement
@@ -2431,6 +2865,28 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private bool _allSubtasksExpanded;
+
+    // 左下角开关：一次展开/收起当前列表里所有带子任务的行。
+    private void ToggleAllSubtasks_Click(object sender, RoutedEventArgs e)
+    {
+        _allSubtasksExpanded = !_allSubtasksExpanded;
+
+        foreach (var item in ViewModel.Items)
+        {
+            if (!item.HasSubtasks)
+            {
+                continue;
+            }
+
+            item.SubtasksExpanded = _allSubtasksExpanded;
+            if (!_allSubtasksExpanded)
+            {
+                ResetSubtaskDragGuardIfCollapsed(item);
+            }
+        }
+    }
+
     private async void ClearCompleted_Click(object sender, RoutedEventArgs e)
     {
         if (ViewModel.DoneCount == 0)
@@ -2467,32 +2923,87 @@ public sealed partial class MainWindow : Window
         _contextMenuOpen = true;
         CancelDockRetract();
 
-        if (sender is MenuFlyout { Target: FrameworkElement target })
+        if (sender is not MenuFlyout { Target: FrameworkElement target } flyout)
         {
-            _menuItem = target.DataContext as TodoItem;
+            return;
+        }
 
-            // 没有截止时间就没有提醒可推迟。
-            if (((MenuFlyout)sender).Items.Count > 2 &&
-                ((MenuFlyout)sender).Items[2] is MenuFlyoutItem snooze)
+        _menuItem = target.DataContext as TodoItem;
+
+        foreach (var entry in flyout.Items)
+        {
+            if (_menuItem is null)
             {
-                snooze.Visibility = _menuItem?.DueAt is null
+                break;
+            }
+
+            if (entry is MenuFlyoutSubItem { Text: "设置颜色" } colorMenu)
+            {
+                PopulateTagColorMenu(colorMenu, _menuItem);
+            }
+            else if (entry is MenuFlyoutItem { Text: "10 分钟后再提醒" } snooze)
+            {
+                // 没有截止时间就没有提醒可推迟。
+                snooze.Visibility = _menuItem.DueAt is null
                     ? Visibility.Collapsed
                     : Visibility.Visible;
             }
         }
     }
 
-    private void RowAddSubtask_Click(object sender, RoutedEventArgs e)
-    {
-        if (_menuItem is not { } item)
-        {
-            return;
-        }
+    private const string CircleIconPath =
+        "M10,10 m-9,0 a9,9 0 1,0 18,0 a9,9 0 1,0 -18,0 Z";
 
-        item.SubtasksExpanded = true;
-        item.SubtaskAddActive = true;
-        DispatcherQueue.TryEnqueue(() => FocusSubtaskAddBox(item));
+    private const string NoColorIconPath =
+        "F0 M10,10 m-9,0 a9,9 0 1,0 18,0 a9,9 0 1,0 -18,0 Z " +
+        "M10,10 m-7,0 a7,7 0 1,0 14,0 a7,7 0 1,0 -14,0 Z";
+
+    private void PopulateTagColorMenu(MenuFlyoutSubItem menu, TodoItem item)
+    {
+        menu.Items.Clear();
+        menu.Items.Add(CreateTagColorItem("无颜色", -1, item, null));
+
+        for (var i = 0; i < MainViewModel.TagColors.Length; i++)
+        {
+            menu.Items.Add(CreateTagColorItem(
+                $"颜色 {i + 1}", i, item, ParseHexColor(MainViewModel.TagColors[i])));
+        }
     }
+
+    private ToggleMenuFlyoutItem CreateTagColorItem(string text, int tagIndex, TodoItem item, Color? color)
+    {
+        var entry = new ToggleMenuFlyoutItem
+        {
+            // 菜单里只放圆形色块，文字留给读屏和自动化。
+            IsChecked = item.TagIndex == tagIndex,
+            Icon = new PathIcon
+            {
+                Data = ToGeometry(color is null ? NoColorIconPath : CircleIconPath),
+                Foreground = color is { } value
+                    ? new SolidColorBrush(value)
+                    : (Brush)Application.Current.Resources["TextMutedBrush"],
+            },
+        };
+
+        AutomationProperties.SetName(entry, text);
+
+        entry.Click += (_, _) =>
+        {
+            ViewModel.SetTag(item, tagIndex);
+            UpdateFilterVisuals();
+        };
+
+        return entry;
+    }
+
+    private static Color ParseHexColor(string hex) => Color.FromArgb(
+        255,
+        Convert.ToByte(hex.Substring(1, 2), 16),
+        Convert.ToByte(hex.Substring(3, 2), 16),
+        Convert.ToByte(hex.Substring(5, 2), 16));
+
+    private static Geometry ToGeometry(string path) =>
+        (Geometry)XamlBindingHelper.ConvertValue(typeof(Geometry), path);
 
     private void FocusSubtaskAddBox(TodoItem item)
     {
@@ -2528,10 +3039,21 @@ public sealed partial class MainWindow : Window
         {
             e.Handled = true;
             box.Text = string.Empty;
+            _subtaskAddBox = null;
             if (box.DataContext is TodoItem item)
             {
                 item.SubtaskAddActive = false;
             }
+        }
+    }
+
+    private TextBox? _subtaskAddBox;
+
+    private void SubtaskAddBox_GotFocus(object sender, RoutedEventArgs e)
+    {
+        if (sender is TextBox box)
+        {
+            _subtaskAddBox = box;
         }
     }
 
@@ -2543,9 +3065,33 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void SubtaskAddCheck_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Parent: Grid row } &&
+            FindTaggedChild<TextBox>(row, "SubtaskAddBox") is { } box)
+        {
+            CommitSubtaskAdd(box, keepOpen: false);
+        }
+    }
+
+    // 窗口失活时 TextBox 不触发 LostFocus，这里补一次离焦提交。
+    private void CommitSubtaskAddDraft()
+    {
+        if (_subtaskAddBox is { } box)
+        {
+            CommitSubtaskAdd(box, keepOpen: false);
+        }
+    }
+
     private void CommitSubtaskAdd(TextBox box, bool keepOpen)
     {
-        if (box.DataContext is not TodoItem item)
+        if (!keepOpen && ReferenceEquals(box, _subtaskAddBox))
+        {
+            _subtaskAddBox = null;
+        }
+
+        // 模板已经回收/收起时别再往旧条目上加。
+        if (!box.IsLoaded || box.DataContext is not TodoItem item)
         {
             return;
         }

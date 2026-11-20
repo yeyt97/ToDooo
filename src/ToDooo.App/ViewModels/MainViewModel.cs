@@ -184,6 +184,33 @@ public sealed partial class MainViewModel : ObservableObject
         RefreshCounts();
     }
 
+    /// <summary>主窗口双击标题就地改名；空内容视为放弃修改。</summary>
+    public void Rename(TodoItem item, string title)
+    {
+        title = title.Trim();
+        if (title.Length == 0 || title == item.Title)
+        {
+            return;
+        }
+
+        item.Title = title;
+        _repository.Update(item);
+        SyncVisible(item);
+    }
+
+    public void SetTag(TodoItem item, int tagIndex)
+    {
+        if (item.TagIndex == tagIndex)
+        {
+            return;
+        }
+
+        item.TagIndex = tagIndex;
+        _repository.Update(item);
+        SyncVisible(item);
+        RefreshCounts();
+    }
+
     public void ToggleImportant(TodoItem item)
     {
         item.IsImportant = !item.IsImportant;
@@ -264,6 +291,25 @@ public sealed partial class MainViewModel : ObservableObject
         RefreshCounts();
     }
 
+    /// <summary>主窗口子任务就地改名；空内容视为放弃修改。</summary>
+    public void RenameSubtask(TodoItem item, SubtaskItem subtask, string title)
+    {
+        title = title.Trim();
+        if (title.Length == 0 || title == subtask.Title)
+        {
+            return;
+        }
+
+        subtask.Title = title;
+        if (subtask.Id > 0)
+        {
+            _repository.UpdateSubtask(subtask);
+        }
+
+        // 搜索会匹配子任务标题，改完要重新判断这条主任务是否还该留在当前视图里。
+        SyncVisible(item);
+    }
+
     public void AddSubtask(TodoItem item, string title)
     {
         title = title.Trim();
@@ -314,6 +360,27 @@ public sealed partial class MainViewModel : ObservableObject
 
         item.RaiseSubtasksChanged();
         // 搜索命中子任务时，删掉这一条可能让整条待办不再匹配。
+        SyncVisible(item);
+    }
+
+    /// <summary>改到另一天：保留原来的时分，清掉提醒/推迟状态，按需重新过滤。</summary>
+    public void Reschedule(TodoItem item, DateTime date)
+    {
+        if (item.DueAt is not { } due)
+        {
+            return;
+        }
+
+        var next = date.Date + due.TimeOfDay;
+        if (next == due)
+        {
+            return;
+        }
+
+        item.DueAt = next;
+        item.DueNotified = false;
+        item.SnoozeUntil = null;
+        _repository.Update(item);
         SyncVisible(item);
     }
 

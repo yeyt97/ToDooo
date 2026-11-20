@@ -146,8 +146,11 @@ public sealed partial class TodoEditorDialog : Window
     /// <summary>先摆到主窗口正中间再激活；owner 为空就只按当前显示器兜底。</summary>
     public void ShowOver(AppWindow? owner)
     {
-        _appWindow.Show();
+        // 先摆好位置和尺寸再显示：中途 Show 会让窗口按默认尺寸出现在旧位置，看着闪一下。
         MoveNextTo(owner);
+        ApplyLogicalSize(DpiScale.ForOwner(owner, _hwnd));
+        MoveNextTo(owner);
+        _appWindow.Show();
         Activate();
 
         TitleBox.Focus(FocusState.Programmatic);
@@ -180,11 +183,6 @@ public sealed partial class TodoEditorDialog : Window
         var noBorder = NativeMethods.DWMWA_COLOR_NONE;
         NativeMethods.DwmSetWindowAttribute(
             _hwnd, NativeMethods.DWMWA_BORDER_COLOR, ref noBorder, sizeof(int));
-
-        var scale = NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
-        _appWindow.Resize(new SizeInt32(
-            (int)Math.Round(LogicalWidth * scale),
-            (int)Math.Round(CollapsedHeight * scale)));
 
         ExtendsContentIntoTitleBar = false;
         HeaderBar.Padding = new Thickness(18, 0, 12, 0);
@@ -380,6 +378,13 @@ public sealed partial class TodoEditorDialog : Window
         _appWindow.Resize(new SizeInt32(
             (int)Math.Round(LogicalWidth * scale),
             (int)Math.Round((on ? ExpandedHeight : CollapsedHeight) * scale)));
+    }
+
+    private void ApplyLogicalSize(double scale)
+    {
+        _appWindow.Resize(new SizeInt32(
+            (int)Math.Round(LogicalWidth * scale),
+            (int)Math.Round((DueToggle.IsOn ? ExpandedHeight : CollapsedHeight) * scale)));
     }
 
     private static TimeSpan RoundToFiveMinutes(TimeSpan value)

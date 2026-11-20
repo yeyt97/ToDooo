@@ -4,6 +4,7 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using ToDooo.Helpers;
 using ToDooo.Interop;
 using ToDooo.Models;
 using ToDooo.Services;
@@ -47,7 +48,7 @@ public sealed partial class SettingsWindow : Window
 
         ConfigureWindow();
 
-        AboutText.Text = "ToDooo 1.1.0 · WinUI 3\n数据目录：%LocalAppData%\\ToDooo";
+        AboutText.Text = "ToDooo 1.1.1 · WinUI 3\n数据目录：%LocalAppData%\\ToDooo";
 
         ThemeBox.SelectedIndex = settings.Current.ThemeMode;
         OpacitySlider.Value = Math.Clamp(settings.Current.WindowOpacity, 0.1, 1.0);
@@ -82,9 +83,19 @@ public sealed partial class SettingsWindow : Window
 
     public void ShowOver(AppWindow? owner)
     {
-        _appWindow.Show();
+        // 先摆好位置和尺寸再显示：中途 Show 会让窗口按默认尺寸出现在旧位置，看着闪一下。
         MoveNextTo(owner);
+        ApplyLogicalSize(DpiScale.ForOwner(owner, _hwnd));
+        MoveNextTo(owner);
+        _appWindow.Show();
         Activate();
+    }
+
+    private void ApplyLogicalSize(double scale)
+    {
+        _appWindow.Resize(new SizeInt32(
+            (int)Math.Round(LogicalWidth * scale),
+            (int)Math.Round(LogicalHeight * scale)));
     }
 
     /// <summary>系统主题变化时由主窗口调用，跟随系统模式下重刷本窗口外观。</summary>
@@ -118,11 +129,6 @@ public sealed partial class SettingsWindow : Window
         var noBorder = NativeMethods.DWMWA_COLOR_NONE;
         NativeMethods.DwmSetWindowAttribute(
             _hwnd, NativeMethods.DWMWA_BORDER_COLOR, ref noBorder, sizeof(int));
-
-        var scale = NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
-        _appWindow.Resize(new SizeInt32(
-            (int)Math.Round(LogicalWidth * scale),
-            (int)Math.Round(LogicalHeight * scale)));
 
         ExtendsContentIntoTitleBar = false;
         HeaderBar.Padding = new Thickness(18, 0, 12, 0);

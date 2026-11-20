@@ -395,18 +395,6 @@ public sealed partial class CalendarWindow : Window
             ShowDetailsForSelected();
         };
 
-        cell.DoubleTapped += (sender, args) =>
-        {
-            if (sender is FrameworkElement { Tag: DateTime tapped })
-            {
-                args.Handled = true;
-                _selected = tapped;
-                _month = new DateTime(tapped.Year, tapped.Month, 1);
-                Refresh();
-                _createRequested(tapped);
-            }
-        };
-
         cell.DragOver += (_, args) =>
         {
             args.AcceptedOperation = args.DataView.Properties.ContainsKey(DragKey)
@@ -514,6 +502,11 @@ public sealed partial class CalendarWindow : Window
             args.Data.RequestedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
         };
         chip.DropCompleted += (_, _) => _draggedEntry = null;
+        chip.Tapped += async (_, args) =>
+        {
+            args.Handled = true;
+            await ShowItemPreviewAsync(entry);
+        };
 
         if (entry.Subtask is not null)
         {
@@ -1112,6 +1105,8 @@ public sealed partial class CalendarWindow : Window
         _month = new DateTime(_selected.Year, _selected.Month, 1);
         Refresh();
     }
+
+    private void NewTask_Click(object sender, RoutedEventArgs e) => _createRequested(_selected);
 
     private void Root_DragOver(object sender, DragEventArgs e)
     {

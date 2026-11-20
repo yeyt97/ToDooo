@@ -1764,9 +1764,9 @@ public sealed partial class MainWindow : Window
     private void CancelDockRetract() => _dockTimer?.Stop();
 
     // 收边时主窗口是置顶的，设置/编辑窗口也得置顶，否则会被压在下面。
-    private void TopmostDialogIfDocked(Window dialog)
+    private void TopmostDialogIfDocked(Window dialog, bool forceTopmost = false)
     {
-        if (_dockEdge == EdgeDock.None)
+        if (!forceTopmost && _dockEdge == EdgeDock.None)
         {
             return;
         }
@@ -2040,6 +2040,7 @@ public sealed partial class MainWindow : Window
     {
         if (_editor is not null)
         {
+            TopmostDialogIfDocked(_editor, forceTopmost: _calendarWindow is not null);
             _editor.Activate();
             return false;
         }
@@ -2051,8 +2052,11 @@ public sealed partial class MainWindow : Window
         _suppressAddCommit = true;
         try
         {
-            dialog.ShowOver(_appWindow);
-            TopmostDialogIfDocked(dialog);
+            // 从日历进入编辑时把编辑窗摆在日历上，别落在主窗口那边被日历压住。
+            var owner = _calendarWindow?.AppWindow ?? _appWindow;
+            dialog.ShowOver(owner);
+            TopmostDialogIfDocked(dialog, forceTopmost: _calendarWindow is not null);
+            dialog.Activate();
             return await dialog.Result;
         }
         finally

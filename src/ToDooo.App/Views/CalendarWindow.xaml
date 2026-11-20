@@ -110,11 +110,22 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <TextBlock
-                    x:Name="SelectedDateText"
-                    FontSize="13"
-                    FontWeight="SemiBold"
-                    Foreground="{ThemeResource TextPrimaryBrush}" />
+                <Grid>
+                    <TextBlock
+                        x:Name="SelectedDateText"
+                        Margin="0,0,32,0"
+                        FontSize="13"
+                        FontWeight="SemiBold"
+                        Foreground="{ThemeResource TextPrimaryBrush}" />
+                    <Button
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        AutomationProperties.Name="在此日期新建任务"
+                        Click="NewTask_Click"
+                        Style="{StaticResource FlatIconButtonStyle}">
+                        <FontIcon Glyph="&#xE710;" FontSize="12" />
+                    </Button>
+                </Grid>
 
                 <ScrollViewer
                     Grid.Row="1"

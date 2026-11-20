@@ -47,6 +47,12 @@ public sealed class AppSettings
     /// <summary>鼠标离开窗口时自动变淡、移回恢复。</summary>
     public bool AutoHide { get; set; }
 
+    /// <summary>全局呼出快捷键：0=关闭，1=Ctrl+Alt+T，2=Ctrl+Shift+T，3=Alt+Q。</summary>
+    public int GlobalHotkeyMode { get; set; } = 1;
+
+    /// <summary>8 种颜色标签的自定义名称。</summary>
+    public List<string> TagNames { get; set; } = new();
+
     /// <summary>智能视图的启用状态与显示顺序（列表顺序即显示顺序）。</summary>
     public List<SmartViewSetting> SmartViews { get; set; } = SmartViewSetting.CreateDefault();
 }
@@ -68,6 +74,27 @@ public sealed class SettingsService
     }
 
     public AppSettings Current => _settings;
+
+    public string GetCustomTagName(int index)
+    {
+        if (index >= 0 && _settings.TagNames is { } names && index < names.Count && !string.IsNullOrWhiteSpace(names[index]))
+        {
+            return names[index].Trim();
+        }
+
+        return string.Empty;
+    }
+
+    public string GetTagName(int index)
+    {
+        if (index < 0 || index >= 8)
+        {
+            return string.Empty;
+        }
+
+        var custom = GetCustomTagName(index);
+        return custom.Length > 0 ? custom : $"标签 {index + 1}";
+    }
 
     public void Save()
     {

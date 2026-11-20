@@ -4,11 +4,14 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using ToDooo.Helpers;
 using ToDooo.Interop;
 using ToDooo.Models;
 using ToDooo.Services;
+using ToDooo.ViewModels;
 using Windows.Graphics;
+using Windows.UI;
 
 namespace ToDooo.Views;
 
@@ -16,13 +19,14 @@ namespace ToDooo.Views;
 public sealed partial class SettingsWindow : Window
 {
     private const int LogicalWidth = 420;
-    private const int LogicalHeight = 600;
+    private const int LogicalHeight = 640;
 
     private static readonly int[] LeadOptions = { 0, 5, 15, 30, 60 };
 
     private readonly SettingsService _settings;
     private readonly Action _settingsChanged;
     private readonly Func<Task> _exportRequested;
+    private readonly Func<Task>? _importRequested;
     private readonly IntPtr _hwnd;
     private readonly AppWindow _appWindow;
     private SystemBackdropConfiguration? _backdropConfig;
@@ -33,11 +37,13 @@ public sealed partial class SettingsWindow : Window
     public SettingsWindow(
         SettingsService settings,
         Action settingsChanged,
-        Func<Task> exportRequested)
+        Func<Task> exportRequested,
+        Func<Task>? importRequested = null)
     {
         _settings = settings;
         _settingsChanged = settingsChanged;
         _exportRequested = exportRequested;
+        _importRequested = importRequested;
 
         InitializeComponent();
         Root.RequestedTheme = Appearance.ToElementTheme((ThemeMode)settings.Current.ThemeMode);
@@ -48,47 +54,38 @@ public sealed partial class SettingsWindow : Window
 
         ConfigureWindow();
 
-        AboutText.Text = "ToDooo 1.1.1 · WinUI 3\n数据目录：%LocalAppData%\\ToDooo";
+        AboutText.Text = "ToDooo 1.3.0 · WinUI 3\n数据目录：%LocalAppData%\\ToDooo";
 
         ThemeBox.SelectedIndex = settings.Current.ThemeMode;
-        OpacitySlider.Value = Math.Clamp(settings.Current.WindowOpacity, 0.1, 1.0);
-        OpacityValue.Text = $"{Math.Round(OpacitySlider.Value * 100)}%";
+        var transparency = Math.Clamp(1.0 - settings.Current.WindowOpacity, 0.0, 0.9);
+        OpacitySlider.Value = transparency;
+        OpacityValue.Text = $"{Math.Round(transparency * 100)}%";
         StartupToggle.IsOn = StartupService.IsEnabled;
         AutoHideToggle.IsOn = settings.Current.AutoHide;
+        HotkeyBox.SelectedIndex = Math.Clamp(settings.Current.GlobalHotkeyMode, 0, 3);
         BuildSmartViewList();
+        BuildTagNameEditors();
         LeadBox.SelectedIndex = Math.Max(0, Array.IndexOf(LeadOptions, settings.Current.ReminderLeadMinutes));
 
         _ready = true;
-        Closed += (_, _) => _acrylic = null;
-        Activated += SettingsWindow_Activated;
-    }
-
-    private bool _hasFocus;
-    private bool _suppressDeactivateClose;
-
-    private void SettingsWindow_Activated(object sender, WindowActivatedEventArgs args)
-    {
-        if (args.WindowActivationState != WindowActivationState.Deactivated)
+        Closed += (_, _) =>
         {
-            _hasFocus = true;
-            return;
-        }
-
-        // 第一次显示前也会收到失活事件，拿到过焦点之后再按“点别处即关闭”处理。
-        if (_hasFocus && !_suppressDeactivateClose)
-        {
-            Close();
-        }
+            WindowCloak.Cancel(_hwnd, reveal: false);
+            _acrylic = null;
+        };
     }
 
     public void ShowOver(AppWindow? owner)
     {
         // 先摆好位置和尺寸再显示：中途 Show 会让窗口按默认尺寸出现在旧位置，看着闪一下。
-        MoveNextTo(owner);
+        MoveCenterOver(owner);
         ApplyLogicalSize(DpiScale.ForOwner(owner, _hwnd));
-        MoveNextTo(owner);
-        _appWindow.Show();
-        Activate();
+        MoveCenterOver(owner);
+        WindowCloak.ShowCloaked(_hwnd, Root, DispatcherQueue, () =>
+        {
+            _appWindow.Show();
+            Activate();
+        });
     }
 
     private void ApplyLogicalSize(double scale)
@@ -131,7 +128,7 @@ public sealed partial class SettingsWindow : Window
             _hwnd, NativeMethods.DWMWA_BORDER_COLOR, ref noBorder, sizeof(int));
 
         ExtendsContentIntoTitleBar = false;
-        HeaderBar.Padding = new Thickness(18, 0, 12, 0);
+        HeaderBar.Padding = new Thickness(18, 0, 10, 0);
 
         ApplyWindowMaterial();
     }
@@ -214,7 +211,7 @@ public sealed partial class SettingsWindow : Window
 
     private void HeaderBar_PointerCaptureLost(object sender, PointerRoutedEventArgs e) => _dragging = false;
 
-    private void MoveNextTo(AppWindow? owner)
+    private void MoveCenterOver(AppWindow? owner)
     {
         var size = _appWindow.Size;
         var point = new PointInt32(0, 0);
@@ -267,7 +264,7 @@ public sealed partial class SettingsWindow : Window
             return;
         }
 
-        _settings.Current.WindowOpacity = e.NewValue;
+        _settings.Current.WindowOpacity = Math.Clamp(1.0 - e.NewValue, 0.1, 1.0);
         _settings.Save();
         ApplyWindowMaterial();
         _settingsChanged();
@@ -409,17 +406,98 @@ public sealed partial class SettingsWindow : Window
         _settingsChanged();
     }
 
+    private void HotkeyBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_ready)
+        {
+            return;
+        }
+
+        _settings.Current.GlobalHotkeyMode = Math.Clamp(HotkeyBox.SelectedIndex, 0, 3);
+        _settings.Save();
+        _settingsChanged();
+    }
+
+    private void BuildTagNameEditors()
+    {
+        var names = _settings.Current.TagNames ??= new List<string>();
+        while (names.Count < MainViewModel.TagColors.Length)
+        {
+            names.Add(string.Empty);
+        }
+
+        TagNamesGrid.Children.Clear();
+        TagNamesGrid.RowDefinitions.Clear();
+        TagNamesGrid.ColumnDefinitions.Clear();
+
+        for (var r = 0; r < 4; r++)
+        {
+            TagNamesGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        }
+
+        TagNamesGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        TagNamesGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        for (var i = 0; i < MainViewModel.TagColors.Length; i++)
+        {
+            var index = i;
+            var hex = MainViewModel.TagColors[i];
+            var color = Color.FromArgb(
+                255,
+                Convert.ToByte(hex.Substring(1, 2), 16),
+                Convert.ToByte(hex.Substring(3, 2), 16),
+                Convert.ToByte(hex.Substring(5, 2), 16));
+
+            var cell = new Grid { ColumnSpacing = 8 };
+            cell.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            cell.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            cell.Children.Add(new Border
+            {
+                Width = 12,
+                Height = 12,
+                CornerRadius = new CornerRadius(6),
+                VerticalAlignment = VerticalAlignment.Center,
+                Background = new SolidColorBrush(color),
+            });
+
+            var box = new TextBox
+            {
+                Text = names[i] ?? string.Empty,
+                PlaceholderText = $"标签 {i + 1}",
+                MaxLength = 12,
+                Height = 28,
+                FontSize = 12,
+                Padding = new Thickness(6, 2, 6, 2),
+                CornerRadius = new CornerRadius(5),
+                VerticalContentAlignment = VerticalAlignment.Center,
+            };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(box, $"标签 {i + 1} 名称");
+            box.TextChanged += (_, _) =>
+            {
+                names[index] = box.Text.Trim();
+                _settings.Save();
+                _settingsChanged();
+            };
+            Grid.SetColumn(box, 1);
+            cell.Children.Add(box);
+
+            Grid.SetRow(cell, i / 2);
+            Grid.SetColumn(cell, i % 2);
+            TagNamesGrid.Children.Add(cell);
+        }
+    }
+
     private async void ExportButton_Click(object sender, RoutedEventArgs e)
     {
-        // 文件选择器会带走焦点，别把设置窗口关掉。
-        _suppressDeactivateClose = true;
-        try
+        await _exportRequested();
+    }
+
+    private async void ImportButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_importRequested is not null)
         {
-            await _exportRequested();
-        }
-        finally
-        {
-            _suppressDeactivateClose = false;
+            await _importRequested();
         }
     }
 

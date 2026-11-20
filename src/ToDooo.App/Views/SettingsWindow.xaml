@@ -35,7 +35,7 @@
         <Grid
             x:Name="HeaderBar"
             Height="44"
-            Padding="18,0,12,0"
+            Padding="18,0,10,0"
             Background="Transparent"
             PointerCaptureLost="HeaderBar_PointerCaptureLost"
             PointerMoved="HeaderBar_PointerMoved"
@@ -47,6 +47,14 @@
                 FontWeight="SemiBold"
                 Foreground="{ThemeResource TextPrimaryBrush}"
                 Text="设置" />
+            <Button
+                HorizontalAlignment="Right"
+                VerticalAlignment="Center"
+                AutomationProperties.Name="关闭设置"
+                Click="DoneButton_Click"
+                Style="{StaticResource FlatIconButtonStyle}">
+                <FontIcon Glyph="&#xE711;" FontSize="12" />
+            </Button>
         </Grid>
 
         <ScrollViewer
@@ -96,8 +104,8 @@
                         <Slider
                             x:Name="OpacitySlider"
                             MinWidth="0"
-                            Maximum="1"
-                            Minimum="0.1"
+                            Maximum="0.9"
+                            Minimum="0"
                             StepFrequency="0.05"
                             ValueChanged="OpacitySlider_ValueChanged" />
                     </StackPanel>
@@ -158,6 +166,24 @@
                                 <ComboBoxItem Content="提前 1 小时" />
                             </ComboBox>
                         </Grid>
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Style="{StaticResource LabelText}" Text="全局呼出" />
+                            <ComboBox
+                                x:Name="HotkeyBox"
+                                Grid.Column="1"
+                                Width="150"
+                                AutomationProperties.Name="全局呼出快捷键"
+                                SelectionChanged="HotkeyBox_SelectionChanged">
+                                <ComboBoxItem Content="关闭" />
+                                <ComboBoxItem Content="Ctrl + Alt + T" />
+                                <ComboBoxItem Content="Ctrl + Shift + T" />
+                                <ComboBoxItem Content="Alt + Q" />
+                            </ComboBox>
+                        </Grid>
                     </StackPanel>
                 </Border>
 
@@ -175,6 +201,20 @@
                     </StackPanel>
                 </Border>
 
+                <!--  颜色标签  -->
+                <Border
+                    Padding="14,10,14,12"
+                    Background="{ThemeResource ItemCardBrush}"
+                    BorderBrush="{ThemeResource ItemCardStrokeBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8">
+                    <StackPanel Spacing="8">
+                        <TextBlock Style="{StaticResource LabelText}" Text="颜色标签" />
+                        <TextBlock Style="{StaticResource HintText}" Text="为 8 种颜色设置简短分类名（留空则显示默认编号）。" />
+                        <Grid x:Name="TagNamesGrid" RowSpacing="6" ColumnSpacing="10" />
+                    </StackPanel>
+                </Border>
+
                 <!--  数据  -->
                 <Border
                     Padding="14,10,14,12"
@@ -189,6 +229,12 @@
                             HorizontalContentAlignment="Left"
                             Click="ExportButton_Click"
                             Content="导出数据（JSON）…" />
+                        <Button
+                            x:Name="ImportButton"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Left"
+                            Click="ImportButton_Click"
+                            Content="导入数据（JSON）…" />
                         <Button
                             x:Name="OpenFolderButton"
                             HorizontalAlignment="Stretch"

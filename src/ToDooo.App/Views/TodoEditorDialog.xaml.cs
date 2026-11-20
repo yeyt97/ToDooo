@@ -25,8 +25,9 @@ public sealed partial class TodoEditorDialog : Window
     private const int LogicalWidth = 420;
 
     // 截止时间收起/展开是两种高度，窗口跟着长，别留一大片空白。
-    private const int CollapsedHeight = 520;
-    private const int ExpandedHeight = 610;
+    private const int CollapsedHeight = 576;
+    private const int ExpandedHeight = 666;
+    private const string SubtaskDragKey = "ToDoooEditorSubtask";
 
     // 让后续逻辑排在关窗之后的下一轮消息里跑，别卡在关窗过程中重入 UI。
     private readonly TaskCompletionSource<bool> _result = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -34,6 +35,7 @@ public sealed partial class TodoEditorDialog : Window
     private readonly List<FontIcon> _tagChecks = new();
     private Button? _clearTagButton;
     private readonly List<SubtaskDraft> _subtaskDrafts = new();
+    private int _draggedSubtaskIndex = -1;
     private readonly IntPtr _hwnd;
     private readonly AppWindow _appWindow;
     private DesktopAcrylicController? _acrylic;
@@ -93,6 +95,7 @@ public sealed partial class TodoEditorDialog : Window
     {
         HeaderTitle.Text = "编辑待办";
         TitleBox.Text = item.Title;
+        NoteBox.Text = item.Note ?? string.Empty;
 
         if (item.DueAt is { } due)
         {
@@ -108,7 +111,7 @@ public sealed partial class TodoEditorDialog : Window
 
         foreach (var subtask in item.Subtasks)
         {
-            _subtaskDrafts.Add(new SubtaskDraft(subtask.Id, subtask.Title, subtask.IsDone, subtask.DueAt));
+            _subtaskDrafts.Add(new SubtaskDraft(subtask.Id, subtask.Title, subtask.IsDone, subtask.DueAt, subtask.Note));
         }
 
         RenderSubtasks();
@@ -119,6 +122,8 @@ public sealed partial class TodoEditorDialog : Window
     public Task<bool> Result => _result.Task;
 
     public string TodoTitle => TitleBox.Text.Trim();
+
+    public string TodoNote => NoteBox.Text.Trim();
 
     public DateTime? DueAt
     {
@@ -143,18 +148,20 @@ public sealed partial class TodoEditorDialog : Window
     /// <summary>保存时带出去的子任务草稿，交给主窗口按 Id 对齐落库。</summary>
     public IReadOnlyList<SubtaskDraft> Subtasks => _subtaskDrafts;
 
-    /// <summary>先摆到主窗口正中间再激活；owner 为空就只按当前显示器兜底。</summary>
+    /// <summary>先摆到所属窗口正中间再激活；owner 为空就只按当前显示器兜底。</summary>
     public void ShowOver(AppWindow? owner)
     {
         // 先摆好位置和尺寸再显示：中途 Show 会让窗口按默认尺寸出现在旧位置，看着闪一下。
-        MoveNextTo(owner);
+        MoveCenterOver(owner);
         ApplyLogicalSize(DpiScale.ForOwner(owner, _hwnd));
-        MoveNextTo(owner);
-        _appWindow.Show();
-        Activate();
-
-        TitleBox.Focus(FocusState.Programmatic);
-        TitleBox.SelectAll();
+        MoveCenterOver(owner);
+        WindowCloak.ShowCloaked(_hwnd, Root, DispatcherQueue, () =>
+        {
+            _appWindow.Show();
+            Activate();
+            TitleBox.Focus(FocusState.Programmatic);
+            TitleBox.SelectAll();
+        });
     }
 
     private void ConfigureWindow()
@@ -185,7 +192,7 @@ public sealed partial class TodoEditorDialog : Window
             _hwnd, NativeMethods.DWMWA_BORDER_COLOR, ref noBorder, sizeof(int));
 
         ExtendsContentIntoTitleBar = false;
-        HeaderBar.Padding = new Thickness(18, 0, 12, 0);
+        HeaderBar.Padding = new Thickness(18, 0, 10, 0);
     }
 
     private bool _dragging;
@@ -240,7 +247,7 @@ public sealed partial class TodoEditorDialog : Window
 
     private void HeaderBar_PointerCaptureLost(object sender, PointerRoutedEventArgs e) => _dragging = false;
 
-    private void MoveNextTo(AppWindow? owner)
+    private void MoveCenterOver(AppWindow? owner)
     {
         var size = _appWindow.Size;
         var point = new PointInt32(0, 0);
@@ -275,6 +282,7 @@ public sealed partial class TodoEditorDialog : Window
     private void OnClosed(object sender, WindowEventArgs args)
     {
         _finished = true;
+        WindowCloak.Cancel(_hwnd, reveal: false);
 
         // 结果在这里统一给出：窗口已经关掉了，调用方再继续。
         // 之前在点按钮时就把结果抛出去，调用方会立刻抢焦点、刷主界面，
@@ -619,7 +627,7 @@ public sealed partial class TodoEditorDialog : Window
                 VerticalAlignment = VerticalAlignment.Center,
                 Background = new SolidColorBrush(Colors.Transparent),
                 BorderThickness = new Thickness(0),
-                Opacity = draft.DueAt is null ? 0.65 : 1,
+                Opacity = (draft.DueAt is null && string.IsNullOrWhiteSpace(draft.Note)) ? 0.65 : 1,
             };
             var dueContent = new StackPanel
             {
@@ -644,17 +652,87 @@ public sealed partial class TodoEditorDialog : Window
                 });
             }
             dueButton.Content = dueContent;
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(dueButton, "设置子任务时间");
-            dueButton.Click += async (_, _) => await EditSubtaskDueAsync(index);
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(dueButton, "编辑子任务");
+            if (!string.IsNullOrWhiteSpace(draft.Note))
+            {
+                ToolTipService.SetToolTip(dueButton, draft.Note);
+            }
 
-            var row = new Grid { ColumnSpacing = 6 };
+            dueButton.Click += async (_, _) => await EditSubtaskDraftAsync(index);
+
+            var grip = new Border
+            {
+                Width = 14,
+                Height = 26,
+                Background = new SolidColorBrush(Colors.Transparent),
+                VerticalAlignment = VerticalAlignment.Center,
+                CanDrag = true,
+                Child = new FontIcon
+                {
+                    Glyph = "\uE784",
+                    FontSize = 10,
+                    Opacity = 0.55,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = (Brush)Application.Current.Resources["TextMutedBrush"],
+                },
+            };
+            grip.DragStarting += (_, args) =>
+            {
+                _draggedSubtaskIndex = index;
+                args.Data.Properties[SubtaskDragKey] = index;
+                args.Data.RequestedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
+            };
+            grip.DropCompleted += (_, _) => _draggedSubtaskIndex = -1;
+
+            var row = new Grid
+            {
+                ColumnSpacing = 6,
+                CornerRadius = new CornerRadius(4),
+                Background = new SolidColorBrush(Colors.Transparent),
+                AllowDrop = true,
+            };
+            row.DragOver += (_, args) =>
+            {
+                if (!args.DataView.Properties.ContainsKey(SubtaskDragKey) || _draggedSubtaskIndex == index)
+                {
+                    args.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.None;
+                    return;
+                }
+
+                args.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
+                args.DragUIOverride.IsCaptionVisible = false;
+                args.DragUIOverride.IsGlyphVisible = false;
+                row.Background = (Brush)Application.Current.Resources["HoverBrush"];
+            };
+            row.DragLeave += (_, _) => row.Background = new SolidColorBrush(Colors.Transparent);
+            row.Drop += (_, args) =>
+            {
+                row.Background = new SolidColorBrush(Colors.Transparent);
+                if (_draggedSubtaskIndex < 0 || _draggedSubtaskIndex >= _subtaskDrafts.Count ||
+                    index < 0 || index >= _subtaskDrafts.Count || _draggedSubtaskIndex == index)
+                {
+                    return;
+                }
+
+                args.Handled = true;
+                var moved = _subtaskDrafts[_draggedSubtaskIndex];
+                _subtaskDrafts.RemoveAt(_draggedSubtaskIndex);
+                _subtaskDrafts.Insert(index, moved);
+                _draggedSubtaskIndex = -1;
+                RenderSubtasks();
+            };
+
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            Grid.SetColumn(title, 1);
-            Grid.SetColumn(dueButton, 2);
-            Grid.SetColumn(delete, 3);
+            Grid.SetColumn(check, 1);
+            Grid.SetColumn(title, 2);
+            Grid.SetColumn(dueButton, 3);
+            Grid.SetColumn(delete, 4);
+            row.Children.Add(grip);
             row.Children.Add(check);
             row.Children.Add(title);
             row.Children.Add(dueButton);
@@ -665,7 +743,7 @@ public sealed partial class TodoEditorDialog : Window
         UpdateSubtaskCount();
     }
 
-    private async Task EditSubtaskDueAsync(int index)
+    private async Task EditSubtaskDraftAsync(int index)
     {
         if (index < 0 || index >= _subtaskDrafts.Count)
         {
@@ -673,14 +751,26 @@ public sealed partial class TodoEditorDialog : Window
         }
 
         var draft = _subtaskDrafts[index];
-        var (confirmed, dueAt) = await SubtaskDuePrompt.ShowAsync(
-            Root.XamlRoot, Root.RequestedTheme, draft.DueAt);
-        if (!confirmed || index >= _subtaskDrafts.Count)
+        var dialog = new SubtaskEditorDialog(
+            _settings,
+            draft.Title,
+            draft.Note,
+            draft.DueAt,
+            draft.Done);
+        dialog.ShowOver(_appWindow);
+        dialog.Activate();
+        if (!await dialog.Result || index >= _subtaskDrafts.Count)
         {
             return;
         }
 
-        _subtaskDrafts[index] = _subtaskDrafts[index] with { DueAt = dueAt };
+        _subtaskDrafts[index] = _subtaskDrafts[index] with
+        {
+            Title = dialog.SubtaskTitle,
+            Note = dialog.SubtaskNote,
+            DueAt = dialog.DueAt,
+            Done = dialog.IsDone,
+        };
         RenderSubtasks();
     }
 

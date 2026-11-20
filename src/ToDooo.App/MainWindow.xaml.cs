@@ -1,10 +1,13 @@
 using System.IO;
+using System.Numerics;
+using Microsoft.UI.Composition;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Markup;
 using Microsoft.UI.Xaml.Media;
@@ -40,8 +43,10 @@ public sealed partial class MainWindow : Window
     private DesktopAcrylicController? _acrylic;
     private Microsoft.UI.Composition.SystemBackdrops.SystemBackdropConfiguration? _backdropConfig;
     private Views.SettingsWindow? _settingsWindow;
-    private CalendarWindow? _calendarWindow;
+    private Views.CalendarHostWindow? _calendarHostWindow;
     private TrayIcon? _tray;
+    private bool _calendarExpanded;
+    private bool _calendarAnimating;
     private uint _taskbarCreatedMessage;
     private bool _started;
     private bool _positioned;
@@ -49,8 +54,10 @@ public sealed partial class MainWindow : Window
     private bool _dragging;
     private bool _suppressAddCommit;
     private TodoEditorDialog? _editor;
+    private SubtaskEditorDialog? _subtaskEditor;
     private NativeMethods.POINT _dragStartCursor;
     private NativeMethods.RECT _dragStartRect;
+    private readonly List<(IntPtr Hwnd, int OffsetX, int OffsetY)> _attachedFollowers = new();
 
     public MainWindow(TodoRepository repository, SettingsService settings, Notifier notifier)
     {
@@ -110,8 +117,10 @@ public sealed partial class MainWindow : Window
         InstallSubclass();
         PositionWindow();
         ApplyCornerMask();
+        WindowCloak.ShowCloaked(_hwnd, Root, _dispatcher, Activate);
 
         CreateTray();
+        ApplyGlobalHotkey();
         StartupService.EnsureMatchesCurrentProcess();
         _reminder.LeadMinutes = _settings.Current.ReminderLeadMinutes;
         _reminder.Start();
@@ -119,6 +128,18 @@ public sealed partial class MainWindow : Window
 
     public void ShowFromTray()
     {
+        if (!NativeMethods.IsWindowVisible(_hwnd))
+        {
+            WindowCloak.ShowCloaked(_hwnd, Root, _dispatcher, () =>
+            {
+                NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_SHOW);
+                ExpandDock();
+                Activate();
+                NativeMethods.SetForegroundWindow(_hwnd);
+            });
+            return;
+        }
+
         NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_SHOW);
         ExpandDock();
         Activate();
@@ -215,7 +236,7 @@ public sealed partial class MainWindow : Window
         UpdateFilterVisuals();
         UpdateTagVisuals();
         _settingsWindow?.RefreshTheme();
-        _calendarWindow?.RefreshTheme();
+        _calendarHostWindow?.RefreshTheme();
     }
 
     private void ApplyDwmTheme(bool dark)
@@ -305,8 +326,8 @@ public sealed partial class MainWindow : Window
         }
 
         var scale = NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
-        _settings.Current.WindowX = rect.Left;
         _settings.Current.WindowY = rect.Top;
+        _settings.Current.WindowX = rect.Left;
         // 缩放后的尺寸也要持久化，PositionWindow() 会按 DPI 还原；否则重启又回到旧的固定大小。
         // 设置项存的是逻辑像素，所以这里要把物理像素除回去。
         _settings.Current.WindowWidth = Math.Max(320, (int)Math.Round((rect.Right - rect.Left) / scale));
@@ -450,13 +471,19 @@ public sealed partial class MainWindow : Window
             _ = AddDetailedAsync();
         };
 
-        var startupItem = new ToggleMenuFlyoutItem
+        var calendarItem = new MenuFlyoutItem
         {
-            Text = "开机自启",
-            IsChecked = StartupService.IsEnabled,
-            Icon = new FontIcon { Glyph = "\uE768" },
+            Text = "日历",
+            Icon = new FontIcon { Glyph = "\uE787" },
         };
-        startupItem.Click += (_, _) => StartupService.SetEnabled(startupItem.IsChecked);
+        calendarItem.Click += (_, _) => CalendarButton_Click(this, new RoutedEventArgs());
+
+        var settingsItem = new MenuFlyoutItem
+        {
+            Text = "设置…",
+            Icon = new FontIcon { Glyph = "\uE713" },
+        };
+        settingsItem.Click += (_, _) => SettingsButton_Click(this, new RoutedEventArgs());
 
         var exitItem = new MenuFlyoutItem
         {
@@ -467,6 +494,8 @@ public sealed partial class MainWindow : Window
 
         flyout.Items.Add(showItem);
         flyout.Items.Add(addItem);
+        flyout.Items.Add(calendarItem);
+        flyout.Items.Add(settingsItem);
         flyout.Items.Add(new MenuFlyoutSeparator());
         flyout.Items.Add(exitItem);
 
@@ -489,8 +518,10 @@ public sealed partial class MainWindow : Window
         var menu = NativeMethods.CreatePopupMenu();
         NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 1, "显示待办");
         NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 2, "添加待办");
+        NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 3, "日历");
+        NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 4, "设置…");
         NativeMethods.AppendMenuW(menu, NativeMethods.MF_SEPARATOR, 0, null);
-        NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 3, "退出 ToDooo");
+        NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 5, "退出 ToDooo");
 
         var command = NativeMethods.TrackPopupMenuEx(
             menu,
@@ -510,6 +541,12 @@ public sealed partial class MainWindow : Window
                 _ = AddDetailedAsync();
                 break;
             case 3:
+                CalendarButton_Click(this, new RoutedEventArgs());
+                break;
+            case 4:
+                SettingsButton_Click(this, new RoutedEventArgs());
+                break;
+            case 5:
                 ExitApp();
                 break;
         }
@@ -569,21 +606,27 @@ public sealed partial class MainWindow : Window
         HideUndo();
     }
 
-    private void SearchButton_Click(object sender, RoutedEventArgs e) => ToggleSearch();
-
-    private void ToggleSearch()
+    private void SearchButton_Click(object sender, RoutedEventArgs e)
     {
-        if (SearchBar.Visibility == Visibility.Visible)
+        if (SearchBar.Visibility != Visibility.Visible)
         {
-            SearchBox.Text = string.Empty;
-            ViewModel.SetSearch(string.Empty);
-            SearchBar.Visibility = Visibility.Collapsed;
+            OpenSearchBar();
         }
-        else
-        {
-            SearchBar.Visibility = Visibility.Visible;
-            SearchBox.Focus(FocusState.Programmatic);
-        }
+    }
+
+    private void OpenSearchBar()
+    {
+        SearchBar.Visibility = Visibility.Visible;
+        SearchButton.IsEnabled = false;
+        SearchBox.Focus(FocusState.Programmatic);
+    }
+
+    private void CloseSearchBar()
+    {
+        SearchBox.Text = string.Empty;
+        ViewModel.SetSearch(string.Empty);
+        SearchBar.Visibility = Visibility.Collapsed;
+        SearchButton.IsEnabled = true;
     }
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -594,20 +637,14 @@ public sealed partial class MainWindow : Window
             : Visibility.Collapsed;
     }
 
-    private void ClearSearch_Click(object sender, RoutedEventArgs e)
-    {
-        SearchBox.Text = string.Empty;
-        ViewModel.SetSearch(string.Empty);
-        SearchBar.Visibility = Visibility.Collapsed;
-    }
+    private void ClearSearch_Click(object sender, RoutedEventArgs e) => CloseSearchBar();
 
     private void SearchBox_LostFocus(object sender, RoutedEventArgs e)
     {
         // 没内容就收起搜索条，不占位置。
         if (SearchBox.Text.Length == 0 && SearchBar.Visibility == Visibility.Visible)
         {
-            SearchBar.Visibility = Visibility.Collapsed;
-            ViewModel.SetSearch(string.Empty);
+            CloseSearchBar();
         }
     }
 
@@ -616,7 +653,7 @@ public sealed partial class MainWindow : Window
         if (e.Key == VirtualKey.Escape)
         {
             e.Handled = true;
-            ToggleSearch();
+            CloseSearchBar();
         }
     }
 
@@ -629,7 +666,7 @@ public sealed partial class MainWindow : Window
     private void SearchAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
         args.Handled = true;
-        ToggleSearch();
+        OpenSearchBar();
     }
 
     private void FilterAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
@@ -667,6 +704,7 @@ public sealed partial class MainWindow : Window
             var items = ViewModel.AllItems.Select(item => new
             {
                 item.Title,
+                item.Note,
                 item.IsDone,
                 item.IsImportant,
                 DueAt = item.DueAt?.ToString("yyyy-MM-dd'T'HH:mm:ss"),
@@ -678,7 +716,9 @@ public sealed partial class MainWindow : Window
                 Subtasks = item.Subtasks.Select(subtask => new
                 {
                     subtask.Title,
+                    subtask.Note,
                     subtask.IsDone,
+                    DueAt = subtask.DueAt?.ToString("yyyy-MM-dd'T'HH:mm:ss"),
                     subtask.SortOrder,
                 }),
             });
@@ -694,23 +734,197 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void CalendarButton_Click(object sender, RoutedEventArgs e)
+    private sealed class ImportedSubtaskDto
     {
-        if (_calendarWindow is not null)
+        public string? Title { get; set; }
+
+        public string? Note { get; set; }
+
+        public bool IsDone { get; set; }
+
+        public string? DueAt { get; set; }
+
+        public double SortOrder { get; set; }
+    }
+
+    private sealed class ImportedTodoDto
+    {
+        public string? Title { get; set; }
+
+        public string? Note { get; set; }
+
+        public bool IsDone { get; set; }
+
+        public bool IsImportant { get; set; }
+
+        public string? DueAt { get; set; }
+
+        public string? Recurrence { get; set; }
+
+        public int TagIndex { get; set; } = -1;
+
+        public double SortOrder { get; set; }
+
+        public string? CreatedAt { get; set; }
+
+        public string? CompletedAt { get; set; }
+
+        public List<ImportedSubtaskDto>? Subtasks { get; set; }
+    }
+
+    public async Task ImportDataAsync()
+    {
+        try
         {
-            _calendarWindow.Activate();
+            var picker = new Windows.Storage.Pickers.FileOpenPicker
+            {
+                SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary,
+            };
+            picker.FileTypeFilter.Add(".json");
+            var ownerHwnd = _settingsWindow is not null
+                ? WinRT.Interop.WindowNative.GetWindowHandle(_settingsWindow)
+                : _hwnd;
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, ownerHwnd);
+
+            var file = await picker.PickSingleFileAsync();
+            if (file is null)
+            {
+                return;
+            }
+
+            var json = await Windows.Storage.FileIO.ReadTextAsync(file);
+            var rawItems = System.Text.Json.JsonSerializer.Deserialize<List<ImportedTodoDto>>(
+                json,
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (rawItems is null || rawItems.Count == 0)
+            {
+                ShowBalloon("导入为空", "文件中没有可导入的待办");
+                return;
+            }
+
+            var imported = new List<TodoItem>(rawItems.Count);
+            foreach (var dto in rawItems)
+            {
+                var title = (dto.Title ?? string.Empty).Trim();
+                if (title.Length == 0)
+                {
+                    continue;
+                }
+
+                _ = Enum.TryParse<TodoRecurrence>(dto.Recurrence, ignoreCase: true, out var recurrence);
+                var todo = new TodoItem
+                {
+                    Title = title,
+                    Note = (dto.Note ?? string.Empty).Trim(),
+                    IsDone = dto.IsDone,
+                    IsImportant = dto.IsImportant,
+                    DueAt = DateTime.TryParse(dto.DueAt, out var due) ? due : null,
+                    Recurrence = recurrence,
+                    TagIndex = dto.TagIndex >= -1 && dto.TagIndex < MainViewModel.TagColors.Length ? dto.TagIndex : -1,
+                    SortOrder = dto.SortOrder,
+                    CreatedAt = DateTime.TryParse(dto.CreatedAt, out var created) ? created : DateTime.Now,
+                    CompletedAt = DateTime.TryParse(dto.CompletedAt, out var completed) ? completed : null,
+                };
+
+                if (dto.Subtasks is { Count: > 0 })
+                {
+                    foreach (var subDto in dto.Subtasks)
+                    {
+                        var subTitle = (subDto.Title ?? string.Empty).Trim();
+                        if (subTitle.Length == 0)
+                        {
+                            continue;
+                        }
+
+                        todo.Subtasks.Add(new SubtaskItem
+                        {
+                            Title = subTitle,
+                            Note = (subDto.Note ?? string.Empty).Trim(),
+                            IsDone = subDto.IsDone,
+                            DueAt = DateTime.TryParse(subDto.DueAt, out var subDue) ? subDue : null,
+                            SortOrder = subDto.SortOrder,
+                        });
+                    }
+                }
+
+                imported.Add(todo);
+            }
+
+            var count = ViewModel.ImportItems(imported);
+            UpdateFilterVisuals();
+            UpdateTagVisuals();
+            ShowBalloon("已导入", $"共导入 {count} 条待办");
+        }
+        catch
+        {
+            ShowBalloon("导入失败", "请确认 JSON 文件格式正确");
+        }
+    }
+
+    private void CalendarButton_Click(object sender, RoutedEventArgs e) =>
+        SetCalendarExpanded(!_calendarExpanded);
+
+    private void SetCalendarExpanded(bool expanded)
+    {
+        if (_calendarAnimating || _calendarExpanded == expanded || _hwnd == IntPtr.Zero)
+        {
             return;
         }
 
-        _calendarWindow = new CalendarWindow(
-            ViewModel,
-            _settings,
-            item => _ = EditItemAsync(item),
-            (item, date) => ViewModel.Reschedule(item, date),
-            date => _ = AddTaskAtAsync(date));
-        _calendarWindow.Closed += (_, _) => _calendarWindow = null;
-        _calendarWindow.ShowOver(_appWindow);
-        TopmostDialogIfDocked(_calendarWindow);
+        if (expanded)
+        {
+            if (_dockEdge != EdgeDock.None)
+            {
+                ExpandDock();
+                Undock();
+            }
+
+            if (_calendarHostWindow is null)
+            {
+                _calendarHostWindow = new Views.CalendarHostWindow(
+                    ViewModel,
+                    _settings,
+                    _hwnd,
+                    item => _ = EditItemAsync(item, _calendarHostWindow?.WindowInfo),
+                    (item, date) => ViewModel.Reschedule(item, date),
+                    date => _ = AddTaskAtAsync(date, _calendarHostWindow?.WindowInfo),
+                    () => SetCalendarExpanded(false),
+                    null,
+                    SavePosition);
+            }
+
+            _calendarAnimating = true;
+            _calendarExpanded = true;
+            UpdateCalendarButtonVisual();
+
+            _calendarHostWindow.ShowNextTo(_appWindow, () =>
+            {
+                _calendarAnimating = false;
+            });
+            return;
+        }
+
+        _calendarAnimating = true;
+        _calendarExpanded = false;
+        UpdateCalendarButtonVisual();
+
+        if (_calendarHostWindow is null)
+        {
+            _calendarAnimating = false;
+            return;
+        }
+
+        _calendarHostWindow.HideAnimated(() =>
+        {
+            _calendarAnimating = false;
+        });
+    }
+
+    private void UpdateCalendarButtonVisual()
+    {
+        CalendarButton.Foreground = (Brush)Application.Current.Resources[
+            _calendarExpanded ? "AccentBrush" : "TextSecondaryBrush"];
+        AutomationProperties.SetName(CalendarButton, _calendarExpanded ? "收起日历" : "日历");
     }
 
     private void SettingsButton_Click(object sender, RoutedEventArgs e)
@@ -724,15 +938,76 @@ public sealed partial class MainWindow : Window
         _settingsWindow = new Views.SettingsWindow(
             _settings,
             OnSettingsChanged,
-            ExportDataAsync);
+            ExportDataAsync,
+            ImportDataAsync);
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         _settingsWindow.ShowOver(_appWindow);
         TopmostDialogIfDocked(_settingsWindow);
     }
 
+    private const int GlobalHotkeyId = 0x544F;
+
+    private void ApplyGlobalHotkey()
+    {
+        if (_hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        NativeMethods.UnregisterHotKey(_hwnd, GlobalHotkeyId);
+        var (mods, vk) = _settings.Current.GlobalHotkeyMode switch
+        {
+            1 => (NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT | NativeMethods.MOD_NOREPEAT, 0x54u),
+            2 => (NativeMethods.MOD_CONTROL | NativeMethods.MOD_SHIFT | NativeMethods.MOD_NOREPEAT, 0x54u),
+            3 => (NativeMethods.MOD_ALT | NativeMethods.MOD_NOREPEAT, 0x51u),
+            _ => (0u, 0u),
+        };
+
+        if (vk != 0)
+        {
+            NativeMethods.RegisterHotKey(_hwnd, GlobalHotkeyId, mods, vk);
+        }
+    }
+
+    private void ToggleFromHotkey()
+    {
+        if (_dockEdge != EdgeDock.None)
+        {
+            if (_dockRetracted)
+            {
+                ShowFromTray();
+            }
+            else
+            {
+                RetractDock();
+            }
+
+            return;
+        }
+
+        if (NativeMethods.IsWindowVisible(_hwnd) && NativeMethods.GetForegroundWindow() == _hwnd)
+        {
+            if (_calendarExpanded)
+            {
+                _calendarExpanded = false;
+                _calendarAnimating = false;
+                _calendarHostWindow?.HideImmediate();
+                UpdateCalendarButtonVisual();
+            }
+
+            NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_HIDE);
+        }
+        else
+        {
+            ShowFromTray();
+        }
+    }
+
     private void OnSettingsChanged()
     {
         ApplyAppearance();
+        ApplyGlobalHotkey();
+        RefreshTagButtonLabels();
         _reminder.LeadMinutes = _settings.Current.ReminderLeadMinutes;
         BuildSmartViewChips();
 
@@ -751,6 +1026,10 @@ public sealed partial class MainWindow : Window
         }
 
         _exiting = true;
+        WindowCloak.Cancel(_hwnd, reveal: false);
+        _calendarAnimating = false;
+        _calendarHostWindow?.ForceClose();
+        NativeMethods.UnregisterHotKey(_hwnd, GlobalHotkeyId);
         ExpandDock();
         SavePosition();
         _tray?.Dispose();
@@ -762,6 +1041,15 @@ public sealed partial class MainWindow : Window
     {
         switch (msg)
         {
+            case NativeMethods.WM_HOTKEY:
+                if (wParam.ToInt32() == GlobalHotkeyId)
+                {
+                    _dispatcher.TryEnqueue(ToggleFromHotkey);
+                    return IntPtr.Zero;
+                }
+
+                break;
+
             case NativeMethods.WM_TRAY:
                 _tray?.HandleMessage(lParam);
                 return IntPtr.Zero;
@@ -913,6 +1201,24 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        _attachedFollowers.Clear();
+        var scale = NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
+        void TryTrackFollower(IntPtr subHwnd)
+        {
+            if (subHwnd != IntPtr.Zero &&
+                NativeMethods.IsWindowVisible(subHwnd) &&
+                NativeMethods.GetWindowRect(subHwnd, out var subRect) &&
+                WindowSnap.IsAttachedTo(subRect, _dragStartRect, scale))
+            {
+                _attachedFollowers.Add((subHwnd, subRect.Left - _dragStartRect.Left, subRect.Top - _dragStartRect.Top));
+            }
+        }
+
+        if (_calendarHostWindow is not null)
+        {
+            TryTrackFollower(_calendarHostWindow.Hwnd);
+        }
+
         _dragging = ((UIElement)sender).CapturePointer(e.Pointer);
         e.Handled = true;
     }
@@ -942,9 +1248,11 @@ public sealed partial class MainWindow : Window
         }
 
         _dragging = false;
+        _attachedFollowers.Clear();
         ((UIElement)sender).ReleasePointerCapture(e.Pointer);
         SavePosition();
         TryDockToEdge();
+
         e.Handled = true;
     }
 
@@ -956,6 +1264,7 @@ public sealed partial class MainWindow : Window
         }
 
         _dragging = false;
+        _attachedFollowers.Clear();
         SavePosition();
     }
 
@@ -964,9 +1273,47 @@ public sealed partial class MainWindow : Window
         var width = _dragStartRect.Right - _dragStartRect.Left;
         var height = _dragStartRect.Bottom - _dragStartRect.Top;
 
-        NativeMethods.SetWindowPos(
-            _hwnd, NativeMethods.HWND_NOTOPMOST,
+        if (_attachedFollowers.Count == 0)
+        {
+            NativeMethods.SetWindowPos(
+                _hwnd, NativeMethods.HWND_NOTOPMOST,
+                screenX, screenY, width, height, NativeMethods.SWP_NOACTIVATE);
+            return;
+        }
+
+        var hdwp = NativeMethods.BeginDeferWindowPos(1 + _attachedFollowers.Count);
+        if (hdwp == IntPtr.Zero)
+        {
+            NativeMethods.SetWindowPos(
+                _hwnd, NativeMethods.HWND_NOTOPMOST,
+                screenX, screenY, width, height, NativeMethods.SWP_NOACTIVATE);
+            return;
+        }
+
+        hdwp = NativeMethods.DeferWindowPos(
+            hdwp, _hwnd, NativeMethods.HWND_NOTOPMOST,
             screenX, screenY, width, height, NativeMethods.SWP_NOACTIVATE);
+
+        foreach (var (subHwnd, offsetX, offsetY) in _attachedFollowers)
+        {
+            if (hdwp == IntPtr.Zero)
+            {
+                break;
+            }
+
+            if (NativeMethods.IsWindowVisible(subHwnd))
+            {
+                hdwp = NativeMethods.DeferWindowPos(
+                    hdwp, subHwnd, IntPtr.Zero,
+                    screenX + offsetX, screenY + offsetY, 0, 0,
+                    NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
+            }
+        }
+
+        if (hdwp != IntPtr.Zero)
+        {
+            NativeMethods.EndDeferWindowPos(hdwp);
+        }
     }
 
     private void BuildTagDots()
@@ -981,7 +1328,7 @@ public sealed partial class MainWindow : Window
                 Convert.ToByte(hex.Substring(1, 2), 16),
                 Convert.ToByte(hex.Substring(3, 2), 16),
                 Convert.ToByte(hex.Substring(5, 2), 16));
-            AddTagButton(style, i, color, $"标签 {i + 1}");
+            AddTagButton(style, i, color, _settings.GetTagName(i));
         }
 
         // 选中某个颜色后，末尾才出现的“清除颜色”按钮（圆圈 + 叉）。
@@ -1020,6 +1367,7 @@ public sealed partial class MainWindow : Window
         };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(_tagClearButton, "清除颜色筛选");
         TagPanel.Children.Add(_tagClearButton);
+        RefreshTagButtonLabels();
     }
 
     private void AddTagButton(Style style, int index, Color color, string name)
@@ -1222,6 +1570,10 @@ public sealed partial class MainWindow : Window
     private int _resizeHit;
     private NativeMethods.POINT _resizeStartCursor;
     private NativeMethods.RECT _resizeStartRect;
+    private bool _resizeCalAttached;
+    private NativeMethods.RECT _resizeCalStartRect;
+    private bool _resizeCalOnLeft;
+    private int _resizeCalGap;
 
     // 鼠标离开窗口时淡出，移回恢复；设置里没开就保持原样。
     private void Root_PointerEntered(object sender, PointerRoutedEventArgs e)
@@ -1282,6 +1634,21 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        _resizeCalAttached = false;
+        var scale = NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
+        if (_calendarExpanded &&
+            _calendarHostWindow is not null &&
+            NativeMethods.IsWindowVisible(_calendarHostWindow.Hwnd) &&
+            NativeMethods.GetWindowRect(_calendarHostWindow.Hwnd, out _resizeCalStartRect) &&
+            WindowSnap.IsAttachedTo(_resizeCalStartRect, _resizeStartRect, scale))
+        {
+            _resizeCalAttached = true;
+            _resizeCalOnLeft = _resizeCalStartRect.Right <= _resizeStartRect.Left + (int)Math.Round(24 * scale);
+            _resizeCalGap = _resizeCalOnLeft
+                ? _resizeStartRect.Left - _resizeCalStartRect.Right
+                : _resizeCalStartRect.Left - _resizeStartRect.Right;
+        }
+
         _resizeHit = hit;
         Root.CapturePointer(e.Pointer);
         UpdateResizeCursor(local);
@@ -1302,7 +1669,7 @@ public sealed partial class MainWindow : Window
         {
             var scale = NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
             var minWidth = (int)Math.Round(320 * scale);
-            var minHeight = (int)Math.Round(360 * scale);
+            var minHeight = (int)Math.Round((_resizeCalAttached ? 460 : 360) * scale);
             var dx = cursor.X - _resizeStartCursor.X;
             var dy = cursor.Y - _resizeStartCursor.Y;
 
@@ -1331,9 +1698,51 @@ public sealed partial class MainWindow : Window
                 bottom = Math.Max(_resizeStartRect.Bottom + dy, _resizeStartRect.Top + minHeight);
             }
 
-            NativeMethods.SetWindowPos(
-                _hwnd, IntPtr.Zero, left, top, right - left, bottom - top,
-                NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
+            if (!_resizeCalAttached || _calendarHostWindow is null || !NativeMethods.IsWindowVisible(_calendarHostWindow.Hwnd))
+            {
+                NativeMethods.SetWindowPos(
+                    _hwnd, IntPtr.Zero, left, top, right - left, bottom - top,
+                    NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
+                e.Handled = true;
+                return;
+            }
+
+            var calHwnd = _calendarHostWindow.Hwnd;
+            var calW = _resizeCalStartRect.Right - _resizeCalStartRect.Left;
+            var calH = bottom - top;
+            var calLeft = _resizeCalOnLeft
+                ? left - _resizeCalGap - calW
+                : right + _resizeCalGap;
+
+            var hdwp = NativeMethods.BeginDeferWindowPos(2);
+            if (hdwp != IntPtr.Zero)
+            {
+                hdwp = NativeMethods.DeferWindowPos(
+                    hdwp, _hwnd, IntPtr.Zero,
+                    left, top, right - left, calH,
+                    NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
+                if (hdwp != IntPtr.Zero)
+                {
+                    hdwp = NativeMethods.DeferWindowPos(
+                        hdwp, calHwnd, IntPtr.Zero,
+                        calLeft, top, calW, calH,
+                        NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
+                }
+
+                if (hdwp != IntPtr.Zero)
+                {
+                    NativeMethods.EndDeferWindowPos(hdwp);
+                }
+            }
+            else
+            {
+                NativeMethods.SetWindowPos(
+                    _hwnd, IntPtr.Zero, left, top, right - left, calH,
+                    NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
+                NativeMethods.SetWindowPos(
+                    calHwnd, IntPtr.Zero, calLeft, top, calW, calH,
+                    NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
+            }
         }
 
         e.Handled = true;
@@ -1346,9 +1755,16 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        var syncCal = _resizeCalAttached;
         _resizeHit = 0;
+        _resizeCalAttached = false;
         Root.ReleasePointerCapture(e.Pointer);
         SavePosition();
+        if (syncCal)
+        {
+            _calendarHostWindow?.SaveCalendarSize();
+        }
+
         UpdateResizeCursor(e.GetCurrentPoint(Root).Position);
         e.Handled = true;
     }
@@ -1360,8 +1776,15 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        var syncCal = _resizeCalAttached;
         _resizeHit = 0;
+        _resizeCalAttached = false;
         SavePosition();
+        if (syncCal)
+        {
+            _calendarHostWindow?.SaveCalendarSize();
+        }
+
         Root.SetCursor(null);
     }
 
@@ -1421,7 +1844,7 @@ public sealed partial class MainWindow : Window
         storyboard.Begin();
     }
 
-    // 拖到屏幕左/右/上边缘附近松手就收进去，只留一条薄边；收进去后置顶，悬停边缘即可呼出。
+    // 拖到屏幕顶部边缘附近松手就收进去，只留一条薄边；收进去后置顶，悬停边缘即可呼出。
     private void TryDockToEdge()
     {
         if (_hwnd == IntPtr.Zero || !NativeMethods.GetWindowRect(_hwnd, out var rect))
@@ -1435,16 +1858,16 @@ public sealed partial class MainWindow : Window
             new PointInt32(midX, rect.Top + 20), DisplayAreaFallback.Nearest).WorkArea;
         var threshold = (int)Math.Round(12 * scale);
 
-        if (rect.Left - area.X <= threshold)
+        if (rect.Top - area.Y <= threshold)
         {
-            DockToEdge(EdgeDock.Left, rect);
-        }
-        else if (area.X + area.Width - rect.Right <= threshold)
-        {
-            DockToEdge(EdgeDock.Right, rect);
-        }
-        else if (rect.Top - area.Y <= threshold)
-        {
+            if (_calendarExpanded)
+            {
+                _calendarExpanded = false;
+                _calendarAnimating = false;
+                _calendarHostWindow?.HideImmediate();
+                UpdateCalendarButtonVisual();
+            }
+
             DockToEdge(EdgeDock.Top, rect);
         }
         else
@@ -1613,8 +2036,8 @@ public sealed partial class MainWindow : Window
 
     private void ScheduleDockRetract()
     {
-        if (_dockEdge == EdgeDock.None || _dockRetracted ||
-            _editor is not null || _settingsWindow is not null ||
+        if (_dockEdge == EdgeDock.None || _dockRetracted || _calendarExpanded ||
+            _editor is not null || _subtaskEditor is not null || _settingsWindow is not null ||
             _contextMenuOpen || _dialogOpen || _trayMenuOpen ||
             _sizing || _resizeHit != 0 || _dragging)
         {
@@ -1839,6 +2262,7 @@ public sealed partial class MainWindow : Window
             var item = new TodoItem
             {
                 Title = dialog.TodoTitle,
+                Note = dialog.TodoNote,
                 DueAt = dialog.DueAt,
                 Recurrence = dialog.Recurrence,
                 IsImportant = dialog.IsImportant,
@@ -1856,6 +2280,7 @@ public sealed partial class MainWindow : Window
                 item.Subtasks.Add(new SubtaskItem
                 {
                     Title = title,
+                    Note = (subtaskDraft.Note ?? string.Empty).Trim(),
                     IsDone = subtaskDraft.Done,
                     DueAt = subtaskDraft.DueAt,
                     SortOrder = item.Subtasks.Count,
@@ -1870,10 +2295,10 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private async Task AddTaskAtAsync(DateTime date)
+    private async Task AddTaskAtAsync(DateTime date, AppWindow? owner = null)
     {
         var dialog = new TodoEditorDialog(_settings, string.Empty, date.Date + DateTime.Now.TimeOfDay);
-        if (!await ShowEditorAsync(dialog))
+        if (!await ShowEditorAsync(dialog, owner))
         {
             return;
         }
@@ -1881,6 +2306,7 @@ public sealed partial class MainWindow : Window
         var item = new TodoItem
         {
             Title = dialog.TodoTitle,
+            Note = dialog.TodoNote,
             DueAt = dialog.DueAt,
             Recurrence = dialog.Recurrence,
             IsImportant = dialog.IsImportant,
@@ -1898,6 +2324,7 @@ public sealed partial class MainWindow : Window
             item.Subtasks.Add(new SubtaskItem
             {
                 Title = title,
+                Note = (draft.Note ?? string.Empty).Trim(),
                 IsDone = draft.Done,
                 DueAt = draft.DueAt,
                 SortOrder = item.Subtasks.Count,
@@ -1913,11 +2340,11 @@ public sealed partial class MainWindow : Window
     /// 显示编辑窗口并等结果。同一时间只允许一个：已经开着就把那个提到前台，
     /// 返回 false（本次没有新建任何东西），避免叠出好几个窗口。
     /// </summary>
-    private async Task<bool> ShowEditorAsync(TodoEditorDialog dialog)
+    private async Task<bool> ShowEditorAsync(TodoEditorDialog dialog, AppWindow? owner = null)
     {
         if (_editor is not null)
         {
-            TopmostDialogIfDocked(_editor, forceTopmost: _calendarWindow is not null);
+            TopmostDialogIfDocked(_editor);
             _editor.Activate();
             return false;
         }
@@ -1929,10 +2356,8 @@ public sealed partial class MainWindow : Window
         _suppressAddCommit = true;
         try
         {
-            // 从日历进入编辑时把编辑窗摆在日历上，别落在主窗口那边被日历压住。
-            var owner = _calendarWindow?.AppWindow ?? _appWindow;
-            dialog.ShowOver(owner);
-            TopmostDialogIfDocked(dialog, forceTopmost: _calendarWindow is not null);
+            dialog.ShowOver(owner ?? _appWindow);
+            TopmostDialogIfDocked(dialog);
             dialog.Activate();
             return await dialog.Result;
         }
@@ -1994,6 +2419,7 @@ public sealed partial class MainWindow : Window
 
             item.SubtasksExpanded = !item.SubtasksExpanded;
             ResetSubtaskDragGuardIfCollapsed(item);
+            ViewModel.NotifySubtaskExpansionChanged();
         }
     }
 
@@ -2277,7 +2703,7 @@ public sealed partial class MainWindow : Window
         SetSubtaskProgressMode(sender, adding: false);
     }
 
-    // 用透明度切换而不是显隐，避免切换瞬间布局重排导致指针“离开”按钮、状态卡住。
+    // 用透明度切换而不是显隐，避免切换瞬间布局重排导致卡片高度跳动或指针状态卡住。
     private static void SetSubtaskProgressMode(object sender, bool adding)
     {
         if (sender is not DependencyObject root)
@@ -2294,7 +2720,6 @@ public sealed partial class MainWindow : Window
         {
             hint.Opacity = adding ? 1 : 0;
         }
-
     }
 
     // 平时显示“2/5”，鼠标悬停整张卡片时变成“子任务”，点一下直接开始输入。
@@ -2305,6 +2730,7 @@ public sealed partial class MainWindow : Window
             SetSubtaskProgressMode(button, adding: false);
             item.SubtasksExpanded = true;
             item.SubtaskAddActive = true;
+            ViewModel.NotifySubtaskExpansionChanged();
             DispatcherQueue.TryEnqueue(() => FocusSubtaskAddBox(item));
         }
     }
@@ -2361,6 +2787,12 @@ public sealed partial class MainWindow : Window
             || _subtaskEditBox is not null)
         {
             e.Cancel = true;
+            return;
+        }
+
+        if (_calendarExpanded && e.Items.FirstOrDefault() is TodoItem item)
+        {
+            _calendarHostWindow?.Calendar.BeginExternalDrag(item, null, e.Data);
         }
     }
 
@@ -2390,6 +2822,11 @@ public sealed partial class MainWindow : Window
 
             args.Data.Properties[SubtaskDragKey] = true;
             args.Data.RequestedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
+
+            if (_calendarExpanded && _draggedOwner is { } owner)
+            {
+                _calendarHostWindow?.Calendar.BeginExternalDrag(owner, subtask, args.Data);
+            }
         }
     }
 
@@ -2408,6 +2845,7 @@ public sealed partial class MainWindow : Window
 
     private void Root_Drop(object sender, DragEventArgs e)
     {
+        _calendarHostWindow?.Calendar.EndExternalDrag();
         if (_draggedOwner is { } owner && _draggedSubtask is not null)
         {
             ViewModel.CommitSubtaskOrder(owner);
@@ -2464,6 +2902,7 @@ public sealed partial class MainWindow : Window
         _lastSubtaskDropTicks = Environment.TickCount64;
         TodoList.CanDragItems = true;
         TodoList.CanReorderItems = true;
+        _calendarHostWindow?.Calendar.EndExternalDrag();
     }
 
     private void SubtaskRow_Drop(object sender, DragEventArgs e)
@@ -2556,29 +2995,51 @@ public sealed partial class MainWindow : Window
         await ConfirmDeleteSubtaskAsync(item, subtask);
     }
 
-    private async void SubtaskDue_Click(object sender, RoutedEventArgs e)
+    private async void SubtaskEdit_Click(object sender, RoutedEventArgs e)
     {
         if (_menuSubtask is not { } subtask || _menuItem is not { } item)
         {
             return;
         }
 
+        if (_subtaskEditor is not null)
+        {
+            TopmostDialogIfDocked(_subtaskEditor);
+            _subtaskEditor.Activate();
+            return;
+        }
+
+        var dialog = new SubtaskEditorDialog(
+            _settings,
+            subtask.Title,
+            subtask.Note,
+            subtask.DueAt,
+            subtask.IsDone);
+        _subtaskEditor = dialog;
+        _suppressAddCommit = true;
         _dialogOpen = true;
         CancelDockRetract();
         try
         {
-            var (confirmed, dueAt) = await SubtaskDuePrompt.ShowAsync(
-                Root.XamlRoot, Root.RequestedTheme, subtask.DueAt);
-            if (!confirmed)
+            dialog.ShowOver(_appWindow);
+            TopmostDialogIfDocked(dialog);
+            dialog.Activate();
+            if (await dialog.Result)
             {
-                return;
+                ViewModel.UpdateSubtask(
+                    item,
+                    subtask,
+                    dialog.SubtaskTitle,
+                    dialog.SubtaskNote,
+                    dialog.DueAt,
+                    dialog.IsDone);
             }
-
-            ViewModel.SetSubtaskDue(item, subtask, dueAt);
         }
         finally
         {
+            _suppressAddCommit = false;
             _dialogOpen = false;
+            _subtaskEditor = null;
         }
     }
 
@@ -2774,12 +3235,10 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private bool _allSubtasksExpanded;
-
     // 左下角开关：一次展开/收起当前列表里所有带子任务的行。
     private void ToggleAllSubtasks_Click(object sender, RoutedEventArgs e)
     {
-        _allSubtasksExpanded = !_allSubtasksExpanded;
+        var expand = !ViewModel.AreAllVisibleSubtasksExpanded;
 
         foreach (var item in ViewModel.Items)
         {
@@ -2788,12 +3247,14 @@ public sealed partial class MainWindow : Window
                 continue;
             }
 
-            item.SubtasksExpanded = _allSubtasksExpanded;
-            if (!_allSubtasksExpanded)
+            item.SubtasksExpanded = expand;
+            if (!expand)
             {
                 ResetSubtaskDragGuardIfCollapsed(item);
             }
         }
+
+        ViewModel.NotifySubtaskExpansionChanged();
     }
 
     private async void ClearCompleted_Click(object sender, RoutedEventArgs e)
@@ -2846,17 +3307,105 @@ public sealed partial class MainWindow : Window
                 break;
             }
 
-            if (entry is MenuFlyoutSubItem { Text: "设置颜色" } colorMenu)
+            if (entry is MenuFlyoutSubItem { Text: "截止时间" } dueMenu)
+            {
+                var hasDue = _menuItem.DueAt is not null;
+                foreach (var subEntry in dueMenu.Items)
+                {
+                    if (subEntry is MenuFlyoutSeparator sep)
+                    {
+                        sep.Visibility = hasDue ? Visibility.Visible : Visibility.Collapsed;
+                    }
+                    else if (subEntry is MenuFlyoutItem { Text: "清除时间" } clearItem)
+                    {
+                        clearItem.Visibility = hasDue ? Visibility.Visible : Visibility.Collapsed;
+                    }
+                }
+            }
+            else if (entry is MenuFlyoutSubItem { Text: "设置颜色" } colorMenu)
             {
                 PopulateTagColorMenu(colorMenu, _menuItem);
             }
             else if (entry is MenuFlyoutItem { Text: "10 分钟后再提醒" } snooze)
             {
-                // 没有截止时间就没有提醒可推迟。
-                snooze.Visibility = _menuItem.DueAt is null
+                // 没有截止时间或已完成就没有提醒可推迟。
+                snooze.Visibility = (_menuItem.IsDone || _menuItem.DueAt is null)
                     ? Visibility.Collapsed
                     : Visibility.Visible;
             }
+        }
+    }
+
+    private static TimeSpan DefaultScheduleTime(DateTime? current)
+    {
+        if (current is { } due)
+        {
+            return due.TimeOfDay;
+        }
+
+        var minutes = (int)Math.Round(DateTime.Now.TimeOfDay.TotalMinutes / 5.0) * 5;
+        return TimeSpan.FromMinutes(minutes % (24 * 60));
+    }
+
+    private void RowDueToday_Click(object sender, RoutedEventArgs e)
+    {
+        if (_menuItem is { } item)
+        {
+            ViewModel.ScheduleAt(item, DateTime.Today + DefaultScheduleTime(item.DueAt));
+            UpdateFilterVisuals();
+        }
+    }
+
+    private void RowDueTomorrow_Click(object sender, RoutedEventArgs e)
+    {
+        if (_menuItem is { } item)
+        {
+            ViewModel.ScheduleAt(item, DateTime.Today.AddDays(1) + DefaultScheduleTime(item.DueAt));
+            UpdateFilterVisuals();
+        }
+    }
+
+    private async void RowDuePick_Click(object sender, RoutedEventArgs e)
+    {
+        if (_menuItem is not { } item)
+        {
+            return;
+        }
+
+        _dialogOpen = true;
+        CancelDockRetract();
+        try
+        {
+            var (confirmed, dueAt) = await SubtaskDuePrompt.ShowAsync(
+                Root.XamlRoot, Root.RequestedTheme, item.DueAt, "设置截止时间");
+            if (!confirmed)
+            {
+                return;
+            }
+
+            if (dueAt is { } value)
+            {
+                ViewModel.ScheduleAt(item, value);
+            }
+            else
+            {
+                ViewModel.ClearDue(item);
+            }
+
+            UpdateFilterVisuals();
+        }
+        finally
+        {
+            _dialogOpen = false;
+        }
+    }
+
+    private void RowDueClear_Click(object sender, RoutedEventArgs e)
+    {
+        if (_menuItem is { } item)
+        {
+            ViewModel.ClearDue(item);
+            UpdateFilterVisuals();
         }
     }
 
@@ -2867,23 +3416,43 @@ public sealed partial class MainWindow : Window
         "F0 M10,10 m-9,0 a9,9 0 1,0 18,0 a9,9 0 1,0 -18,0 Z " +
         "M10,10 m-7,0 a7,7 0 1,0 14,0 a7,7 0 1,0 -14,0 Z";
 
+    private void RefreshTagButtonLabels()
+    {
+        for (var i = 0; i < _tagButtons.Count; i++)
+        {
+            var label = _settings.GetTagName(i);
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(_tagButtons[i], label);
+            var custom = _settings.GetCustomTagName(i);
+            ToolTipService.SetToolTip(_tagButtons[i], custom.Length > 0 ? custom : null);
+        }
+    }
+
     private void PopulateTagColorMenu(MenuFlyoutSubItem menu, TodoItem item)
     {
         menu.Items.Clear();
-        menu.Items.Add(CreateTagColorItem("无颜色", -1, item, null));
+        menu.Items.Add(CreateTagColorItem("无颜色", string.Empty, -1, item, null));
 
         for (var i = 0; i < MainViewModel.TagColors.Length; i++)
         {
             menu.Items.Add(CreateTagColorItem(
-                $"颜色 {i + 1}", i, item, ParseHexColor(MainViewModel.TagColors[i])));
+                _settings.GetTagName(i),
+                _settings.GetCustomTagName(i),
+                i,
+                item,
+                ParseHexColor(MainViewModel.TagColors[i])));
         }
     }
 
-    private ToggleMenuFlyoutItem CreateTagColorItem(string text, int tagIndex, TodoItem item, Color? color)
+    private ToggleMenuFlyoutItem CreateTagColorItem(
+        string accessibleName,
+        string displayText,
+        int tagIndex,
+        TodoItem item,
+        Color? color)
     {
         var entry = new ToggleMenuFlyoutItem
         {
-            // 菜单里只放圆形色块，文字留给读屏和自动化。
+            Text = displayText,
             IsChecked = item.TagIndex == tagIndex,
             Icon = new PathIcon
             {
@@ -2894,7 +3463,7 @@ public sealed partial class MainWindow : Window
             },
         };
 
-        AutomationProperties.SetName(entry, text);
+        AutomationProperties.SetName(entry, accessibleName);
 
         entry.Click += (_, _) =>
         {
@@ -3061,14 +3630,14 @@ public sealed partial class MainWindow : Window
         ShowUndo($"已删除「{item.Title}」", new List<TodoItem> { item });
     }
 
-    private async Task EditItemAsync(TodoItem item)
+    private async Task EditItemAsync(TodoItem item, AppWindow? owner = null)
     {
         var dialog = new TodoEditorDialog(_settings, item);
 
-        if (await ShowEditorAsync(dialog))
+        if (await ShowEditorAsync(dialog, owner))
         {
             ViewModel.ApplyEdit(
-                item, dialog.TodoTitle, dialog.DueAt, dialog.Recurrence, dialog.IsImportant, dialog.TagIndex);
+                item, dialog.TodoTitle, dialog.DueAt, dialog.Recurrence, dialog.IsImportant, dialog.TagIndex, dialog.TodoNote);
             ViewModel.ApplySubtasks(item, dialog.Subtasks);
             UpdateFilterVisuals();
         }
@@ -3076,6 +3645,7 @@ public sealed partial class MainWindow : Window
 
     private void TodoList_DragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)
     {
+        _calendarHostWindow?.Calendar.EndExternalDrag();
         var ordered = ViewModel.Items.ToList();
         DispatcherQueue.TryEnqueue(() => ViewModel.PersistReorder(ordered));
     }

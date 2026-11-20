@@ -46,47 +46,77 @@ public sealed class ReminderService : IDisposable
         }
 
         var now = DateTime.Now;
-        var missed = new List<TodoItem>();
+        var missed = new List<string>();
         foreach (var item in Source())
         {
             item.RaiseDerived();
+            foreach (var subtask in item.Subtasks)
+            {
+                subtask.RaiseDerived();
+            }
 
-            if (item.IsDone || item.DueAt is not { } due || item.DueNotified)
+            if (item.IsDone)
             {
                 continue;
             }
 
-            // 点了“推迟”的，到推迟时间之前不再提醒。
-            if (item.SnoozeUntil is { } snooze && now < snooze)
+            if (item.DueAt is { } due && !item.DueNotified &&
+                (item.SnoozeUntil is not { } snooze || now >= snooze) &&
+                now >= due.AddMinutes(-Math.Max(0, LeadMinutes)))
             {
-                continue;
+                item.DueNotified = true;
+                _repository.Update(item);
+
+                // 超过一小时才发现的到期项不逐条弹，攒起来在开机后汇总一条。
+                if ((now - due).TotalHours <= 1)
+                {
+                    var message = now < due
+                        ? $"{item.Title}（{Math.Ceiling((due - now).TotalMinutes)} 分钟后到期）"
+                        : $"{item.Title}（截止 {due:HH:mm}）";
+                    _notifier.Show("待办提醒", message, item.Id);
+                }
+                else
+                {
+                    missed.Add(item.Title);
+                }
             }
 
-            if (now < due.AddMinutes(-Math.Max(0, LeadMinutes)))
+            foreach (var subtask in item.Subtasks)
             {
-                continue;
-            }
+                if (subtask.IsDone || subtask.DueAt is not { } subDue || subtask.DueNotified)
+                {
+                    continue;
+                }
 
-            item.DueNotified = true;
-            _repository.Update(item);
+                if (now < subDue.AddMinutes(-Math.Max(0, LeadMinutes)))
+                {
+                    continue;
+                }
 
-            // 超过一小时才发现的到期项不逐条弹，攒起来在开机后汇总一条。
-            if ((now - due).TotalHours <= 1)
-            {
-                var message = now < due
-                    ? $"{item.Title}（{Math.Ceiling((due - now).TotalMinutes)} 分钟后到期）"
-                    : $"{item.Title}（截止 {due:HH:mm}）";
-                _notifier.Show("待办提醒", message, item.Id);
-            }
-            else
-            {
-                missed.Add(item);
+                subtask.DueNotified = true;
+                if (subtask.Id > 0)
+                {
+                    _repository.UpdateSubtask(subtask);
+                }
+
+                var label = $"{item.Title} › {subtask.Title}";
+                if ((now - subDue).TotalHours <= 1)
+                {
+                    var message = now < subDue
+                        ? $"{label}（{Math.Ceiling((subDue - now).TotalMinutes)} 分钟后到期）"
+                        : $"{label}（截止 {subDue:HH:mm}）";
+                    _notifier.Show("子任务提醒", message, item.Id);
+                }
+                else
+                {
+                    missed.Add(label);
+                }
             }
         }
 
         if (_firstTick && missed.Count > 0)
         {
-            var titles = string.Join("、", missed.Take(3).Select(item => item.Title));
+            var titles = string.Join("、", missed.Take(3));
             var suffix = missed.Count > 3 ? $" 等 {missed.Count} 条" : string.Empty;
             _notifier.Show("有已到期的待办", $"{titles}{suffix}");
         }

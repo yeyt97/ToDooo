@@ -19,6 +19,9 @@ public partial class SubtaskItem : ObservableObject
     private string title = string.Empty;
 
     [ObservableProperty]
+    private string note = string.Empty;
+
+    [ObservableProperty]
     private bool isDone;
 
     [ObservableProperty]
@@ -27,21 +30,30 @@ public partial class SubtaskItem : ObservableObject
     [ObservableProperty]
     private double sortOrder;
 
+    [ObservableProperty]
+    private bool dueNotified;
+
+    public bool HasNote => !string.IsNullOrWhiteSpace(Note);
+
     public bool IsOverdue => !IsDone && DueAt is { } due && due < DateTime.Now;
 
     public string DueText => DueAt is { } due ? due.ToString("M/d HH:mm") : string.Empty;
 
-    partial void OnDueAtChanged(DateTime? value)
+    partial void OnDueAtChanged(DateTime? value) => RaiseDerived();
+
+    partial void OnIsDoneChanged(bool value) => OnPropertyChanged(nameof(IsOverdue));
+
+    partial void OnNoteChanged(string value) => OnPropertyChanged(nameof(HasNote));
+
+    public void RaiseDerived()
     {
         OnPropertyChanged(nameof(IsOverdue));
         OnPropertyChanged(nameof(DueText));
     }
-
-    partial void OnIsDoneChanged(bool value) => OnPropertyChanged(nameof(IsOverdue));
 }
 
 /// <summary>编辑弹窗里子任务的中间态：Id 为 0 表示这次新加的。</summary>
-public sealed record SubtaskDraft(long Id, string Title, bool Done, DateTime? DueAt = null);
+public sealed record SubtaskDraft(long Id, string Title, bool Done, DateTime? DueAt = null, string Note = "");
 
 public partial class TodoItem : ObservableObject
 {
@@ -49,6 +61,9 @@ public partial class TodoItem : ObservableObject
 
     [ObservableProperty]
     private string title = string.Empty;
+
+    [ObservableProperty]
+    private string note = string.Empty;
 
     [ObservableProperty]
     private bool isDone;
@@ -87,6 +102,8 @@ public partial class TodoItem : ObservableObject
     private bool subtaskAddActive;
 
     public ObservableCollection<SubtaskItem> Subtasks { get; } = new();
+
+    public bool HasNote => !string.IsNullOrWhiteSpace(Note);
 
     public bool HasSubtasks => Subtasks.Count > 0;
 
@@ -137,6 +154,8 @@ public partial class TodoItem : ObservableObject
 
     partial void OnIsImportantChanged(bool value) => OnPropertyChanged(nameof(ImportantMenuText));
 
+    partial void OnNoteChanged(string value) => OnPropertyChanged(nameof(HasNote));
+
     public void RaiseDerived()
     {
         OnPropertyChanged(nameof(IsOverdue));
@@ -156,6 +175,7 @@ public partial class TodoItem : ObservableObject
         var next = new TodoItem
         {
             Title = Title,
+            Note = Note,
             IsImportant = IsImportant,
             Recurrence = Recurrence,
             TagIndex = TagIndex,
@@ -171,6 +191,7 @@ public partial class TodoItem : ObservableObject
             next.Subtasks.Add(new SubtaskItem
             {
                 Title = subtask.Title,
+                Note = subtask.Note,
                 SortOrder = subtask.SortOrder,
                 DueAt = subtask.DueAt is { } subtaskDue ? subtaskDue + shift : null,
             });

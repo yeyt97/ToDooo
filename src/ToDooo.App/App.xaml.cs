@@ -46,7 +46,6 @@ public partial class App : Application
 
         _window = new MainWindow(Repository, Settings, Notifier);
         Notifier.Fallback = _window.ShowBalloon;
-        _window.Activate();
         _window.Startup();
     }
 

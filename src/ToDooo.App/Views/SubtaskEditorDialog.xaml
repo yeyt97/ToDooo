@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="ToDooo.Views.SubtaskEditorDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="编辑子任务">
+
+    <Grid
+        x:Name="Root"
+        Background="Transparent"
+        KeyboardAcceleratorPlacementMode="Hidden">
+        <Grid.Resources>
+            <Style x:Key="LabelText" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="13" />
+                <Setter Property="Foreground" Value="{ThemeResource TextSecondaryBrush}" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+            </Style>
+        </Grid.Resources>
+
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid.KeyboardAccelerators>
+            <KeyboardAccelerator
+                Key="S"
+                Invoked="SaveAccelerator_Invoked"
+                Modifiers="Control" />
+            <KeyboardAccelerator Key="Escape" Invoked="CancelAccelerator_Invoked" />
+        </Grid.KeyboardAccelerators>
+
+        <Grid
+            x:Name="HeaderBar"
+            Height="44"
+            Padding="18,0,10,0"
+            Background="Transparent"
+            PointerCaptureLost="HeaderBar_PointerCaptureLost"
+            PointerMoved="HeaderBar_PointerMoved"
+            PointerPressed="HeaderBar_PointerPressed"
+            PointerReleased="HeaderBar_PointerReleased">
+            <TextBlock
+                VerticalAlignment="Center"
+                FontSize="14"
+                FontWeight="SemiBold"
+                Foreground="{ThemeResource TextPrimaryBrush}"
+                Text="编辑子任务" />
+            <Button
+                HorizontalAlignment="Right"
+                VerticalAlignment="Center"
+                AutomationProperties.Name="关闭"
+                Click="CancelButton_Click"
+                Style="{StaticResource FlatIconButtonStyle}">
+                <FontIcon Glyph="&#xE711;" FontSize="12" />
+            </Button>
+        </Grid>
+
+        <ScrollViewer
+            Grid.Row="1"
+            Padding="18,2,18,6"
+            VerticalScrollBarVisibility="Auto"
+            VerticalScrollMode="Auto">
+            <StackPanel Spacing="12">
+                <TextBox
+                    x:Name="TitleBox"
+                    MinHeight="40"
+                    MaxLength="120"
+                    Padding="10,6"
+                    VerticalContentAlignment="Center"
+                    FontSize="14"
+                    CornerRadius="6"
+                    KeyDown="TitleBox_KeyDown"
+                    PlaceholderText="子任务名称"
+                    TextWrapping="Wrap" />
+
+                <TextBox
+                    x:Name="NoteBox"
+                    MinHeight="54"
+                    MaxHeight="96"
+                    MaxLength="1000"
+                    Padding="10,6"
+                    AcceptsReturn="True"
+                    AutomationProperties.Name="备注"
+                    FontSize="12"
+                    CornerRadius="6"
+                    PlaceholderText="备注"
+                    TextWrapping="Wrap"
+                    ScrollViewer.VerticalScrollBarVisibility="Auto" />
+
+                <Border
+                    Padding="14,10,14,12"
+                    Background="{ThemeResource ItemCardBrush}"
+                    BorderBrush="{ThemeResource ItemCardStrokeBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8">
+                    <StackPanel Spacing="10">
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Style="{StaticResource LabelText}" Text="截止时间" />
+                            <ToggleSwitch
+                                x:Name="DueToggle"
+                                Grid.Column="1"
+                                AutomationProperties.Name="启用截止时间"
+                                MinWidth="0"
+                                OffContent=""
+                                OnContent=""
+                                Toggled="DueToggle_Toggled" />
+                        </Grid>
+
+                        <StackPanel
+                            x:Name="DueSection"
+                            Spacing="10"
+                            Visibility="Collapsed">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock
+                                    Width="40"
+                                    Style="{StaticResource LabelText}"
+                                    Text="日期" />
+                                <CalendarDatePicker
+                                    x:Name="DueDate"
+                                    Grid.Column="1"
+                                    AutomationProperties.Name="截止日期"
+                                    HorizontalAlignment="Stretch"
+                                    CornerRadius="6"
+                                    PlaceholderText="选择日期" />
+                            </Grid>
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock
+                                    Width="40"
+                                    Style="{StaticResource LabelText}"
+                                    Text="时间" />
+                                <TimePicker
+                                    x:Name="DueTime"
+                                    Grid.Column="1"
+                                    HorizontalAlignment="Stretch"
+                                    AutomationProperties.Name="截止时间"
+                                    ClockIdentifier="24HourClock"
+                                    MinuteIncrement="5"
+                                    CornerRadius="6" />
+                            </Grid>
+                        </StackPanel>
+
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Style="{StaticResource LabelText}" Text="已完成" />
+                            <ToggleSwitch
+                                x:Name="DoneToggle"
+                                Grid.Column="1"
+                                AutomationProperties.Name="标记子任务已完成"
+                                MinWidth="0"
+                                OffContent=""
+                                OnContent="" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Grid
+            Grid.Row="2"
+            Padding="18,10,18,16"
+            ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Button
+                Grid.Column="1"
+                MinWidth="88"
+                Click="CancelButton_Click"
+                Content="取消" />
+            <Button
+                x:Name="SaveButton"
+                Grid.Column="2"
+                MinWidth="88"
+                AutomationProperties.Name="保存"
+                Click="SaveButton_Click"
+                Style="{StaticResource AccentButtonStyle}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon Glyph="&#xE73E;" FontSize="12" />
+                    <TextBlock Text="保存" />
+                </StackPanel>
+            </Button>
+        </Grid>
+    </Grid>
+</Window>

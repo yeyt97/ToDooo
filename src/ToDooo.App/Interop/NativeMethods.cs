@@ -32,6 +32,12 @@ internal static class NativeMethods
     public const int WM_DPICHANGED = 0x02E0;
     public const int WM_WINDOWPOSCHANGING = 0x0046;
     public const int WM_SIZE = 0x0005;
+    public const int WM_HOTKEY = 0x0312;
+
+    public const uint MOD_ALT = 0x0001;
+    public const uint MOD_CONTROL = 0x0002;
+    public const uint MOD_SHIFT = 0x0004;
+    public const uint MOD_NOREPEAT = 0x4000;
 
     public const int SC_MINIMIZE = 0xF020;
     public const int SC_KEYMENU = 0xF100;
@@ -99,6 +105,18 @@ internal static class NativeMethods
     public const int DWMWA_BORDER_COLOR = 34;
     public const int DWMWA_COLOR_NONE = unchecked((int)0xFFFFFFFE);
     public const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+    public const int DWMWA_CLOAK = 13;
+
+    public static void SetWindowCloaked(IntPtr hWnd, bool cloaked)
+    {
+        if (hWnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        var value = cloaked ? 1 : 0;
+        _ = DwmSetWindowAttribute(hWnd, DWMWA_CLOAK, ref value, sizeof(int));
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     public struct POINT
@@ -188,6 +206,17 @@ internal static class NativeMethods
     public static extern bool SetWindowPos(
         IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern IntPtr BeginDeferWindowPos(int nNumWindows);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern IntPtr DeferWindowPos(
+        IntPtr hWinPosInfo, IntPtr hWnd, IntPtr hWndInsertAfter,
+        int x, int y, int cx, int cy, uint uFlags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool EndDeferWindowPos(IntPtr hWinPosInfo);
+
     [DllImport("user32.dll")]
     public static extern bool ShowWindow(IntPtr hWnd, int cmdShow);
 
@@ -239,6 +268,15 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     public static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
     [DllImport("user32.dll")]
     public static extern bool PostMessageW(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);

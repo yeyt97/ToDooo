@@ -46,7 +46,10 @@ internal static class WindowAcrylic
             : Color.FromArgb(255, 0xF2, 0xF2, 0xF7);
         // tint 太厚会把模糊的桌面纹理糊成一片纯色，调到能透出磨砂颗粒感。
         controller.TintOpacity = tintOpacity;
-        controller.LuminosityOpacity = dark ? 0.64f : 0.82f;
+        controller.LuminosityOpacity = Math.Clamp(
+            (dark ? 0.06f : 0.12f) + tintOpacity * 0.90f,
+            0.06f,
+            dark ? 0.72f : 0.88f);
         controller.FallbackColor = dark
             ? Color.FromArgb(255, 0x20, 0x25, 0x2C)
             : Color.FromArgb(255, 0xF6, 0xF6, 0xF9);

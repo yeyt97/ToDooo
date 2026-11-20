@@ -306,7 +306,7 @@
                         Margin="0,0,6,0"
                         Style="{StaticResource CardActionButtonStyle}"
                         Click="AddDetailButton_Click">
-                        <FontIcon Glyph="&#xE787;" FontSize="13" />
+                        <FontIcon Glyph="&#xE70F;" FontSize="13" />
                     </Button>
                 </Grid>
 
@@ -334,6 +334,13 @@
                                     <Border.ContextFlyout>
                                         <MenuFlyout Opening="RowFlyout_Opening" Closed="RowFlyout_Closed">
                                             <MenuFlyoutItem Text="编辑…" Click="RowEdit_Click" />
+                                            <MenuFlyoutSubItem Text="截止时间">
+                                                <MenuFlyoutItem Text="今天" Click="RowDueToday_Click" />
+                                                <MenuFlyoutItem Text="明天" Click="RowDueTomorrow_Click" />
+                                                <MenuFlyoutItem Text="设置时间…" Click="RowDuePick_Click" />
+                                                <MenuFlyoutSeparator />
+                                                <MenuFlyoutItem Text="清除时间" Click="RowDueClear_Click" />
+                                            </MenuFlyoutSubItem>
                                             <MenuFlyoutSubItem Text="设置颜色" />
                                             <MenuFlyoutItem Text="10 分钟后再提醒" Click="RowSnooze_Click" />
                                             <MenuFlyoutSeparator />
@@ -415,6 +422,22 @@
                                                     TextTrimming="CharacterEllipsis"
                                                     Foreground="{x:Bind helpers:Bind.DueBrush(IsOverdue), Mode=OneWay}" />
                                             </StackPanel>
+                                            <StackPanel
+                                                Orientation="Horizontal"
+                                                Spacing="5"
+                                                Visibility="{x:Bind helpers:Bind.Visible(Note), Mode=OneWay}">
+                                                <FontIcon
+                                                    Glyph="&#xE70B;"
+                                                    FontSize="9"
+                                                    VerticalAlignment="Center"
+                                                    Foreground="{ThemeResource TextMutedBrush}" />
+                                                <TextBlock
+                                                    Text="{x:Bind Note, Mode=OneWay}"
+                                                    FontSize="11"
+                                                    MaxLines="1"
+                                                    TextTrimming="CharacterEllipsis"
+                                                    Foreground="{ThemeResource TextMutedBrush}" />
+                                            </StackPanel>
                                         </StackPanel>
 
                                         <!--  子任务进度贴最右，展开的清单落在第二行  -->
@@ -467,6 +490,7 @@
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate x:DataType="models:SubtaskItem">
                                                         <Grid
+                                                            MinHeight="22"
                                                             Margin="0,1"
                                                             Background="Transparent"
                                                             ColumnSpacing="4"
@@ -480,7 +504,7 @@
                                                             PointerExited="SubtaskRow_PointerExited">
                                                             <Grid.ContextFlyout>
                                                                 <MenuFlyout Opening="SubtaskFlyout_Opening" Closed="SubtaskFlyout_Closed">
-                                                                    <MenuFlyoutItem Text="设置时间…" Click="SubtaskDue_Click" />
+                                                                    <MenuFlyoutItem Text="编辑…" Click="SubtaskEdit_Click" />
                                                                     <MenuFlyoutSeparator />
                                                                     <MenuFlyoutItem Text="删除子任务" Click="SubtaskDelete_Click" />
                                                                 </MenuFlyout>
@@ -496,75 +520,95 @@
                                                                 IsChecked="{x:Bind IsDone, Mode=OneWay}"
                                                                 Style="{StaticResource TodoCompletionCheckBoxStyle}"
                                                                 VerticalAlignment="Center" />
-                                                            <Grid
+                                                            <StackPanel
                                                                 Grid.Column="1"
-                                                                Tag="SubtaskTextArea"
-                                                                ColumnSpacing="4">
-                                                                <Grid.ColumnDefinitions>
-                                                                    <ColumnDefinition Width="*" />
-                                                                    <ColumnDefinition Width="Auto" />
-                                                                </Grid.ColumnDefinitions>
-                                                                <TextBlock
-                                                                    Grid.Column="0"
-                                                                    Tag="SubtaskText"
-                                                                    HorizontalAlignment="Left"
-                                                                    VerticalAlignment="Center"
-                                                                    FontSize="12"
-                                                                    Text="{x:Bind Title, Mode=OneWay}"
-                                                                    TextDecorations="{x:Bind helpers:Bind.Deco(IsDone), Mode=OneWay}"
-                                                                    TextWrapping="Wrap"
-                                                                    Foreground="{x:Bind helpers:Bind.SubtaskBrush(IsDone), Mode=OneWay}" />
-                                                                <Button
-                                                                    Grid.Column="1"
-                                                                    Tag="SubtaskEditButton"
-                                                                    Width="18"
-                                                                    Height="18"
-                                                                    MinWidth="0"
-                                                                    MinHeight="0"
-                                                                    Padding="0"
-                                                                    VerticalAlignment="Center"
-                                                                    Opacity="0"
-                                                                    IsHitTestVisible="False"
-                                                                    Style="{StaticResource LinkButtonStyle}"
-                                                                    Loaded="TextEditButton_Loaded"
-                                                                    Click="TextEditButton_Click">
-                                                                    <FontIcon
-                                                                        Glyph="&#xE70F;"
-                                                                        FontSize="9"
-                                                                        Foreground="{ThemeResource TextMutedBrush}" />
-                                                                </Button>
-                                                                <TextBox
-                                                                    Grid.Column="0"
-                                                                    Grid.ColumnSpan="2"
-                                                                    Tag="SubtaskEdit"
-                                                                    Height="20"
-                                                                    FontSize="12"
-                                                                    VerticalAlignment="Center"
-                                                                    Visibility="Collapsed"
-                                                                    Style="{StaticResource AddTextBoxStyle}"
-                                                                    KeyDown="SubtaskEdit_KeyDown"
-                                                                    LostFocus="SubtaskEdit_LostFocus"
-                                                                    TextChanged="TextEdit_TextChanged"
-                                                                    TextCompositionStarted="SubtaskEdit_TextCompositionStarted"
-                                                                    TextCompositionEnded="SubtaskEdit_TextCompositionEnded" />
-                                                                <Canvas Grid.Column="0" Grid.ColumnSpan="2">
+                                                                Spacing="2"
+                                                                VerticalAlignment="Center">
+                                                                <Grid
+                                                                    Tag="SubtaskTextArea"
+                                                                    ColumnSpacing="4">
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="*" />
+                                                                        <ColumnDefinition Width="Auto" />
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <TextBlock
+                                                                        Grid.Column="0"
+                                                                        Tag="SubtaskText"
+                                                                        HorizontalAlignment="Left"
+                                                                        VerticalAlignment="Center"
+                                                                        FontSize="12"
+                                                                        Text="{x:Bind Title, Mode=OneWay}"
+                                                                        TextDecorations="{x:Bind helpers:Bind.Deco(IsDone), Mode=OneWay}"
+                                                                        TextWrapping="Wrap"
+                                                                        Foreground="{x:Bind helpers:Bind.SubtaskBrush(IsDone), Mode=OneWay}" />
                                                                     <Button
-                                                                        Tag="SubtaskSaveButton"
-                                                                        Width="20"
-                                                                        Height="20"
+                                                                        Grid.Column="1"
+                                                                        Tag="SubtaskEditButton"
+                                                                        Width="18"
+                                                                        Height="18"
                                                                         MinWidth="0"
                                                                         MinHeight="0"
                                                                         Padding="0"
-                                                                        Visibility="Collapsed"
+                                                                        VerticalAlignment="Center"
+                                                                        Opacity="0"
+                                                                        IsHitTestVisible="False"
                                                                         Style="{StaticResource LinkButtonStyle}"
-                                                                        Click="SubtaskSaveButton_Click">
+                                                                        Loaded="TextEditButton_Loaded"
+                                                                        Click="TextEditButton_Click">
                                                                         <FontIcon
-                                                                            Glyph="&#xE73E;"
+                                                                            Glyph="&#xE70F;"
                                                                             FontSize="9"
-                                                                            Foreground="{ThemeResource AccentBrush}" />
+                                                                            Foreground="{ThemeResource TextMutedBrush}" />
                                                                     </Button>
-                                                                </Canvas>
-                                                            </Grid>
+                                                                    <TextBox
+                                                                        Grid.Column="0"
+                                                                        Grid.ColumnSpan="2"
+                                                                        Tag="SubtaskEdit"
+                                                                        Height="20"
+                                                                        FontSize="12"
+                                                                        VerticalAlignment="Center"
+                                                                        Visibility="Collapsed"
+                                                                        Style="{StaticResource AddTextBoxStyle}"
+                                                                        KeyDown="SubtaskEdit_KeyDown"
+                                                                        LostFocus="SubtaskEdit_LostFocus"
+                                                                        TextChanged="TextEdit_TextChanged"
+                                                                        TextCompositionStarted="SubtaskEdit_TextCompositionStarted"
+                                                                        TextCompositionEnded="SubtaskEdit_TextCompositionEnded" />
+                                                                    <Canvas Grid.Column="0" Grid.ColumnSpan="2">
+                                                                        <Button
+                                                                            Tag="SubtaskSaveButton"
+                                                                            Width="20"
+                                                                            Height="20"
+                                                                            MinWidth="0"
+                                                                            MinHeight="0"
+                                                                            Padding="0"
+                                                                            Visibility="Collapsed"
+                                                                            Style="{StaticResource LinkButtonStyle}"
+                                                                            Click="SubtaskSaveButton_Click">
+                                                                            <FontIcon
+                                                                                Glyph="&#xE73E;"
+                                                                                FontSize="9"
+                                                                                Foreground="{ThemeResource AccentBrush}" />
+                                                                        </Button>
+                                                                    </Canvas>
+                                                                </Grid>
+                                                                <StackPanel
+                                                                    Orientation="Horizontal"
+                                                                    Spacing="4"
+                                                                    Visibility="{x:Bind helpers:Bind.Visible(Note), Mode=OneWay}">
+                                                                    <FontIcon
+                                                                        Glyph="&#xE70B;"
+                                                                        FontSize="8"
+                                                                        VerticalAlignment="Center"
+                                                                        Foreground="{ThemeResource TextMutedBrush}" />
+                                                                    <TextBlock
+                                                                        Text="{x:Bind Note, Mode=OneWay}"
+                                                                        FontSize="10"
+                                                                        MaxLines="1"
+                                                                        TextTrimming="CharacterEllipsis"
+                                                                        Foreground="{ThemeResource TextMutedBrush}" />
+                                                                </StackPanel>
+                                                            </StackPanel>
                                                             <StackPanel
                                                                 Grid.Column="2"
                                                                 VerticalAlignment="Center"
@@ -572,8 +616,8 @@
                                                                 Spacing="4">
                                                                 <TextBlock
                                                                     VerticalAlignment="Center"
-                                                                    FontSize="9"
-                                                                    Foreground="{ThemeResource TextMutedBrush}"
+                                                                    FontSize="10"
+                                                                    Foreground="{x:Bind helpers:Bind.DueBrush(IsOverdue), Mode=OneWay}"
                                                                     Text="{x:Bind DueText, Mode=OneWay}"
                                                                     Visibility="{x:Bind helpers:Bind.Visible(DueText), Mode=OneWay}" />
                                                                 <Button
@@ -705,10 +749,12 @@
                 <!--  底栏：展开子任务 / 清除已完成  -->
                 <Grid Grid.Row="6" Padding="14,2,10,10">
                     <Button
-                        AutomationProperties.Name="展开子任务"
+                        x:Name="ToggleSubtasksButton"
+                        AutomationProperties.Name="{x:Bind ViewModel.SubtasksToggleText, Mode=OneWay}"
                         HorizontalAlignment="Left"
                         Click="ToggleAllSubtasks_Click"
-                        Content="展开子任务"
+                        Content="{x:Bind ViewModel.SubtasksToggleText, Mode=OneWay}"
+                        IsEnabled="{x:Bind ViewModel.HasVisibleSubtasks, Mode=OneWay}"
                         Style="{StaticResource LinkButtonStyle}" />
                     <Button
                         x:Name="ClearCompletedButton"

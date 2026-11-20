@@ -78,7 +78,7 @@
         <Grid
             x:Name="HeaderBar"
             Height="44"
-            Padding="18,0,12,0"
+            Padding="18,0,10,0"
             Background="Transparent"
             PointerCaptureLost="HeaderBar_PointerCaptureLost"
             PointerMoved="HeaderBar_PointerMoved"
@@ -90,6 +90,14 @@
                 FontSize="14"
                 FontWeight="SemiBold"
                 Foreground="{ThemeResource TextPrimaryBrush}" />
+            <Button
+                HorizontalAlignment="Right"
+                VerticalAlignment="Center"
+                AutomationProperties.Name="关闭"
+                Click="CancelButton_Click"
+                Style="{StaticResource FlatIconButtonStyle}">
+                <FontIcon Glyph="&#xE711;" FontSize="12" />
+            </Button>
         </Grid>
 
         <ScrollViewer
@@ -111,6 +119,21 @@
                     KeyDown="TitleBox_KeyDown"
                     PlaceholderText="要做什么？"
                     TextWrapping="Wrap" />
+
+                <!--  备注  -->
+                <TextBox
+                    x:Name="NoteBox"
+                    MinHeight="54"
+                    MaxHeight="88"
+                    MaxLength="1000"
+                    Padding="10,6"
+                    AcceptsReturn="True"
+                    AutomationProperties.Name="备注"
+                    FontSize="12"
+                    CornerRadius="6"
+                    PlaceholderText="备注"
+                    TextWrapping="Wrap"
+                    ScrollViewer.VerticalScrollBarVisibility="Auto" />
 
                 <!--  分组 1：截止时间 + 重复  -->
                 <Border

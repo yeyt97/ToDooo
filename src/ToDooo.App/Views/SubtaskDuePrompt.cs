@@ -12,7 +12,8 @@ internal static class SubtaskDuePrompt
     public static async Task<(bool Confirmed, DateTime? DueAt)> ShowAsync(
         XamlRoot? xamlRoot,
         ElementTheme theme,
-        DateTime? current)
+        DateTime? current,
+        string title = "设置子任务时间")
     {
         if (xamlRoot is null)
         {
@@ -40,7 +41,7 @@ internal static class SubtaskDuePrompt
         var dialog = new ContentDialog
         {
             XamlRoot = xamlRoot,
-            Title = "设置子任务时间",
+            Title = title,
             Content = panel,
             PrimaryButtonText = "确定",
             SecondaryButtonText = current is null ? string.Empty : "清除",

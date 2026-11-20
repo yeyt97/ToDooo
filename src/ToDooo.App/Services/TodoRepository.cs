@@ -36,18 +36,21 @@ public sealed class TodoRepository
                 created_at    TEXT    NOT NULL,
                 completed_at  TEXT    NULL,
                 due_notified  INTEGER NOT NULL DEFAULT 0,
-                snooze_until  TEXT    NULL
+                snooze_until  TEXT    NULL,
+                note          TEXT    NOT NULL DEFAULT ''
             );
 
             CREATE INDEX IF NOT EXISTS idx_todos_order ON todos(sort_order);
 
             CREATE TABLE IF NOT EXISTS subtasks (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                todo_id     INTEGER NOT NULL,
-                title       TEXT    NOT NULL,
-                is_done     INTEGER NOT NULL DEFAULT 0,
-                sort_order  REAL    NOT NULL DEFAULT 0,
-                due_at      TEXT    NULL
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                todo_id       INTEGER NOT NULL,
+                title         TEXT    NOT NULL,
+                is_done       INTEGER NOT NULL DEFAULT 0,
+                sort_order    REAL    NOT NULL DEFAULT 0,
+                due_at        TEXT    NULL,
+                due_notified  INTEGER NOT NULL DEFAULT 0,
+                note          TEXT    NOT NULL DEFAULT ''
             );
 
             CREATE INDEX IF NOT EXISTS idx_subtasks_todo ON subtasks(todo_id);
@@ -76,6 +79,39 @@ public sealed class TodoRepository
         {
             // 列已存在
         }
+
+        try
+        {
+            using var alter = connection.CreateCommand();
+            alter.CommandText = "ALTER TABLE todos ADD COLUMN note TEXT NOT NULL DEFAULT ''";
+            alter.ExecuteNonQuery();
+        }
+        catch
+        {
+            // 列已存在
+        }
+
+        try
+        {
+            using var alter = connection.CreateCommand();
+            alter.CommandText = "ALTER TABLE subtasks ADD COLUMN due_notified INTEGER NOT NULL DEFAULT 0";
+            alter.ExecuteNonQuery();
+        }
+        catch
+        {
+            // 列已存在
+        }
+
+        try
+        {
+            using var alter = connection.CreateCommand();
+            alter.CommandText = "ALTER TABLE subtasks ADD COLUMN note TEXT NOT NULL DEFAULT ''";
+            alter.ExecuteNonQuery();
+        }
+        catch
+        {
+            // 列已存在
+        }
     }
 
     public List<TodoItem> GetAll()
@@ -84,7 +120,7 @@ public sealed class TodoRepository
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT id, title, is_done, is_important, due_at, recurrence, tag_index,
-                   sort_order, created_at, completed_at, due_notified, snooze_until
+                   sort_order, created_at, completed_at, due_notified, snooze_until, note
             FROM todos
             ORDER BY sort_order ASC, id ASC
             """;
@@ -111,7 +147,7 @@ public sealed class TodoRepository
         var byId = items.ToDictionary(item => item.Id);
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, todo_id, title, is_done, sort_order, due_at
+            SELECT id, todo_id, title, is_done, sort_order, due_at, due_notified, note
             FROM subtasks
             ORDER BY todo_id ASC, sort_order ASC, id ASC
             """;
@@ -131,6 +167,8 @@ public sealed class TodoRepository
                 IsDone = reader.GetInt64(3) != 0,
                 SortOrder = reader.GetDouble(4),
                 DueAt = reader.IsDBNull(5) ? null : FromDb(reader.GetString(5)),
+                DueNotified = !reader.IsDBNull(6) && reader.GetInt64(6) != 0,
+                Note = reader.IsDBNull(7) ? string.Empty : reader.GetString(7),
             });
         }
 
@@ -146,9 +184,9 @@ public sealed class TodoRepository
         using var command = connection.CreateCommand();
         command.CommandText = """
             INSERT INTO todos (title, is_done, is_important, due_at, recurrence, tag_index,
-                               sort_order, created_at, completed_at, due_notified, snooze_until)
+                               sort_order, created_at, completed_at, due_notified, snooze_until, note)
             VALUES ($title, $done, $important, $due, $recurrence, $tag,
-                    $order, $created, $completed, $notified, $snooze);
+                    $order, $created, $completed, $notified, $snooze, $note);
             SELECT last_insert_rowid();
             """;
         Bind(command, item);
@@ -165,8 +203,8 @@ public sealed class TodoRepository
 
         using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO subtasks (todo_id, title, is_done, sort_order, due_at)
-            VALUES ($todo, $title, $done, $order, $due);
+            INSERT INTO subtasks (todo_id, title, is_done, sort_order, due_at, due_notified, note)
+            VALUES ($todo, $title, $done, $order, $due, $notified, $note);
             SELECT last_insert_rowid();
             """;
         var todoParameter = command.Parameters.Add("$todo", SqliteType.Integer);
@@ -174,6 +212,8 @@ public sealed class TodoRepository
         var doneParameter = command.Parameters.Add("$done", SqliteType.Integer);
         var orderParameter = command.Parameters.Add("$order", SqliteType.Real);
         var dueParameter = command.Parameters.Add("$due", SqliteType.Text);
+        var notifiedParameter = command.Parameters.Add("$notified", SqliteType.Integer);
+        var noteParameter = command.Parameters.Add("$note", SqliteType.Text);
 
         foreach (var subtask in item.Subtasks)
         {
@@ -182,6 +222,8 @@ public sealed class TodoRepository
             doneParameter.Value = subtask.IsDone ? 1 : 0;
             orderParameter.Value = subtask.SortOrder;
             dueParameter.Value = (object?)ToDb(subtask.DueAt) ?? DBNull.Value;
+            notifiedParameter.Value = subtask.DueNotified ? 1 : 0;
+            noteParameter.Value = subtask.Note ?? string.Empty;
             subtask.Id = (long)(command.ExecuteScalar() ?? 0L);
         }
     }
@@ -191,8 +233,8 @@ public sealed class TodoRepository
         using var connection = Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO subtasks (todo_id, title, is_done, sort_order, due_at)
-            VALUES ($todo, $title, $done, $order, $due);
+            INSERT INTO subtasks (todo_id, title, is_done, sort_order, due_at, due_notified, note)
+            VALUES ($todo, $title, $done, $order, $due, $notified, $note);
             SELECT last_insert_rowid();
             """;
         command.Parameters.AddWithValue("$todo", todoId);
@@ -200,6 +242,8 @@ public sealed class TodoRepository
         command.Parameters.AddWithValue("$done", subtask.IsDone ? 1 : 0);
         command.Parameters.AddWithValue("$order", subtask.SortOrder);
         command.Parameters.AddWithValue("$due", (object?)ToDb(subtask.DueAt) ?? DBNull.Value);
+        command.Parameters.AddWithValue("$notified", subtask.DueNotified ? 1 : 0);
+        command.Parameters.AddWithValue("$note", subtask.Note ?? string.Empty);
         subtask.Id = (long)(command.ExecuteScalar() ?? 0L);
     }
 
@@ -212,13 +256,17 @@ public sealed class TodoRepository
                 title = $title,
                 is_done = $done,
                 sort_order = $order,
-                due_at = $due
+                due_at = $due,
+                due_notified = $notified,
+                note = $note
             WHERE id = $id
             """;
         command.Parameters.AddWithValue("$title", subtask.Title);
         command.Parameters.AddWithValue("$done", subtask.IsDone ? 1 : 0);
         command.Parameters.AddWithValue("$order", subtask.SortOrder);
         command.Parameters.AddWithValue("$due", (object?)ToDb(subtask.DueAt) ?? DBNull.Value);
+        command.Parameters.AddWithValue("$notified", subtask.DueNotified ? 1 : 0);
+        command.Parameters.AddWithValue("$note", subtask.Note ?? string.Empty);
         command.Parameters.AddWithValue("$id", subtask.Id);
         command.ExecuteNonQuery();
     }
@@ -247,7 +295,8 @@ public sealed class TodoRepository
                 sort_order = $order,
                 completed_at = $completed,
                 due_notified = $notified,
-                snooze_until = $snooze
+                snooze_until = $snooze,
+                note = $note
             WHERE id = $id
             """;
         Bind(command, item);
@@ -324,6 +373,7 @@ public sealed class TodoRepository
         command.Parameters.AddWithValue("$completed", (object?)ToDb(item.CompletedAt) ?? DBNull.Value);
         command.Parameters.AddWithValue("$notified", item.DueNotified ? 1 : 0);
         command.Parameters.AddWithValue("$snooze", (object?)ToDb(item.SnoozeUntil) ?? DBNull.Value);
+        command.Parameters.AddWithValue("$note", item.Note ?? string.Empty);
     }
 
     private static TodoItem Read(SqliteDataReader reader) => new()
@@ -340,6 +390,7 @@ public sealed class TodoRepository
         CompletedAt = FromDb(reader.IsDBNull(9) ? null : reader.GetString(9)),
         DueNotified = reader.GetInt64(10) != 0,
         SnoozeUntil = FromDb(reader.IsDBNull(11) ? null : reader.GetString(11)),
+        Note = reader.IsDBNull(12) ? string.Empty : reader.GetString(12),
     };
 
     private static string? ToDb(DateTime? value) => value?.ToString(DateFormat);

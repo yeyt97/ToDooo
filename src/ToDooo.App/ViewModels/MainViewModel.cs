@@ -66,6 +66,20 @@ public sealed partial class MainViewModel : ObservableObject
 
     public int AllCount => _all.Count;
 
+    public bool HasVisibleSubtasks => Items.Any(item => item.HasSubtasks);
+
+    public bool AreAllVisibleSubtasksExpanded =>
+        HasVisibleSubtasks && Items.Where(item => item.HasSubtasks).All(item => item.SubtasksExpanded);
+
+    public string SubtasksToggleText => AreAllVisibleSubtasksExpanded ? "收起子任务" : "展开子任务";
+
+    public void NotifySubtaskExpansionChanged()
+    {
+        OnPropertyChanged(nameof(HasVisibleSubtasks));
+        OnPropertyChanged(nameof(AreAllVisibleSubtasksExpanded));
+        OnPropertyChanged(nameof(SubtasksToggleText));
+    }
+
     public void Load()
     {
         _all.Clear();
@@ -179,8 +193,18 @@ public sealed partial class MainViewModel : ObservableObject
             SyncVisible(next);
         }
 
-        // 原地增删这一条即可：勾选完成不该把整个列表重建一遍。
-        SyncVisible(item);
+        // 原地增删或按完成状态重排位置：勾选完成自动沉底，取消完成浮回原序。
+        var existingIndex = Items.IndexOf(item);
+        if (existingIndex >= 0 && Matches(item))
+        {
+            Items.RemoveAt(existingIndex);
+            Items.Insert(IndexFor(item), item);
+        }
+        else
+        {
+            SyncVisible(item);
+        }
+
         RefreshCounts();
     }
 
@@ -259,13 +283,39 @@ public sealed partial class MainViewModel : ObservableObject
         ApplyFilter();
     }
 
+    public int ImportItems(IEnumerable<TodoItem> imported)
+    {
+        var count = 0;
+        foreach (var item in imported)
+        {
+            item.Title = item.Title.Trim();
+            if (item.Title.Length == 0)
+            {
+                continue;
+            }
+
+            item.Id = 0;
+            _repository.Add(item);
+            _all.Add(item);
+            count++;
+        }
+
+        if (count > 0)
+        {
+            ApplyFilter();
+        }
+
+        return count;
+    }
+
     public void ApplyEdit(
         TodoItem item,
         string title,
         DateTime? dueAt,
         TodoRecurrence recurrence,
         bool important,
-        int tagIndex)
+        int tagIndex,
+        string note = "")
     {
         title = title.Trim();
         if (title.Length == 0)
@@ -280,6 +330,7 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         item.Title = title;
+        item.Note = (note ?? string.Empty).Trim();
         item.DueAt = dueAt;
         item.Recurrence = recurrence;
         item.IsImportant = important;
@@ -326,6 +377,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         item.Subtasks.Add(subtask);
         item.RaiseSubtasksChanged();
+        NotifySubtaskExpansionChanged();
     }
 
     public void SetSubtaskDone(TodoItem item, SubtaskItem subtask, bool done)
@@ -344,9 +396,45 @@ public sealed partial class MainViewModel : ObservableObject
         item.RaiseSubtasksChanged();
     }
 
+    public void UpdateSubtask(
+        TodoItem item,
+        SubtaskItem subtask,
+        string title,
+        string note,
+        DateTime? dueAt,
+        bool isDone)
+    {
+        title = title.Trim();
+        if (title.Length > 0)
+        {
+            subtask.Title = title;
+        }
+
+        subtask.Note = (note ?? string.Empty).Trim();
+        if (subtask.DueAt != dueAt)
+        {
+            subtask.DueNotified = false;
+        }
+
+        subtask.DueAt = dueAt;
+        subtask.IsDone = isDone;
+        if (subtask.Id > 0)
+        {
+            _repository.UpdateSubtask(subtask);
+        }
+
+        item.RaiseSubtasksChanged();
+        SyncVisible(item);
+    }
+
     /// <summary>给子任务设置或清除截止时间。</summary>
     public void SetSubtaskDue(TodoItem item, SubtaskItem subtask, DateTime? dueAt)
     {
+        if (subtask.DueAt != dueAt)
+        {
+            subtask.DueNotified = false;
+        }
+
         subtask.DueAt = dueAt;
         if (subtask.Id > 0)
         {
@@ -374,6 +462,7 @@ public sealed partial class MainViewModel : ObservableObject
         item.RaiseSubtasksChanged();
         // 搜索命中子任务时，删掉这一条可能让整条待办不再匹配。
         SyncVisible(item);
+        NotifySubtaskExpansionChanged();
     }
 
     /// <summary>改到另一天：保留原来的时分，清掉提醒/推迟状态，按需重新过滤。</summary>
@@ -488,7 +577,13 @@ public sealed partial class MainViewModel : ObservableObject
 
             if (draft.Id > 0 && existing.Remove(draft.Id, out var subtask))
             {
+                if (subtask.DueAt != draft.DueAt)
+                {
+                    subtask.DueNotified = false;
+                }
+
                 subtask.Title = title;
+                subtask.Note = (draft.Note ?? string.Empty).Trim();
                 subtask.IsDone = draft.Done;
                 subtask.DueAt = draft.DueAt;
                 subtask.SortOrder = index++;
@@ -500,6 +595,7 @@ public sealed partial class MainViewModel : ObservableObject
             var created = new SubtaskItem
             {
                 Title = title,
+                Note = (draft.Note ?? string.Empty).Trim(),
                 IsDone = draft.Done,
                 DueAt = draft.DueAt,
                 SortOrder = index++,
@@ -527,6 +623,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         item.RaiseSubtasksChanged();
         SyncVisible(item);
+        NotifySubtaskExpansionChanged();
     }
 
     public void SetSearch(string? query)
@@ -586,7 +683,23 @@ public sealed partial class MainViewModel : ObservableObject
         foreach (var item in _all)
         {
             item.RaiseDerived();
+            foreach (var subtask in item.Subtasks)
+            {
+                subtask.RaiseDerived();
+            }
         }
+    }
+
+    private static int CompareItems(TodoItem left, TodoItem right)
+    {
+        if (left.IsDone != right.IsDone)
+        {
+            return left.IsDone.CompareTo(right.IsDone);
+        }
+
+        return left.SortOrder != right.SortOrder
+            ? left.SortOrder.CompareTo(right.SortOrder)
+            : left.Id.CompareTo(right.Id);
     }
 
     private double NextTopOrder()
@@ -625,20 +738,26 @@ public sealed partial class MainViewModel : ObservableObject
 
     private void ApplyFilter()
     {
-        _all.Sort((left, right) => left.SortOrder != right.SortOrder
-            ? left.SortOrder.CompareTo(right.SortOrder)
-            : left.Id.CompareTo(right.Id));
+        _all.Sort(CompareItems);
 
         Items.Clear();
+        var now = DateTime.Now;
+        var today = now.Date;
         foreach (var item in _all)
         {
             if (Matches(item))
             {
-                // 搜索命中的是子任务时，直接把这行展开，别让人看不到命中位置。
+                // 搜索或智能视图命中的是子任务时，直接把这行展开，别让人看不到命中位置。
                 if (_searchQuery.Length > 0 && item.HasSubtasks)
                 {
                     item.SubtasksExpanded = item.Subtasks.Any(subtask =>
                         subtask.Title.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase));
+                }
+                else if (SelectedSmartView >= 0 && item.HasSubtasks &&
+                    item.Subtasks.Any(subtask => !subtask.IsDone &&
+                        MatchesSmartViewDate(subtask.DueAt, (SmartView)SelectedSmartView, now, today)))
+                {
+                    item.SubtasksExpanded = true;
                 }
 
                 Items.Add(item);
@@ -667,17 +786,12 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
-    // 按 ApplyFilter 用的同一套排序键（SortOrder，其次 Id）算插入位置。
+    // 按 ApplyFilter 用的同一套排序键（未完成在前，其次 SortOrder，再其次 Id）算插入位置。
     private int IndexFor(TodoItem item)
     {
         for (var i = 0; i < Items.Count; i++)
         {
-            var other = Items[i];
-            var before = item.SortOrder != other.SortOrder
-                ? item.SortOrder < other.SortOrder
-                : item.Id.CompareTo(other.Id) < 0;
-
-            if (before)
+            if (CompareItems(item, Items[i]) < 0)
             {
                 return i;
             }
@@ -696,6 +810,7 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(EmptyDescription));
         OnPropertyChanged(nameof(HasCompleted));
         OnPropertyChanged(nameof(AllCount));
+        NotifySubtaskExpansionChanged();
     }
 
     private bool MatchesSmartView(TodoItem item)
@@ -708,17 +823,21 @@ public sealed partial class MainViewModel : ObservableObject
 
         var now = DateTime.Now;
         var today = now.Date;
-        return (SmartView)SelectedSmartView switch
-        {
-            SmartView.Today => item.DueAt is { } due && due.Date == today,
-            SmartView.Tomorrow => item.DueAt is { } due && due.Date == today.AddDays(1),
-            SmartView.ThisWeek => item.DueAt is { } due &&
-                due.Date >= today &&
-                due.Date < WeekStart(today).AddDays(7),
-            SmartView.Overdue => item.DueAt is { } due && due < now,
-            _ => true,
-        };
+        var view = (SmartView)SelectedSmartView;
+        return MatchesSmartViewDate(item.DueAt, view, now, today) ||
+            item.Subtasks.Any(subtask => !subtask.IsDone && MatchesSmartViewDate(subtask.DueAt, view, now, today));
     }
+
+    private static bool MatchesSmartViewDate(DateTime? dueAt, SmartView view, DateTime now, DateTime today) => view switch
+    {
+        SmartView.Today => dueAt is { } due && due.Date == today,
+        SmartView.Tomorrow => dueAt is { } due && due.Date == today.AddDays(1),
+        SmartView.ThisWeek => dueAt is { } due &&
+            due.Date >= today &&
+            due.Date < WeekStart(today).AddDays(7),
+        SmartView.Overdue => dueAt is { } due && due < now,
+        _ => true,
+    };
 
     // 周一为一周起点。
     private static DateTime WeekStart(DateTime day) =>
@@ -728,8 +847,10 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (_searchQuery.Length > 0 &&
             !item.Title.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) &&
+            !item.Note.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) &&
             !item.Subtasks.Any(subtask =>
-                subtask.Title.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase)))
+                subtask.Title.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) ||
+                subtask.Note.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase)))
         {
             return false;
         }

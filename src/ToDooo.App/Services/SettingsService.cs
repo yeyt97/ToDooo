@@ -32,7 +32,9 @@ public sealed class AppSettings
 
     public int WindowHeight { get; set; } = 716;
 
-    public bool PinnedToDesktop { get; set; } = true;
+    public int CalendarWidth { get; set; } = 860;
+
+    public int CalendarHeight { get; set; } = 560;
 
     public int ThemeMode { get; set; }
 

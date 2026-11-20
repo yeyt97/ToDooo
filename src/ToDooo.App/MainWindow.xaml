@@ -89,20 +89,12 @@
                         <FontIcon Glyph="&#xE721;" FontSize="14" />
                     </Button>
                     <Button
-                        x:Name="MoreButton"
+                        x:Name="SettingsButton"
                         Grid.Column="4"
-                        AutomationProperties.Name="更多"
-                        Style="{StaticResource FlatIconButtonStyle}">
-                        <FontIcon Glyph="&#xE712;" FontSize="14" />
-                        <Button.Flyout>
-                            <MenuFlyout Opening="MoreFlyout_Opening" Closed="MoreFlyout_Closed">
-                                <ToggleMenuFlyoutItem x:Name="PinMenuItem" Text="钉在桌面" Click="PinMenuItem_Click" />
-                                <MenuFlyoutSeparator />
-                                <MenuFlyoutItem Text="设置…" Click="SettingsMenuItem_Click" />
-                                <MenuFlyoutSeparator />
-                                <MenuFlyoutItem Text="退出 ToDooo" Click="ExitMenuItem_Click" />
-                            </MenuFlyout>
-                        </Button.Flyout>
+                        AutomationProperties.Name="设置"
+                        Style="{StaticResource FlatIconButtonStyle}"
+                        Click="SettingsButton_Click">
+                        <FontIcon Glyph="&#xE713;" FontSize="14" />
                     </Button>
                 </Grid>
 

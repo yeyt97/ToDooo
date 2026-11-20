@@ -3,14 +3,21 @@
     x:Class="ToDooo.Views.CalendarWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:ToDooo.Controls"
     Title="日历">
 
-    <Grid
+    <controls:CursorGrid
         x:Name="Root"
+        MinWidth="640"
+        MinHeight="440"
         Background="Transparent"
         AllowDrop="True"
         DragOver="Root_DragOver"
         Drop="Root_Drop"
+        PointerCaptureLost="Root_PointerCaptureLost"
+        PointerEntered="Root_PointerEntered"
+        PointerExited="Root_PointerExited"
+        SizeChanged="Root_SizeChanged"
         KeyboardAcceleratorPlacementMode="Hidden">
         <Grid.KeyboardAccelerators>
             <KeyboardAccelerator Key="Escape" Invoked="CloseAccelerator_Invoked" />
@@ -30,6 +37,7 @@
             PointerPressed="HeaderBar_PointerPressed"
             PointerReleased="HeaderBar_PointerReleased">
             <TextBlock
+                x:Name="HeaderTitleText"
                 VerticalAlignment="Center"
                 FontSize="14"
                 FontWeight="SemiBold"
@@ -82,7 +90,7 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="260" />
+                <ColumnDefinition x:Name="RightPanelColumn" Width="260" />
             </Grid.ColumnDefinitions>
 
             <Grid>
@@ -164,6 +172,7 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBlock
+                                x:Name="UndatedHeaderText"
                                 FontSize="11"
                                 FontWeight="SemiBold"
                                 Foreground="{ThemeResource TextSecondaryBrush}"
@@ -184,5 +193,5 @@
                 </Border>
             </Grid>
         </Grid>
-    </Grid>
+    </controls:CursorGrid>
 </Window>

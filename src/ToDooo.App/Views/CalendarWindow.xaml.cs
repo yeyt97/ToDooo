@@ -19,8 +19,10 @@ namespace ToDooo.Views;
 /// <summary>月历视图：按截止日期归组现有待办，点条目先查看详情，可再进入编辑。</summary>
 public sealed partial class CalendarWindow : Window
 {
-    private const int LogicalWidth = 860;
-    private const int LogicalHeight = 560;
+    private const int DefaultLogicalWidth = 860;
+    private const int DefaultLogicalHeight = 560;
+    private const int MinLogicalWidth = 640;
+    private const int MinLogicalHeight = 440;
 
     private readonly MainViewModel _viewModel;
     private readonly SettingsService _settings;
@@ -38,6 +40,11 @@ public sealed partial class CalendarWindow : Window
     private DateTime _month;
     private DateTime _selected;
     private bool _closed;
+    private double _lastLayoutWidth;
+    private double _lastLayoutHeight;
+    private int _resizeHit;
+    private NativeMethods.POINT _resizeStartCursor;
+    private NativeMethods.RECT _resizeStartRect;
     private readonly List<(DateTime Date, Border Cell)> _cells = new();
 
     public CalendarWindow(
@@ -68,6 +75,19 @@ public sealed partial class CalendarWindow : Window
         BuildWeekdayHeader();
         Refresh();
 
+        Root.AddHandler(
+            UIElement.PointerPressedEvent,
+            new PointerEventHandler(Root_PointerPressed),
+            handledEventsToo: true);
+        Root.AddHandler(
+            UIElement.PointerMovedEvent,
+            new PointerEventHandler(Root_PointerMoved),
+            handledEventsToo: true);
+        Root.AddHandler(
+            UIElement.PointerReleasedEvent,
+            new PointerEventHandler(Root_PointerReleased),
+            handledEventsToo: true);
+
         Activated += (_, _) => Refresh();
         _viewModel.Items.CollectionChanged += OnItemsChanged;
         Closed += (_, _) =>
@@ -90,9 +110,38 @@ public sealed partial class CalendarWindow : Window
 
     private void ApplyLogicalSize(double scale)
     {
+        var width = Math.Max(MinLogicalWidth, _settings.Current.CalendarWidth);
+        var height = Math.Max(MinLogicalHeight, _settings.Current.CalendarHeight);
         _appWindow.Resize(new SizeInt32(
-            (int)Math.Round(LogicalWidth * scale),
-            (int)Math.Round(LogicalHeight * scale)));
+            (int)Math.Round(width * scale),
+            (int)Math.Round(height * scale)));
+    }
+
+    private double GetUiScale()
+    {
+        var width = Root.ActualWidth > 0 ? Root.ActualWidth : Math.Max(MinLogicalWidth, _settings.Current.CalendarWidth);
+        var height = Root.ActualHeight > 0 ? Root.ActualHeight : Math.Max(MinLogicalHeight, _settings.Current.CalendarHeight);
+        return Math.Clamp(Math.Min(width / DefaultLogicalWidth, height / DefaultLogicalHeight), 0.8, 1.6);
+    }
+
+    private void ApplyResponsiveMetrics(double scale)
+    {
+        var totalWidth = Root.ActualWidth > 0 ? Root.ActualWidth : Math.Max(MinLogicalWidth, _settings.Current.CalendarWidth);
+        RightPanelColumn.Width = new GridLength(Math.Round(Math.Clamp(totalWidth * 0.30, 210, 420)));
+        HeaderTitleText.FontSize = Math.Round(14 * scale, 1);
+        MonthTitle.FontSize = Math.Round(12 * scale, 1);
+        MonthTitle.Width = Math.Round(96 * scale);
+        SelectedDateText.FontSize = Math.Round(13 * scale, 1);
+        UndatedHeaderText.FontSize = Math.Round(11 * scale, 1);
+        UndatedCountText.FontSize = Math.Round(11 * scale, 1);
+
+        foreach (var child in WeekdayRow.Children)
+        {
+            if (child is TextBlock label)
+            {
+                label.FontSize = Math.Round(10 * scale, 1);
+            }
+        }
     }
 
     public void RefreshTheme()
@@ -225,6 +274,7 @@ public sealed partial class CalendarWindow : Window
             return;
         }
 
+        ApplyResponsiveMetrics(GetUiScale());
         MonthTitle.Text = $"{_month:yyyy 年 M 月}";
 
         var entries = BuildEntries();
@@ -316,6 +366,7 @@ public sealed partial class CalendarWindow : Window
 
     private Border BuildCell(DateTime date, List<CalendarEntry>? entries)
     {
+        var scale = GetUiScale();
         var inMonth = date.Month == _month.Month;
         var isSelected = date == _selected;
         var isToday = date == DateTime.Today;
@@ -330,7 +381,7 @@ public sealed partial class CalendarWindow : Window
         var dayNumber = new TextBlock
         {
             Text = date.Day.ToString(),
-            FontSize = 11,
+            FontSize = Math.Round(11 * scale, 1),
             Margin = new Thickness(2, 0, 0, 2),
             Foreground = (Brush)Application.Current.Resources[
                 isToday ? "AccentBrush" : inMonth ? "TextPrimaryBrush" : "TextMutedBrush"],
@@ -341,6 +392,12 @@ public sealed partial class CalendarWindow : Window
 
         if (entries is { Count: > 0 })
         {
+            var gridHeight = DaysGrid.ActualHeight > 0
+                ? DaysGrid.ActualHeight
+                : Math.Max(MinLogicalHeight, _settings.Current.CalendarHeight) - 84;
+            var cellHeight = gridHeight / 6.0;
+            var maxChips = Math.Clamp((int)Math.Floor((cellHeight - 20 * scale) / (14 * scale)), 1, 6);
+
             var chips = new StackPanel
             {
                 Spacing = 1,
@@ -348,17 +405,17 @@ public sealed partial class CalendarWindow : Window
             };
             Grid.SetRow(chips, 1);
 
-            foreach (var entry in entries.Take(3))
+            foreach (var entry in entries.Take(maxChips))
             {
-                chips.Children.Add(BuildChip(entry));
+                chips.Children.Add(BuildChip(entry, scale));
             }
 
-            if (entries.Count > 3)
+            if (entries.Count > maxChips)
             {
                 chips.Children.Add(new TextBlock
                 {
-                    Text = $"+{entries.Count - 3}",
-                    FontSize = 9,
+                    Text = $"+{entries.Count - maxChips}",
+                    FontSize = Math.Round(9 * scale, 1),
                     Foreground = (Brush)Application.Current.Resources["TextMutedBrush"],
                 });
             }
@@ -485,16 +542,17 @@ public sealed partial class CalendarWindow : Window
             ? (Brush)Application.Current.Resources["SegmentSelectedBrush"]
             : (Brush)Application.Current.Resources["TransparentBrush"];
 
-    private UIElement BuildChip(CalendarEntry entry)
+    private UIElement BuildChip(CalendarEntry entry, double scale)
     {
-        var chip = new StackPanel
+        var chip = new Grid
         {
-            Orientation = Orientation.Horizontal,
-            Spacing = 3,
+            ColumnSpacing = Math.Round(3 * scale),
             Opacity = entry.IsDone ? 0.45 : 1,
             Background = (Brush)Application.Current.Resources["TransparentBrush"],
             CanDrag = true,
         };
+        chip.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        chip.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         chip.DragStarting += (_, args) =>
         {
             _draggedEntry = entry;
@@ -513,18 +571,19 @@ public sealed partial class CalendarWindow : Window
             chip.Children.Add(new TextBlock
             {
                 Text = "\u21B3",
-                FontSize = 9,
+                FontSize = Math.Round(9 * scale, 1),
                 VerticalAlignment = VerticalAlignment.Center,
                 Foreground = new SolidColorBrush(TagColor(entry.TagIndex)),
             });
         }
         else
         {
+            var dotSize = Math.Max(4, Math.Round(5 * scale));
             chip.Children.Add(new Border
             {
-                Width = 5,
-                Height = 5,
-                CornerRadius = new CornerRadius(2.5),
+                Width = dotSize,
+                Height = dotSize,
+                CornerRadius = new CornerRadius(dotSize / 2),
                 VerticalAlignment = VerticalAlignment.Center,
                 Background = new SolidColorBrush(TagColor(entry.TagIndex)),
             });
@@ -533,14 +592,14 @@ public sealed partial class CalendarWindow : Window
         var title = new TextBlock
         {
             Text = entry.Title,
-            FontSize = 9,
+            FontSize = Math.Round(9.5 * scale, 1),
             MaxLines = 1,
-            MaxWidth = entry.Subtask is null ? 58 : 50,
             TextTrimming = TextTrimming.CharacterEllipsis,
             TextDecorations = entry.IsDone ? Windows.UI.Text.TextDecorations.Strikethrough : Windows.UI.Text.TextDecorations.None,
             Foreground = (Brush)Application.Current.Resources["TextSecondaryBrush"],
         };
         SetTitleToolTip(title, entry.FullTitle);
+        Grid.SetColumn(title, 1);
         chip.Children.Add(title);
 
         return chip;
@@ -686,9 +745,10 @@ public sealed partial class CalendarWindow : Window
 
     private Grid BuildDetailRow(CalendarEntry entry)
     {
+        var scale = GetUiScale();
         var row = new Grid
         {
-            Padding = new Thickness(6, 5, 6, 5),
+            Padding = new Thickness(6, Math.Round(5 * scale), 6, Math.Round(5 * scale)),
             Background = (Brush)Application.Current.Resources["TransparentBrush"],
             CanDrag = true,
         };
@@ -710,11 +770,12 @@ public sealed partial class CalendarWindow : Window
         content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
+        var dotSize = Math.Max(5, Math.Round(7 * scale));
         var dot = new Border
         {
-            Width = 7,
-            Height = 7,
-            CornerRadius = new CornerRadius(3.5),
+            Width = dotSize,
+            Height = dotSize,
+            CornerRadius = new CornerRadius(dotSize / 2),
             VerticalAlignment = VerticalAlignment.Center,
             Background = new SolidColorBrush(TagColor(entry.TagIndex)),
         };
@@ -729,7 +790,7 @@ public sealed partial class CalendarWindow : Window
         var title = new TextBlock
         {
             Text = entry.Title,
-            FontSize = 12,
+            FontSize = Math.Round(12 * scale, 1),
             MaxLines = 2,
             TextWrapping = TextWrapping.Wrap,
             TextTrimming = TextTrimming.CharacterEllipsis,
@@ -751,7 +812,7 @@ public sealed partial class CalendarWindow : Window
             var marker = new TextBlock
             {
                 Text = "\u21B3",
-                FontSize = 9,
+                FontSize = Math.Round(9 * scale, 1),
                 VerticalAlignment = VerticalAlignment.Center,
                 Foreground = (Brush)Application.Current.Resources["TextMutedBrush"],
             };
@@ -760,7 +821,7 @@ public sealed partial class CalendarWindow : Window
             var parentTitle = new TextBlock
             {
                 Text = entry.Parent.Title,
-                FontSize = 10,
+                FontSize = Math.Round(10 * scale, 1),
                 MaxLines = 1,
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 VerticalAlignment = VerticalAlignment.Center,
@@ -779,7 +840,7 @@ public sealed partial class CalendarWindow : Window
         var time = new TextBlock
         {
             Text = entry.DueAt?.ToString("HH:mm") ?? string.Empty,
-            FontSize = 11,
+            FontSize = Math.Round(11 * scale, 1),
             VerticalAlignment = VerticalAlignment.Center,
             Foreground = (Brush)Application.Current.Resources[
                 entry.IsOverdue ? "OverdueBrush" : "TextMutedBrush"],
@@ -815,10 +876,11 @@ public sealed partial class CalendarWindow : Window
         DateTime? selectedDate,
         bool showUndated = true)
     {
+        var scale = GetUiScale();
         var entry = new CalendarEntry(parent, subtask);
         var row = new Grid
         {
-            Padding = new Thickness(18, 3, 6, 3),
+            Padding = new Thickness(Math.Round(18 * scale), 3, 6, 3),
             Background = (Brush)Application.Current.Resources["TransparentBrush"],
             CanDrag = true,
         };
@@ -843,7 +905,7 @@ public sealed partial class CalendarWindow : Window
         content.Children.Add(new TextBlock
         {
             Text = "\u21B3",
-            FontSize = 9,
+            FontSize = Math.Round(9 * scale, 1),
             VerticalAlignment = VerticalAlignment.Center,
             Foreground = new SolidColorBrush(TagColor(parent.TagIndex)),
         });
@@ -851,7 +913,7 @@ public sealed partial class CalendarWindow : Window
         var title = new TextBlock
         {
             Text = subtask.Title,
-            FontSize = 11,
+            FontSize = Math.Round(11 * scale, 1),
             MaxLines = 1,
             TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Center,
@@ -879,7 +941,7 @@ public sealed partial class CalendarWindow : Window
             var time = new TextBlock
             {
                 Text = timeText,
-                FontSize = 10,
+                FontSize = Math.Round(10 * scale, 1),
                 VerticalAlignment = VerticalAlignment.Center,
                 FontStyle = otherDay
                     ? Windows.UI.Text.FontStyle.Italic
@@ -1187,6 +1249,7 @@ public sealed partial class CalendarWindow : Window
     private void HeaderBar_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
         if (!e.GetCurrentPoint((UIElement)sender).Properties.IsLeftButtonPressed ||
+            EdgeHit(e.GetCurrentPoint(Root).Position) != 0 ||
             !NativeMethods.GetCursorPos(out _dragStartCursor) ||
             !NativeMethods.GetWindowRect(_hwnd, out _dragStartRect))
         {
@@ -1231,4 +1294,174 @@ public sealed partial class CalendarWindow : Window
     }
 
     private void HeaderBar_PointerCaptureLost(object sender, PointerRoutedEventArgs e) => _dragging = false;
+
+    private void Root_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (_closed)
+        {
+            return;
+        }
+
+        if (Math.Abs(e.NewSize.Width - _lastLayoutWidth) < 4 &&
+            Math.Abs(e.NewSize.Height - _lastLayoutHeight) < 4)
+        {
+            return;
+        }
+
+        _lastLayoutWidth = e.NewSize.Width;
+        _lastLayoutHeight = e.NewSize.Height;
+        Refresh();
+    }
+
+    private void Root_PointerEntered(object sender, PointerRoutedEventArgs e) =>
+        UpdateResizeCursor(e.GetCurrentPoint(Root).Position);
+
+    private void Root_PointerExited(object sender, PointerRoutedEventArgs e) =>
+        Root.SetCursor(null);
+
+    private void Root_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(Root).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        var local = e.GetCurrentPoint(Root).Position;
+        var hit = EdgeHit(local);
+        if (hit == 0 ||
+            !NativeMethods.GetCursorPos(out _resizeStartCursor) ||
+            !NativeMethods.GetWindowRect(_hwnd, out _resizeStartRect))
+        {
+            return;
+        }
+
+        _resizeHit = hit;
+        Root.CapturePointer(e.Pointer);
+        UpdateResizeCursor(local);
+        e.Handled = true;
+    }
+
+    private void Root_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        var local = e.GetCurrentPoint(Root).Position;
+        if (_resizeHit == 0)
+        {
+            UpdateResizeCursor(local);
+            return;
+        }
+
+        if (NativeMethods.GetCursorPos(out var cursor))
+        {
+            var scale = NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
+            var minWidth = (int)Math.Round(MinLogicalWidth * scale);
+            var minHeight = (int)Math.Round(MinLogicalHeight * scale);
+            var dx = cursor.X - _resizeStartCursor.X;
+            var dy = cursor.Y - _resizeStartCursor.Y;
+
+            var left = _resizeStartRect.Left;
+            var top = _resizeStartRect.Top;
+            var right = _resizeStartRect.Right;
+            var bottom = _resizeStartRect.Bottom;
+
+            if (_resizeHit is NativeMethods.HTLEFT or NativeMethods.HTTOPLEFT or NativeMethods.HTBOTTOMLEFT)
+            {
+                left = Math.Min(_resizeStartRect.Left + dx, _resizeStartRect.Right - minWidth);
+            }
+
+            if (_resizeHit is NativeMethods.HTRIGHT or NativeMethods.HTTOPRIGHT or NativeMethods.HTBOTTOMRIGHT)
+            {
+                right = Math.Max(_resizeStartRect.Right + dx, _resizeStartRect.Left + minWidth);
+            }
+
+            if (_resizeHit is NativeMethods.HTTOP or NativeMethods.HTTOPLEFT or NativeMethods.HTTOPRIGHT)
+            {
+                top = Math.Min(_resizeStartRect.Top + dy, _resizeStartRect.Bottom - minHeight);
+            }
+
+            if (_resizeHit is NativeMethods.HTBOTTOM or NativeMethods.HTBOTTOMLEFT or NativeMethods.HTBOTTOMRIGHT)
+            {
+                bottom = Math.Max(_resizeStartRect.Bottom + dy, _resizeStartRect.Top + minHeight);
+            }
+
+            NativeMethods.SetWindowPos(
+                _hwnd, IntPtr.Zero, left, top, right - left, bottom - top,
+                NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
+        }
+
+        e.Handled = true;
+    }
+
+    private void Root_PointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        if (_resizeHit == 0)
+        {
+            return;
+        }
+
+        _resizeHit = 0;
+        Root.ReleasePointerCapture(e.Pointer);
+        SaveCalendarSize();
+        UpdateResizeCursor(e.GetCurrentPoint(Root).Position);
+        e.Handled = true;
+    }
+
+    private void Root_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
+    {
+        if (_resizeHit == 0)
+        {
+            return;
+        }
+
+        _resizeHit = 0;
+        SaveCalendarSize();
+        Root.SetCursor(null);
+    }
+
+    private void SaveCalendarSize()
+    {
+        if (_closed || !NativeMethods.GetWindowRect(_hwnd, out var rect))
+        {
+            return;
+        }
+
+        var scale = NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
+        _settings.Current.CalendarWidth = Math.Max(MinLogicalWidth, (int)Math.Round((rect.Right - rect.Left) / scale));
+        _settings.Current.CalendarHeight = Math.Max(MinLogicalHeight, (int)Math.Round((rect.Bottom - rect.Top) / scale));
+        _settings.Save();
+    }
+
+    private int EdgeHit(Windows.Foundation.Point point)
+    {
+        const double edge = 8;
+        var left = point.X < edge;
+        var right = point.X > Root.ActualWidth - edge;
+        var top = point.Y < edge;
+        var bottom = point.Y > Root.ActualHeight - edge;
+
+        return (left, right, top, bottom) switch
+        {
+            (true, _, true, _) => NativeMethods.HTTOPLEFT,
+            (_, true, true, _) => NativeMethods.HTTOPRIGHT,
+            (true, _, _, true) => NativeMethods.HTBOTTOMLEFT,
+            (_, true, _, true) => NativeMethods.HTBOTTOMRIGHT,
+            (true, _, _, _) => NativeMethods.HTLEFT,
+            (_, true, _, _) => NativeMethods.HTRIGHT,
+            (_, _, true, _) => NativeMethods.HTTOP,
+            (_, _, _, true) => NativeMethods.HTBOTTOM,
+            _ => 0,
+        };
+    }
+
+    private void UpdateResizeCursor(Windows.Foundation.Point point)
+    {
+        var hit = _resizeHit != 0 ? _resizeHit : EdgeHit(point);
+        Root.SetCursor(hit switch
+        {
+            NativeMethods.HTLEFT or NativeMethods.HTRIGHT => Microsoft.UI.Input.InputSystemCursorShape.SizeWestEast,
+            NativeMethods.HTTOP or NativeMethods.HTBOTTOM => Microsoft.UI.Input.InputSystemCursorShape.SizeNorthSouth,
+            NativeMethods.HTTOPLEFT or NativeMethods.HTBOTTOMRIGHT => Microsoft.UI.Input.InputSystemCursorShape.SizeNorthwestSoutheast,
+            NativeMethods.HTTOPRIGHT or NativeMethods.HTBOTTOMLEFT => Microsoft.UI.Input.InputSystemCursorShape.SizeNortheastSouthwest,
+            _ => null,
+        });
+    }
 }

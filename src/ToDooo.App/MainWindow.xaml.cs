@@ -43,15 +43,12 @@ public sealed partial class MainWindow : Window
     private CalendarWindow? _calendarWindow;
     private TrayIcon? _tray;
     private uint _taskbarCreatedMessage;
-    private bool _pinned;
-    private bool _reparenting;
     private bool _started;
     private bool _positioned;
     private bool _exiting;
     private bool _dragging;
     private bool _suppressAddCommit;
     private TodoEditorDialog? _editor;
-    private IntPtr _hostHwnd;
     private NativeMethods.POINT _dragStartCursor;
     private NativeMethods.RECT _dragStartRect;
 
@@ -114,12 +111,6 @@ public sealed partial class MainWindow : Window
         PositionWindow();
         ApplyCornerMask();
 
-        _pinned = false;
-        if (_settings.Current.PinnedToDesktop)
-        {
-            ApplyPin(true, persist: false);
-        }
-
         CreateTray();
         StartupService.EnsureMatchesCurrentProcess();
         _reminder.LeadMinutes = _settings.Current.ReminderLeadMinutes;
@@ -130,11 +121,8 @@ public sealed partial class MainWindow : Window
     {
         NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_SHOW);
         ExpandDock();
-        if (!_pinned)
-        {
-            Activate();
-            NativeMethods.SetForegroundWindow(_hwnd);
-        }
+        Activate();
+        NativeMethods.SetForegroundWindow(_hwnd);
     }
 
     public void ShowBalloon(string title, string text) => _tray?.ShowBalloon(title, text);
@@ -304,70 +292,9 @@ public sealed partial class MainWindow : Window
             _hwnd, NativeMethods.DWMWA_BORDER_COLOR, ref noBorder, sizeof(int));
     }
 
-    private void BedToDesktop()
-    {
-        if (!_pinned || _hwnd == IntPtr.Zero)
-        {
-            return;
-        }
-
-        NativeMethods.SetWindowPos(
-            _hwnd, NativeMethods.HWND_BOTTOM, 0, 0, 0, 0,
-            NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE);
-    }
-
-    private void ApplyPin(bool pinned, bool persist)
-    {
-        _reparenting = true;
-        try
-        {
-            if (pinned)
-            {
-                var iconView = DesktopHost.FindIconView();
-                if (iconView == IntPtr.Zero)
-                {
-                    _pinned = false;
-                    return;
-                }
-
-                // 只把桌面图标层设为 owner，窗口仍是顶层窗口：DWM 原生圆角与系统材质才能生效。
-                NativeMethods.SetWindowLongPtr(_hwnd, NativeMethods.GWLP_HWNDPARENT, iconView);
-                NativeMethods.SetWindowPos(
-                    _hwnd, NativeMethods.HWND_BOTTOM, 0, 0, 0, 0,
-                    NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE
-                    | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW);
-                _hostHwnd = iconView;
-                _pinned = true;
-            }
-            else
-            {
-                // 取消钉住：脱离桌面层后是普通窗口，不置顶，可以被其他窗口盖住。
-                NativeMethods.SetWindowLongPtr(_hwnd, NativeMethods.GWLP_HWNDPARENT, IntPtr.Zero);
-                NativeMethods.SetWindowPos(
-                    _hwnd, NativeMethods.HWND_NOTOPMOST, 0, 0, 0, 0,
-                    NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE
-                    | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW);
-                _hostHwnd = IntPtr.Zero;
-                _pinned = false;
-            }
-        }
-        finally
-        {
-            _reparenting = false;
-        }
-
-        ApplyCornerMask();
-
-        if (persist)
-        {
-            _settings.Current.PinnedToDesktop = _pinned;
-            _settings.Save();
-        }
-    }
-
     private void SavePosition()
     {
-        if (_reparenting || !_started)
+        if (!_started)
         {
             return;
         }
@@ -546,7 +473,6 @@ public sealed partial class MainWindow : Window
         flyout.Closed += (_, _) =>
         {
             _trayMenuOpen = false;
-            _dispatcher.TryEnqueue(BedToDesktop);
         };
 
         flyout.ShowAt(Root, new FlyoutShowOptions
@@ -573,7 +499,6 @@ public sealed partial class MainWindow : Window
 
         NativeMethods.DestroyMenu(menu);
         NativeMethods.PostMessageW(_hwnd, NativeMethods.WM_NULL, IntPtr.Zero, IntPtr.Zero);
-        BedToDesktop();
 
         switch (command)
         {
@@ -769,26 +694,6 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void MoreFlyout_Opening(object sender, object e)
-    {
-        PinMenuItem.IsChecked = _settings.Current.PinnedToDesktop;
-        _moreMenuOpen = true;
-        CancelDockRetract();
-    }
-
-    private void MoreFlyout_Closed(object sender, object e)
-    {
-        _moreMenuOpen = false;
-    }
-
-    private void PinMenuItem_Click(object sender, RoutedEventArgs e)
-    {
-        Undock();
-        ApplyPin(PinMenuItem.IsChecked, persist: true);
-        // 钉住失败（找不到桌面图标层）时回滚勾选状态。
-        PinMenuItem.IsChecked = _pinned;
-    }
-
     private void CalendarButton_Click(object sender, RoutedEventArgs e)
     {
         if (_calendarWindow is not null)
@@ -808,7 +713,7 @@ public sealed partial class MainWindow : Window
         TopmostDialogIfDocked(_calendarWindow);
     }
 
-    private void SettingsMenuItem_Click(object sender, RoutedEventArgs e)
+    private void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
         if (_settingsWindow is not null)
         {
@@ -879,16 +784,7 @@ public sealed partial class MainWindow : Window
                 break;
 
             case NativeMethods.WM_ACTIVATE:
-                // 点击激活会把窗口提到应用窗口之上，激活后立即沉回桌面层。
-                // 托盘菜单展开期间例外：沉底会把 flyout 一起收掉，等菜单关了再沉。
-                if ((wParam.ToInt64() & 0xFFFF) != 0)
-                {
-                    if (!_trayMenuOpen && !_sizing)
-                    {
-                        _dispatcher.TryEnqueue(BedToDesktop);
-                    }
-                }
-                else
+                if ((wParam.ToInt64() & 0xFFFF) == 0)
                 {
                     // WA_INACTIVE = 0：真正的窗口级失焦（点了别的程序、桌面）。
                     // XAML 的 LostFocus 在这种场景下不触发，只能在这里补一次草稿提交。
@@ -900,11 +796,7 @@ public sealed partial class MainWindow : Window
             case NativeMethods.WM_SIZE:
                 if (wParam.ToInt64() == 1) // SIZE_MINIMIZED：ShowWindow 等绕过 WM_SYSCOMMAND 的路径
                 {
-                    _dispatcher.TryEnqueue(() =>
-                    {
-                        NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_RESTORE);
-                        BedToDesktop();
-                    });
+                    _dispatcher.TryEnqueue(() => NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_RESTORE));
                 }
 
                 break;
@@ -946,14 +838,6 @@ public sealed partial class MainWindow : Window
                         pos.cy = minHeight;
                         changed = true;
                     }
-                }
-
-                // Show Desktop 等外壳操作会试图把窗口隐藏/最小化，钉住时直接拦掉。
-                if (_pinned && (pos.flags & NativeMethods.SWP_HIDEWINDOW) != 0)
-                {
-                    pos.flags &= ~NativeMethods.SWP_HIDEWINDOW;
-                    pos.flags |= NativeMethods.SWP_SHOWWINDOW;
-                    changed = true;
                 }
 
                 if (changed)
@@ -1004,11 +888,6 @@ public sealed partial class MainWindow : Window
         if (msg == _taskbarCreatedMessage && _taskbarCreatedMessage != 0)
         {
             _tray?.ReAdd();
-            if (_pinned)
-            {
-                ApplyPin(true, persist: false);
-            }
-
             return IntPtr.Zero;
         }
 
@@ -1086,7 +965,7 @@ public sealed partial class MainWindow : Window
         var height = _dragStartRect.Bottom - _dragStartRect.Top;
 
         NativeMethods.SetWindowPos(
-            _hwnd, _pinned ? NativeMethods.HWND_BOTTOM : NativeMethods.HWND_NOTOPMOST,
+            _hwnd, NativeMethods.HWND_NOTOPMOST,
             screenX, screenY, width, height, NativeMethods.SWP_NOACTIVATE);
     }
 
@@ -1318,7 +1197,6 @@ public sealed partial class MainWindow : Window
     }
 
     private bool _sizing;
-    private bool _moreMenuOpen;
     private bool _contextMenuOpen;
     private bool _dialogOpen;
 
@@ -1581,11 +1459,6 @@ public sealed partial class MainWindow : Window
         _dockRect = ClampRectToWorkArea(rect);
         _dockRetracted = false;
 
-        // 收边期间脱离桌面层，允许置顶盖住其他窗口。
-        NativeMethods.SetWindowLongPtr(_hwnd, NativeMethods.GWLP_HWNDPARENT, IntPtr.Zero);
-        _hostHwnd = IntPtr.Zero;
-        _pinned = false;
-
         Root.Opacity = 1;
         RetractDock();
     }
@@ -1635,7 +1508,11 @@ public sealed partial class MainWindow : Window
 
         if (_started)
         {
-            ApplyPin(_settings.Current.PinnedToDesktop, persist: false);
+            NativeMethods.SetWindowPos(
+                _hwnd, NativeMethods.HWND_NOTOPMOST, 0, 0, 0, 0,
+                NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE
+                | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW);
+            ApplyCornerMask();
         }
     }
 
@@ -1738,7 +1615,7 @@ public sealed partial class MainWindow : Window
     {
         if (_dockEdge == EdgeDock.None || _dockRetracted ||
             _editor is not null || _settingsWindow is not null ||
-            _moreMenuOpen || _contextMenuOpen || _dialogOpen || _trayMenuOpen ||
+            _contextMenuOpen || _dialogOpen || _trayMenuOpen ||
             _sizing || _resizeHit != 0 || _dragging)
         {
             return;
@@ -3202,6 +3079,4 @@ public sealed partial class MainWindow : Window
         var ordered = ViewModel.Items.ToList();
         DispatcherQueue.TryEnqueue(() => ViewModel.PersistReorder(ordered));
     }
-
-    private void ExitMenuItem_Click(object sender, RoutedEventArgs e) => ExitApp();
 }

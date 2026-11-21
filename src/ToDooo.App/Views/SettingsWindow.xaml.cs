@@ -54,7 +54,7 @@ public sealed partial class SettingsWindow : Window
 
         ConfigureWindow();
 
-        AboutText.Text = "ToDooo 1.3.0 · WinUI 3\n数据目录：%LocalAppData%\\ToDooo";
+        AboutText.Text = AppInfo.AboutLine;
 
         ThemeBox.SelectedIndex = settings.Current.ThemeMode;
         var transparency = Math.Clamp(1.0 - settings.Current.WindowOpacity, 0.0, 0.9);
@@ -62,7 +62,9 @@ public sealed partial class SettingsWindow : Window
         OpacityValue.Text = $"{Math.Round(transparency * 100)}%";
         StartupToggle.IsOn = StartupService.IsEnabled;
         AutoHideToggle.IsOn = settings.Current.AutoHide;
+        DefaultTabBox.SelectedIndex = Math.Clamp(settings.Current.DefaultTab, 0, 3);
         HotkeyBox.SelectedIndex = Math.Clamp(settings.Current.GlobalHotkeyMode, 0, 3);
+        QuickAddHotkeyBox.SelectedIndex = Math.Clamp(settings.Current.QuickAddHotkeyMode, 0, 3);
         BuildSmartViewList();
         BuildTagNameEditors();
         LeadBox.SelectedIndex = Math.Max(0, Array.IndexOf(LeadOptions, settings.Current.ReminderLeadMinutes));
@@ -71,7 +73,7 @@ public sealed partial class SettingsWindow : Window
         Closed += (_, _) =>
         {
             WindowCloak.Cancel(_hwnd, reveal: false);
-            _acrylic = null;
+            WindowAcrylic.DetachAndDispose(ref _acrylic, ref _backdropConfig);
         };
     }
 
@@ -292,6 +294,17 @@ public sealed partial class SettingsWindow : Window
         _settingsChanged();
     }
 
+    private void DefaultTabBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_ready || DefaultTabBox.SelectedIndex < 0)
+        {
+            return;
+        }
+
+        _settings.Current.DefaultTab = DefaultTabBox.SelectedIndex;
+        _settings.Save();
+    }
+
     private void BuildSmartViewList()
     {
         NormalizeSmartViews();
@@ -414,6 +427,18 @@ public sealed partial class SettingsWindow : Window
         }
 
         _settings.Current.GlobalHotkeyMode = Math.Clamp(HotkeyBox.SelectedIndex, 0, 3);
+        _settings.Save();
+        _settingsChanged();
+    }
+
+    private void QuickAddHotkeyBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_ready)
+        {
+            return;
+        }
+
+        _settings.Current.QuickAddHotkeyMode = Math.Clamp(QuickAddHotkeyBox.SelectedIndex, 0, 3);
         _settings.Save();
         _settingsChanged();
     }

@@ -1,59 +1,69 @@
 # ToDooo
 
-钉在桌面层的 Windows 待办小组件（WinUI 3 / .NET 11 / SQLite），数据全部保存在本机。
+[English](README.md) · [简体中文](README.zh-CN.md)
 
-## 功能
+A lightweight Windows 11 desktop todo and calendar companion built with **WinUI 3**, **.NET 11**, and **SQLite**. All tasks, subtasks, and settings are stored locally.
 
-- 桌面层钉住：窗口位于应用窗口之下、桌面之上，不挡其他软件；可在右上角菜单切换为普通窗口。
-- 边缘停靠：拖到屏幕左/右/上边缘自动收进去，只留一条薄边；悬停薄边呼出并置顶。
-- 自然语言时间：新建时直接写“明天下午三点打网球”“周五10点汇报”，自动识别截止时间。
-- 子任务：卡片行内展开，可勾选、右键删除、拖动排序；编辑弹窗可增删改。
-- 标签与重要：颜色圆点筛选、星标标记重要。
-- 智能视图：今天 / 明天 / 本周 / 已逾期，可在设置中启用与排序。
-- 提醒：到期通知（可提前 5–60 分钟），通知与右键菜单均支持“推迟 10 分钟”。
-- 外观：跟随系统主题（实时切换）、透明度 10%–100%、自动隐藏、亚克力磨砂。
-- 其他：搜索、拖动排序、撤销条、删除与清空二次确认、开机自启、托盘菜单、JSON 导出。
+## Features
 
-## 环境
+- **Quick Capture & Natural Language**: Add tasks inline or via dedicated editor with automatic parsing for dates/times (e.g., `明天下午3点`, `周五 10:30`), recurrence (`每天` / `每周` / `每月`), and priority (`!重要` / `!!`). Natural date/time parsing also works when quick-adding subtasks.
+- **Docked Calendar Companion**: Side-by-side borderless acrylic calendar window that snaps next to the main window (`6px` gap), follows dragging, and syncs height resizing.
+  - **Month & Day Views**: Continuous scrolling across months (18-week rolling grid) and a vertical day-by-day agenda stream (`Day` view) with dynamic header range tracking.
+  - **Drag & Drop Scheduling**: Drag tasks or subtasks between the main list, calendar dates, and the undated drawer; double-click any date to create a task.
+  - **Drawer & Summary**: Collapsible right drawer showing selected-day details, undated items, a **Hide Completed** toggle, and a **Weekly Completed** summary.
+- **Top-Edge Auto-Retract**: Drag the window to the top edge of the screen to retract both the todo window and attached calendar into a `6px` strip; hover either strip to expand.
+- **Subtasks & Notes**: Expandable subtasks with individual notes, due times, drag reordering, and a prompt to complete the parent task when all subtasks are checked; right-click **Edit** opens the subtask editor.
+- **Views, Tags & Batch Actions**: Filter tabs (`All` / `Active` / `Important` / `Done` with configurable default tab), customizable & reorderable Smart Views (`Today` / `Tomorrow` / `This Week` / `Overdue`), 8 customizable color tags, live search, and one-click **Postpone all overdue to today**.
+- **Reminders & Hotkeys**: Windows toast notifications (0–60 min lead time) with direct **Mark Done** and **Snooze 10 min** buttons, configurable global **Show Window** and **Quick Add** hotkeys, system tray menu, launch at startup, and JSON import/export.
+- **Acrylic Appearance**: Live System / Dark / Light theme sync, Windows Desktop Acrylic material, `0%–90%` transparency slider, and optional auto-fade on mouse leave.
 
-- Windows 11 22H2（22621）及以上，x64
-- .NET 11 SDK
+## Requirements
 
-## 构建与运行
+- **Runtime**: Windows 11 22H2 (Build 22621) or later (`x64`)
+- **Build from source**: [.NET 11 SDK](https://dotnet.microsoft.com/) with Windows App SDK workload
 
-```bash
-dotnet build src/ToDooo.App/ToDooo.csproj -c Release
-dotnet run --project src/ToDooo.App/ToDooo.csproj -c Release
-```
+## Build, Test & Publish
 
-## 测试
+```powershell
+# Build (Debug)
+dotnet build src/ToDooo.App/ToDooo.csproj -p:Platform=x64
 
-```bash
+# Run unit tests
 dotnet test tests/ToDooo.Tests/ToDooo.Tests.csproj
+
+# Publish self-contained Release build (no .NET runtime required for end users)
+dotnet publish src/ToDooo.App/ToDooo.csproj -c Release -p:Platform=x64 -p:PublishProfile=win-x64
+
+# One-step release: bump version (csproj + manifest), test, publish, pack ZIP
+pwsh scripts/release.ps1 -Version 1.4.0
 ```
 
-## 发布
+Version numbers live only in `ToDooo.csproj`; the settings page reads the assembly version at runtime. Pushing a `v*` tag triggers `.github/workflows/release.yml`, which re-runs tests, packs `ToDooo-<version>-win-x64.zip` (+ SHA256) and publishes a GitHub Release.
 
-自包含单目录发布（无需安装运行时）：
+## Project Structure
 
-```bash
-dotnet publish src/ToDooo.App/ToDooo.csproj -c Release -r win-x64 -o C:/apps/ToDooo
+```text
+src/ToDooo.App/
+├── MainWindow.xaml(.cs)         # Core window lifecycle, hotkeys, WndProc, calendar/settings host
+├── MainWindow.Tray.cs           # Tray icon & menus, undo bar, JSON import/export, toast callbacks
+├── MainWindow.Dock.cs           # Edge resizing & synchronized top-edge retract/expand
+├── MainWindow.Filters.cs        # Search bar, filter tabs, tag dots, smart views, accelerators
+├── MainWindow.Todos.cs          # Quick add, task cards, context menus, subtask interactions
+├── Models/                      # TodoItem, SubtaskItem, SmartView
+├── Services/                    # SQLite repository, settings, reminder scheduler, notifier, palette
+├── ViewModels/                  # MainViewModel filtering, sorting, and persistence orchestration
+├── Views/                       # CalendarHostWindow, CalendarWindow, SettingsWindow, Editors
+├── Helpers/                     # NaturalDateParser, Bind, DpiScale
+├── Interop/                     # NativeMethods, WindowAcrylic, WindowCloak, WindowSnap, TrayIcon
+└── Themes/                      # Shared resource brushes and control styles
+tests/ToDooo.Tests/              # xUnit tests (models, ViewModel, SQLite repository, parser)
 ```
 
-便携包：把发布目录下的 `ToDooo/` 连同 `使用说明.txt` 打成 ZIP 即可，中文文件名需 UTF-8（7-Zip 加 `-mcu=on`）。
+## Local Data
 
-## 目录
+Stored under `%LocalAppData%\ToDooo\`:
 
-```
-src/ToDooo.App/       应用（WinUI 3）
-src/ToDooo.App/Models        数据模型
-src/ToDooo.App/Services      仓储、设置、提醒、主题
-src/ToDooo.App/ViewModels    列表与筛选逻辑
-src/ToDooo.App/Views         编辑弹窗、设置
-src/ToDooo.App/Interop       窗口层级、亚克力、托盘
-tests/ToDooo.Tests/   单元测试（模型 / 视图模型 / 仓储 / 日期解析）
-```
+- `todo.db` — SQLite database for tasks and subtasks
+- `settings.json` — Theme, transparency, default tab, hotkeys, tag names, smart views, and window bounds
 
-## 数据
-
-`%LocalAppData%\ToDooo`：`todo.db`（待办、子任务）与 `settings.json`（主题、透明度、视图等）。程序目录可直接覆盖升级，不影响数据。
+Replacing the executable directory preserves all local data.

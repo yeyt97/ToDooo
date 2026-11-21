@@ -39,6 +39,7 @@ public sealed partial class TodoEditorDialog : Window
     private readonly IntPtr _hwnd;
     private readonly AppWindow _appWindow;
     private DesktopAcrylicController? _acrylic;
+    private SystemBackdropConfiguration? _backdropConfig;
     private readonly SettingsService _settings;
     private int _tagIndex = -1;
     private bool _finished;
@@ -50,8 +51,13 @@ public sealed partial class TodoEditorDialog : Window
     {
     }
 
-    /// <summary>新建：把添加框里已经敲好的草稿带过来；草稿里识别到的日期直接预填。</summary>
-    public TodoEditorDialog(SettingsService settings, string initialTitle, DateTime? initialDue = null)
+    /// <summary>新建：把添加框里已经敲好的草稿带过来；草稿里识别到的日期/重复/重要直接预填。</summary>
+    public TodoEditorDialog(
+        SettingsService settings,
+        string initialTitle,
+        DateTime? initialDue = null,
+        TodoRecurrence initialRecurrence = TodoRecurrence.None,
+        bool initialImportant = false)
     {
         _settings = settings;
         InitializeComponent();
@@ -63,14 +69,21 @@ public sealed partial class TodoEditorDialog : Window
 
         ConfigureWindow();
         var dark = Appearance.IsDark((ThemeMode)settings.Current.ThemeMode);
+        _backdropConfig = new SystemBackdropConfiguration
+        {
+            IsInputActive = true,
+            Theme = dark ? SystemBackdropTheme.Dark : SystemBackdropTheme.Light,
+        };
         _acrylic = WindowAcrylic.Apply(
-            this, Appearance.TintForOpacity(settings.Current.WindowOpacity), dark);
+            this, Appearance.TintForOpacity(settings.Current.WindowOpacity), dark, _backdropConfig);
         var darkFlag = dark ? 1 : 0;
         NativeMethods.DwmSetWindowAttribute(
             _hwnd, NativeMethods.DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkFlag, sizeof(int));
 
         HeaderTitle.Text = "新建待办";
         TitleBox.Text = initialTitle ?? string.Empty;
+        RecurrenceBox.SelectedIndex = (int)initialRecurrence;
+        ImportantToggle.IsOn = initialImportant;
 
         // 新建时选了日期就带当前时刻，避免默认落到 00:00 立刻逾期。
         DueTime.SelectedTime = RoundToFiveMinutes(DateTime.Now.TimeOfDay);
@@ -288,11 +301,7 @@ public sealed partial class TodoEditorDialog : Window
         // 之前在点按钮时就把结果抛出去，调用方会立刻抢焦点、刷主界面，
         // 而窗口还没真正消失，看起来就是「点取消时闪一下」。
         _result.TrySetResult(_saved);
-
-        // 不要在 Closed 里 Dispose 亚克力控制器：窗口的合成目标正在销毁，
-        // 这时释放会让进程直接挂掉（0xc000027b，CoreMessagingXP 里崩）。
-        // 控制器交给 GC 回收即可，弹窗开得很少，这点驻留无所谓。
-        _acrylic = null;
+        WindowAcrylic.DetachAndDispose(ref _acrylic, ref _backdropConfig);
     }
 
     private void SaveButton_Click(object sender, RoutedEventArgs e) => Finish(true);
@@ -552,7 +561,14 @@ public sealed partial class TodoEditorDialog : Window
             return false;
         }
 
-        _subtaskDrafts.Add(new SubtaskDraft(0, title, false));
+        DateTime? dueAt = null;
+        if (NaturalDateParser.TryParse(title, DateTime.Now, out var parsedDue, out var cleaned))
+        {
+            title = cleaned;
+            dueAt = parsedDue;
+        }
+
+        _subtaskDrafts.Add(new SubtaskDraft(0, title, false, dueAt));
         SubtaskInput.Text = string.Empty;
         return true;
     }

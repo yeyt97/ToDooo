@@ -38,6 +38,27 @@ internal static class WindowAcrylic
         return controller;
     }
 
+    public static void DetachAndDispose(
+        ref DesktopAcrylicController? controller,
+        ref SystemBackdropConfiguration? configuration)
+    {
+        if (controller is not null)
+        {
+            try
+            {
+                controller.RemoveAllSystemBackdropTargets();
+                controller.Dispose();
+            }
+            catch
+            {
+            }
+
+            controller = null;
+        }
+
+        configuration = null;
+    }
+
     /// <summary>运行中改透明度/主题：直接改控制器属性即可，不需要重建。</summary>
     public static void ApplyTint(DesktopAcrylicController controller, float tintOpacity, bool dark)
     {

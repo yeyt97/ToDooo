@@ -63,6 +63,7 @@
                 CornerRadius="7">
                 <StackPanel Orientation="Horizontal" Spacing="1" VerticalAlignment="Center">
                     <Button
+                        x:Name="PrevNavButton"
                         Width="26"
                         Height="26"
                         AutomationProperties.Name="上个月"
@@ -82,7 +83,7 @@
                         Style="{StaticResource LinkButtonStyle}">
                         <TextBlock
                             x:Name="MonthTitle"
-                            MinWidth="88"
+                            MinWidth="80"
                             VerticalAlignment="Center"
                             FontSize="12"
                             FontWeight="SemiBold"
@@ -90,6 +91,7 @@
                             Foreground="{ThemeResource TextPrimaryBrush}" />
                     </Button>
                     <Button
+                        x:Name="NextNavButton"
                         Width="26"
                         Height="26"
                         AutomationProperties.Name="下个月"
@@ -114,7 +116,43 @@
                 Grid.Column="2"
                 VerticalAlignment="Center"
                 Orientation="Horizontal"
-                Spacing="4">
+                Spacing="6">
+                <Border
+                    Padding="2"
+                    Background="{ThemeResource SegmentBarBrush}"
+                    BorderBrush="{ThemeResource LayerStrokeBrush}"
+                    BorderThickness="1"
+                    CornerRadius="7">
+                    <StackPanel Orientation="Horizontal" Spacing="1" VerticalAlignment="Center">
+                        <Button
+                            x:Name="MonthViewButton"
+                            MinWidth="26"
+                            MinHeight="24"
+                            Padding="7,2"
+                            FontSize="11"
+                            AutomationProperties.Name="月视图"
+                            Click="MonthView_Click"
+                            Style="{StaticResource SegmentButtonStyle}"
+                            Content="月" />
+                        <Button
+                            x:Name="DayViewButton"
+                            MinWidth="26"
+                            MinHeight="24"
+                            Padding="7,2"
+                            FontSize="11"
+                            AutomationProperties.Name="日视图"
+                            Click="DayView_Click"
+                            Style="{StaticResource SegmentButtonStyle}"
+                            Content="日" />
+                    </StackPanel>
+                </Border>
+                <Button
+                    x:Name="HideCompletedButton"
+                    AutomationProperties.Name="隐藏已完成"
+                    Click="HideCompleted_Click"
+                    Style="{StaticResource FlatIconButtonStyle}">
+                    <FontIcon x:Name="HideCompletedIcon" Glyph="&#xE890;" FontSize="13" />
+                </Button>
                 <Button
                     x:Name="RightPanelToggleButton"
                     AutomationProperties.Name="收起详情"
@@ -140,13 +178,13 @@
                 BorderBrush="{ThemeResource LayerStrokeBrush}"
                 BorderThickness="1"
                 CornerRadius="8">
-                <Grid Background="Transparent" PointerWheelChanged="MonthGrid_PointerWheelChanged">
+                <Grid Background="Transparent">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
-                    <Grid x:Name="WeekdayRow" Margin="0,0,0,6" />
+                    <Grid x:Name="WeekdayRow" Margin="0,0,10,6" />
                     <Grid
                         x:Name="DaysGrid"
                         Grid.Row="1"
@@ -161,6 +199,7 @@
                     <RowDefinition x:Name="SelectedDayRow" Height="*" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition x:Name="UndatedRow" Height="*" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <Border
@@ -272,6 +311,24 @@
                             <StackPanel x:Name="UndatedPanel" Padding="0,0,10,0" Spacing="4" />
                         </ScrollViewer>
                     </Grid>
+                </Border>
+
+                <Border
+                    Grid.Row="3"
+                    Margin="0,8,0,0"
+                    Padding="10,7,10,7"
+                    Background="{ThemeResource ItemCardBrush}"
+                    BorderBrush="{ThemeResource ItemCardStrokeBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8">
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="{ThemeResource AccentBrush}" />
+                        <TextBlock
+                            x:Name="WeeklySummaryText"
+                            FontSize="11"
+                            Foreground="{ThemeResource TextSecondaryBrush}"
+                            Text="本周已完成 0 项" />
+                    </StackPanel>
                 </Border>
             </Grid>
             </Grid>

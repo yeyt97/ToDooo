@@ -124,6 +124,24 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
+                            <TextBlock Style="{StaticResource LabelText}" Text="默认标签" />
+                            <ComboBox
+                                x:Name="DefaultTabBox"
+                                Grid.Column="1"
+                                Width="150"
+                                AutomationProperties.Name="默认标签"
+                                SelectionChanged="DefaultTabBox_SelectionChanged">
+                                <ComboBoxItem Content="全部" />
+                                <ComboBoxItem Content="进行中" />
+                                <ComboBoxItem Content="重要" />
+                                <ComboBoxItem Content="已完成" />
+                            </ComboBox>
+                        </Grid>
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
                             <TextBlock Style="{StaticResource LabelText}" Text="开机自启" />
                             <ToggleSwitch
                                 x:Name="StartupToggle"
@@ -182,6 +200,24 @@
                                 <ComboBoxItem Content="Ctrl + Alt + T" />
                                 <ComboBoxItem Content="Ctrl + Shift + T" />
                                 <ComboBoxItem Content="Alt + Q" />
+                            </ComboBox>
+                        </Grid>
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Style="{StaticResource LabelText}" Text="快速记一条" />
+                            <ComboBox
+                                x:Name="QuickAddHotkeyBox"
+                                Grid.Column="1"
+                                Width="150"
+                                AutomationProperties.Name="快速记一条快捷键"
+                                SelectionChanged="QuickAddHotkeyBox_SelectionChanged">
+                                <ComboBoxItem Content="关闭" />
+                                <ComboBoxItem Content="Ctrl + Alt + N" />
+                                <ComboBoxItem Content="Ctrl + Shift + N" />
+                                <ComboBoxItem Content="Alt + N" />
                             </ComboBox>
                         </Grid>
                     </StackPanel>

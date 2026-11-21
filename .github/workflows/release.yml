@@ -1,0 +1,57 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "11.0.x"
+
+      - name: Verify version matches tag
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}".TrimStart("v")
+          $text = Get-Content "src/ToDooo.App/ToDooo.csproj" -Raw
+          if ($text -notmatch "<Version>([^<]+)</Version>") { throw "Version not found in csproj" }
+          if ($Matches[1] -ne $tag) {
+            throw "csproj Version '$($Matches[1])' does not match tag '$tag'. Run scripts/release.ps1 first."
+          }
+
+      - name: Test
+        run: dotnet test tests/ToDooo.Tests/ToDooo.Tests.csproj
+
+      - name: Publish
+        run: dotnet publish src/ToDooo.App/ToDooo.csproj -c Release -p:Platform=x64 -p:PublishProfile=win-x64
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          $publish = "src/ToDooo.App/bin/Release/net11.0-windows10.0.26100.0/win-x64/publish"
+          $stage = Join-Path $env:RUNNER_TEMP "stage"
+          $stageApp = Join-Path $stage "ToDooo"
+          New-Item -ItemType Directory -Path $stageApp -Force | Out-Null
+          Copy-Item -Path (Join-Path $publish "*") -Destination $stageApp -Recurse -Force
+          $zip = "ToDooo-$version-win-x64.zip"
+          Compress-Archive -Path $stageApp -DestinationPath $zip -Force
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash
+          Set-Content -Path "$zip.sha256" -Value $hash -Encoding ASCII
+          Write-Host "Package: $zip ($hash)"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ToDooo-*-win-x64.zip
+            ToDooo-*-win-x64.zip.sha256
+          generate_release_notes: true

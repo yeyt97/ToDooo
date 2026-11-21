@@ -21,6 +21,7 @@ public sealed partial class SubtaskEditorDialog : Window
     private readonly IntPtr _hwnd;
     private readonly AppWindow _appWindow;
     private DesktopAcrylicController? _acrylic;
+    private SystemBackdropConfiguration? _backdropConfig;
     private bool _finished;
     private bool _ready;
     private bool _dueTouched;
@@ -46,8 +47,13 @@ public sealed partial class SubtaskEditorDialog : Window
 
         ConfigureWindow();
         var dark = Appearance.IsDark((ThemeMode)settings.Current.ThemeMode);
+        _backdropConfig = new SystemBackdropConfiguration
+        {
+            IsInputActive = true,
+            Theme = dark ? SystemBackdropTheme.Dark : SystemBackdropTheme.Light,
+        };
         _acrylic = WindowAcrylic.Apply(
-            this, Appearance.TintForOpacity(settings.Current.WindowOpacity), dark);
+            this, Appearance.TintForOpacity(settings.Current.WindowOpacity), dark, _backdropConfig);
         var darkFlag = dark ? 1 : 0;
         NativeMethods.DwmSetWindowAttribute(
             _hwnd, NativeMethods.DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkFlag, sizeof(int));
@@ -216,7 +222,7 @@ public sealed partial class SubtaskEditorDialog : Window
         _finished = true;
         WindowCloak.Cancel(_hwnd, reveal: false);
         _result.TrySetResult(_saved);
-        _acrylic = null;
+        WindowAcrylic.DetachAndDispose(ref _acrylic, ref _backdropConfig);
     }
 
     private void SaveButton_Click(object sender, RoutedEventArgs e) => Finish(true);

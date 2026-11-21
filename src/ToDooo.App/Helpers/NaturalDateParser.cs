@@ -1,13 +1,28 @@
 using System.Text.RegularExpressions;
+using ToDooo.Models;
 
 namespace ToDooo.Helpers;
 
+public sealed record NaturalParseResult(
+    string Title,
+    DateTime? DueAt,
+    TodoRecurrence Recurrence,
+    bool IsImportant);
+
 /// <summary>
-/// 从标题里识别中文日期/时间（今天、明天、周五、3月5日、3天后、10点半、18:30…），
-/// 识别到就把这段时间从标题里摘掉，返回干净的标题。
+/// 从标题里识别中文日期/时间（今天、明天、周五、3月5日、3天后、10点半、18:30…）、
+/// 重复（每天/每周/每月）与重要标记（!重要），识别到就把对应标记从标题里摘掉。
 /// </summary>
 public static class NaturalDateParser
 {
+    private static readonly Regex RecurrencePattern = new(
+        @"(?<daily>每天|每日)|(?<weekly>每周(?<wd>[一二三四五六日天1-7])?)|(?<monthly>每月(?:(?<dom>\d{1,2}|[〇零一二两三四五六七八九十]{1,3})\s*[日号])?)",
+        RegexOptions.Compiled);
+
+    private static readonly Regex ImportantPattern = new(
+        @"(?:^|\s)[!！]重要|!重要|！重要|\[重要\]|(?:^|\s)!!+|!!+$",
+        RegexOptions.Compiled);
+
     private static readonly Regex DatePattern = new(
         @"(?<today>大后天|今天|明天|后天)|(?<weekday>(?<next>下)?(?:周|星期|礼拜)(?<wd>[一二三四五六日天1-7]))|(?<md>(?<month>\d{1,2}|[〇零一二两三四五六七八九十]{1,3})\s*月\s*(?<day>\d{1,2}|[〇零一二两三四五六七八九十]{1,3})\s*[日号])|(?<days>(?<n>\d{1,2}|[〇零一二两三四五六七八九十]{1,3})\s*天后)",
         RegexOptions.Compiled);
@@ -19,6 +34,124 @@ public static class NaturalDateParser
     private static readonly Regex ClockTimePattern = new(
         @"(?<h>\d{1,2})\s*[:：]\s*(?<m>\d{2})",
         RegexOptions.Compiled);
+
+    public static NaturalParseResult ParseRich(string? text, DateTime now)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return new NaturalParseResult(string.Empty, null, TodoRecurrence.None, false);
+        }
+
+        var work = text;
+        var recurrence = TodoRecurrence.None;
+        var isImportant = false;
+        DateTime? recurrenceAnchorDate = null;
+
+        var impMatch = ImportantPattern.Match(work);
+        if (impMatch.Success)
+        {
+            isImportant = true;
+            work = Remove(work, impMatch);
+        }
+
+        var recMatch = RecurrencePattern.Match(work);
+        if (recMatch.Success)
+        {
+            if (recMatch.Groups["daily"].Success)
+            {
+                recurrence = TodoRecurrence.Daily;
+                recurrenceAnchorDate = now.Date;
+            }
+            else if (recMatch.Groups["weekly"].Success)
+            {
+                recurrence = TodoRecurrence.Weekly;
+                if (recMatch.Groups["wd"].Success)
+                {
+                    var target = WeekdayNumber(recMatch.Groups["wd"].Value[0]);
+                    var delta = ((target - (int)now.DayOfWeek) + 7) % 7;
+                    recurrenceAnchorDate = now.Date.AddDays(delta);
+                }
+                else
+                {
+                    recurrenceAnchorDate = now.Date;
+                }
+            }
+            else if (recMatch.Groups["monthly"].Success)
+            {
+                recurrence = TodoRecurrence.Monthly;
+                if (recMatch.Groups["dom"].Success &&
+                    TryParseNumber(recMatch.Groups["dom"].Value, out var dom) &&
+                    dom is >= 1 and <= 31)
+                {
+                    var safeDay = Math.Min(dom, DateTime.DaysInMonth(now.Year, now.Month));
+                    var candidate = new DateTime(now.Year, now.Month, safeDay);
+                    if (candidate < now.Date)
+                    {
+                        var nextMonth = now.AddMonths(1);
+                        var nextSafeDay = Math.Min(dom, DateTime.DaysInMonth(nextMonth.Year, nextMonth.Month));
+                        candidate = new DateTime(nextMonth.Year, nextMonth.Month, nextSafeDay);
+                    }
+
+                    recurrenceAnchorDate = candidate;
+                }
+                else
+                {
+                    recurrenceAnchorDate = now.Date;
+                }
+            }
+
+            if (recurrence != TodoRecurrence.None)
+            {
+                work = Remove(work, recMatch);
+            }
+        }
+
+        var dateMatched = TryParse(work, now, out var parsedDue, out var cleanedTitle);
+        if (!dateMatched && recurrence != TodoRecurrence.None && recurrenceAnchorDate is { } anchor)
+        {
+            // 说了重复但没说具体日期时间时：每天/本周默认延后 1 小时或当天 9 点（当天已过顺延）。
+            var fallback = anchor == now.Date
+                ? RoundUpToFiveMinutes(now.AddHours(1))
+                : anchor.AddHours(9);
+            var clean = CleanTitle(work);
+            if (clean.Length == 0)
+            {
+                return new NaturalParseResult(text.Trim(), null, TodoRecurrence.None, false);
+            }
+
+            return new NaturalParseResult(clean, fallback, recurrence, isImportant);
+        }
+
+        if (dateMatched)
+        {
+            var finalDue = parsedDue;
+            if (recurrence != TodoRecurrence.None && recurrenceAnchorDate is { } recAnchor &&
+                !DatePattern.IsMatch(work))
+            {
+                finalDue = recAnchor.Date + parsedDue.TimeOfDay;
+                if (finalDue <= now)
+                {
+                    finalDue = recurrence switch
+                    {
+                        TodoRecurrence.Daily => finalDue.AddDays(1),
+                        TodoRecurrence.Weekly => finalDue.AddDays(7),
+                        TodoRecurrence.Monthly => finalDue.AddMonths(1),
+                        _ => finalDue,
+                    };
+                }
+            }
+
+            return new NaturalParseResult(cleanedTitle, finalDue, recurrence, isImportant);
+        }
+
+        var titleOnly = CleanTitle(work);
+        if (titleOnly.Length == 0)
+        {
+            return new NaturalParseResult(text.Trim(), null, TodoRecurrence.None, false);
+        }
+
+        return new NaturalParseResult(titleOnly, null, recurrence, isImportant);
+    }
 
     public static bool TryParse(string? text, DateTime now, out DateTime due, out string title)
     {

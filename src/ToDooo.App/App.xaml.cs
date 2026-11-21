@@ -38,7 +38,7 @@ public partial class App : Application
         ApplySystemAccent();
         _uiSettings.ColorValuesChanged += (_, _) => _dispatcher?.TryEnqueue(ApplySystemAccent);
 
-        Repository = new TodoRepository(AppPaths.DatabasePath);
+        Repository = new TodoRepository(AppPaths.DatabasePath, AppPaths.BackupDir);
         Repository.Initialize();
         Settings = new SettingsService();
         Notifier = new Notifier();

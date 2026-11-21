@@ -74,6 +74,14 @@
     <SolidColorBrush x:Key="ListViewItemForegroundSelected" Color="#F5F5F5" />
     <SolidColorBrush x:Key="ListViewItemSelectionIndicatorForeground" Color="Transparent" />
 
+    <!-- 禁用 Tab 键切焦时的系统高亮方框 -->
+    <SolidColorBrush x:Key="SystemControlFocusVisualPrimaryBrush" Color="Transparent" />
+    <SolidColorBrush x:Key="SystemControlFocusVisualSecondaryBrush" Color="Transparent" />
+    <SolidColorBrush x:Key="FocusVisualPrimaryBrush" Color="Transparent" />
+    <SolidColorBrush x:Key="FocusVisualSecondaryBrush" Color="Transparent" />
+    <Thickness x:Key="FocusVisualPrimaryThickness">0</Thickness>
+    <Thickness x:Key="FocusVisualSecondaryThickness">0</Thickness>
+
     <Style x:Key="FlatIconButtonStyle" TargetType="Button">
         <Setter Property="Width" Value="30" />
         <Setter Property="Height" Value="30" />

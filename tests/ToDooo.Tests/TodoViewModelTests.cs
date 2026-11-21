@@ -375,11 +375,14 @@ public sealed class TodoViewModelTests : IDisposable
     [Fact]
     public void SmartView_FiltersByDueDate()
     {
-        var today = new TodoItem { Title = "今天事", DueAt = DateTime.Now.Date.AddHours(23) };
-        var tomorrow = new TodoItem { Title = "明天事", DueAt = DateTime.Now.Date.AddDays(1).AddHours(9) };
-        var overdue = new TodoItem { Title = "昨天事", DueAt = DateTime.Now.Date.AddDays(-1).AddHours(9) };
+        var clock = new DateTime(2026, 11, 20, 10, 0, 0);
+        _viewModel.Clock = () => clock;
+
+        var today = new TodoItem { Title = "今天事", DueAt = clock.Date.AddHours(23) };
+        var tomorrow = new TodoItem { Title = "明天事", DueAt = clock.Date.AddDays(1).AddHours(9) };
+        var overdue = new TodoItem { Title = "昨天事", DueAt = clock.Date.AddDays(-1).AddHours(9) };
         var noDue = new TodoItem { Title = "无期限" };
-        var done = new TodoItem { Title = "完成在今天", DueAt = DateTime.Now.Date.AddHours(10) };
+        var done = new TodoItem { Title = "完成在今天", DueAt = clock.Date.AddHours(9) };
         _viewModel.AddItem(today);
         _viewModel.AddItem(tomorrow);
         _viewModel.AddItem(overdue);
@@ -418,5 +421,138 @@ public sealed class TodoViewModelTests : IDisposable
         var loaded = reloaded.AllItems.Single();
         Assert.False(loaded.DueNotified);
         Assert.True(loaded.SnoozeUntil > DateTime.Now.AddMinutes(9));
+    }
+
+    [Fact]
+    public void UpdateSubtask_PersistsNoteAndSearchMatchesNote()
+    {
+        var item = new TodoItem { Title = "设备报销" };
+        _viewModel.AddItem(item);
+        _viewModel.AddSubtask(item, "预约会议室");
+        var subtask = item.Subtasks[0];
+
+        _viewModel.UpdateSubtask(item, subtask, "预约教室", "13周 周六 100-150人", new DateTime(2026, 11, 20, 13, 0, 0), false);
+
+        var reloaded = new MainViewModel(_repository);
+        reloaded.Load();
+        var loadedSub = reloaded.AllItems.Single().Subtasks.Single();
+        Assert.Equal("预约教室", loadedSub.Title);
+        Assert.Equal("13周 周六 100-150人", loadedSub.Note);
+        Assert.Equal(new DateTime(2026, 11, 20, 13, 0, 0), loadedSub.DueAt);
+
+        reloaded.SetSearch("100-150");
+        Assert.Single(reloaded.Items);
+    }
+
+    [Fact]
+    public void AddSubtask_ParsesNaturalDueDate()
+    {
+        var item = new TodoItem { Title = "出差准备" };
+        _viewModel.AddItem(item);
+
+        _viewModel.AddSubtask(item, "明天 10:30 买车票");
+
+        var sub = item.Subtasks.Single();
+        Assert.Equal("买车票", sub.Title);
+        Assert.NotNull(sub.DueAt);
+        Assert.Equal(DateTime.Today.AddDays(1).AddHours(10).AddMinutes(30), sub.DueAt);
+    }
+
+    [Fact]
+    public void RescheduleOverdueToToday_MovesOverdueItemsAndSubtasks()
+    {
+        var now = new DateTime(2026, 11, 20, 10, 12, 0);
+        var pastSameDayFutureTime = new TodoItem
+        {
+            Title = "逾期但时刻未过",
+            DueAt = new DateTime(2026, 11, 18, 15, 0, 0),
+        };
+        var pastPassedTime = new TodoItem
+        {
+            Title = "逾期且时刻已过",
+            DueAt = new DateTime(2026, 11, 19, 8, 0, 0),
+        };
+        pastPassedTime.Subtasks.Add(new SubtaskItem
+        {
+            Title = "逾期子任务",
+            DueAt = new DateTime(2026, 11, 19, 9, 0, 0),
+        });
+        var future = new TodoItem
+        {
+            Title = "未来任务",
+            DueAt = new DateTime(2026, 11, 22, 11, 0, 0),
+        };
+
+        _viewModel.AddItem(pastSameDayFutureTime);
+        _viewModel.AddItem(pastPassedTime);
+        _viewModel.AddItem(future);
+
+        var moved = _viewModel.RescheduleOverdueToToday(now);
+
+        Assert.Equal(3, moved);
+        Assert.Equal(new DateTime(2026, 11, 20, 15, 0, 0), pastSameDayFutureTime.DueAt);
+        Assert.Equal(new DateTime(2026, 11, 20, 11, 15, 0), pastPassedTime.DueAt);
+        Assert.Equal(new DateTime(2026, 11, 20, 11, 15, 0), pastPassedTime.Subtasks[0].DueAt);
+        Assert.Equal(new DateTime(2026, 11, 22, 11, 0, 0), future.DueAt);
+    }
+
+    [Fact]
+    public void RescheduleOverdueToToday_WithSnapshot_CanRestore()
+    {
+        var now = new DateTime(2026, 11, 20, 10, 0, 0);
+        var oldDue = new DateTime(2026, 11, 18, 9, 0, 0);
+        var item = new TodoItem { Title = "待还原", DueAt = oldDue };
+        _viewModel.AddItem(item);
+
+        var moved = _viewModel.RescheduleOverdueToToday(out var snapshot, now);
+        Assert.Equal(1, moved);
+        Assert.NotEqual(oldDue, item.DueAt);
+
+        _viewModel.RestoreDueDates(snapshot);
+        Assert.Equal(oldDue, item.DueAt);
+    }
+
+    [Fact]
+    public void Repository_EnsureDailyBackup_CreatesAndRotatesBackups()
+    {
+        var backupDir = Path.Combine(Path.GetTempPath(), $"todooo-bak-{Guid.NewGuid():N}");
+        try
+        {
+            var repo = new TodoRepository(_dbPath, backupDir);
+            repo.Initialize();
+            repo.Add(new TodoItem { Title = "备份验证" });
+
+            for (var d = 1; d <= 9; d++)
+            {
+                repo.EnsureDailyBackup(DateTime.Today.AddDays(d), keepCount: 7);
+            }
+
+            var files = Directory.GetFiles(backupDir, "todo-*.db").Select(Path.GetFileName).OrderBy(x => x).ToList();
+            Assert.Equal(7, files.Count);
+            Assert.Equal($"todo-{DateTime.Today.AddDays(3):yyyyMMdd}.db", files[0]);
+            Assert.Equal($"todo-{DateTime.Today.AddDays(9):yyyyMMdd}.db", files[^1]);
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            if (Directory.Exists(backupDir))
+            {
+                Directory.Delete(backupDir, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void Mutations_RaiseDataChangedForCalendarSync()
+    {
+        var item = new TodoItem { Title = "同步事件" };
+        _viewModel.AddItem(item);
+
+        var count = 0;
+        _viewModel.DataChanged += (_, _) => count++;
+        _viewModel.SetDone(item, true);
+        _viewModel.Rename(item, "新名称");
+
+        Assert.Equal(2, count);
     }
 }

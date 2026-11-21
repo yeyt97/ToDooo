@@ -7,9 +7,14 @@ public sealed class TodoRepository
 {
     private const string DateFormat = "yyyy-MM-dd'T'HH:mm:ss";
     private readonly string _connectionString;
+    private readonly string _databasePath;
+    private readonly string? _backupDir;
+    private DateTime _lastBackupDate;
 
-    public TodoRepository(string databasePath)
+    public TodoRepository(string databasePath, string? backupDir = null)
     {
+        _databasePath = databasePath;
+        _backupDir = backupDir;
         _connectionString = new SqliteConnectionStringBuilder
         {
             DataSource = databasePath,
@@ -111,6 +116,66 @@ public sealed class TodoRepository
         catch
         {
             // 列已存在
+        }
+
+        EnsureDailyBackup();
+    }
+
+    public void EnsureDailyBackup(DateTime? nowOverride = null, int keepCount = 7)
+    {
+        if (string.IsNullOrWhiteSpace(_backupDir) ||
+            string.IsNullOrWhiteSpace(_databasePath) ||
+            _databasePath == ":memory:" ||
+            !File.Exists(_databasePath))
+        {
+            return;
+        }
+
+        var today = (nowOverride ?? DateTime.Now).Date;
+        if (_lastBackupDate == today)
+        {
+            return;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(_backupDir);
+            var target = Path.Combine(_backupDir, $"todo-{today:yyyyMMdd}.db");
+            if (!File.Exists(target))
+            {
+                var backupConnString = new SqliteConnectionStringBuilder
+                {
+                    DataSource = target,
+                    Mode = SqliteOpenMode.ReadWriteCreate,
+                    Pooling = false,
+                }.ToString();
+
+                using var source = Open();
+                using var dest = new SqliteConnection(backupConnString);
+                dest.Open();
+                source.BackupDatabase(dest);
+            }
+
+            _lastBackupDate = today;
+
+            var oldBackups = Directory.GetFiles(_backupDir, "todo-*.db")
+                .OrderByDescending(Path.GetFileName, StringComparer.OrdinalIgnoreCase)
+                .Skip(Math.Max(1, keepCount));
+            foreach (var old in oldBackups)
+            {
+                try
+                {
+                    File.Delete(old);
+                }
+                catch
+                {
+                    // 清理旧备份失败不影响正常读写
+                }
+            }
+        }
+        catch
+        {
+            // 自动备份失败不阻塞主流程
         }
     }
 

@@ -108,6 +108,17 @@ public static class ThemePalette
         Set("TextControlPlaceholderForegroundPointerOver", "TextMutedBrush");
     }
 
+    public static AcrylicBrush CreateDialogAcrylicBrush(bool dark) => new()
+    {
+        TintColor = dark
+            ? Color.FromArgb(255, 0x2A, 0x30, 0x38)
+            : Color.FromArgb(255, 0xF2, 0xF2, 0xF7),
+        FallbackColor = dark
+            ? Color.FromArgb(255, 0x20, 0x25, 0x2C)
+            : Color.FromArgb(255, 0xF6, 0xF6, 0xF9),
+        TintOpacity = dark ? 0.75 : 0.85,
+    };
+
     public static void Apply(bool dark, double opacity)
     {
         var resources = Application.Current.Resources;

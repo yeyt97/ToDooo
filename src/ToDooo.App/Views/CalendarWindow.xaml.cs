@@ -34,8 +34,25 @@ public sealed partial class CalendarWindow : UserControl
     private CalendarEntry? _draggedEntry;
     private bool _previewOpen;
 
+    private enum CalendarViewMode
+    {
+        Month = 0,
+        Day = 1,
+    }
+
     private DateTime _month;
     private DateTime _selected;
+    private CalendarViewMode _viewMode = CalendarViewMode.Month;
+    private CalendarViewMode _builtViewMode = CalendarViewMode.Month;
+    private ScrollViewer? _activeScroll;
+    private DateTime _monthGridStart;
+    private int _monthLoadedWeeks;
+    private double _monthRowStride;
+    private DateTime _streamStart;
+    private int _streamCount;
+    private bool _suppressScrollSync;
+    private DateTime? _pendingJumpDate;
+    private double? _restoreScrollOffset;
     private double _lastLayoutWidth;
     private double _lastLayoutHeight;
     private bool _selectedDayHasEntries;
@@ -48,7 +65,7 @@ public sealed partial class CalendarWindow : UserControl
     private bool _hoveringRightSplitter;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _dragMonthNavTimer;
     private int _dragMonthNavDelta;
-    private readonly List<(DateTime Date, Border Cell)> _cells = new();
+    private readonly List<(DateTime Date, Border Cell, bool InScope)> _cells = new();
 
     public event EventHandler<PointerRoutedEventArgs>? HeaderDragPressed;
     public event EventHandler<PointerRoutedEventArgs>? HeaderDragMoved;
@@ -57,6 +74,8 @@ public sealed partial class CalendarWindow : UserControl
     public event EventHandler<bool>? RightPanelCollapsedChanged;
 
     public bool IsRightPanelCollapsed => _rightPanelCollapsed;
+
+    public bool IsPreviewOpen => _previewOpen;
 
     public double CurrentDrawerWidthLogical => _savedDrawerLogicalWidth;
 
@@ -84,6 +103,7 @@ public sealed partial class CalendarWindow : UserControl
         if (_viewModel is not null)
         {
             _viewModel.Items.CollectionChanged -= OnItemsChanged;
+            _viewModel.DataChanged -= OnViewModelDataChanged;
         }
 
         _viewModel = viewModel;
@@ -92,8 +112,12 @@ public sealed partial class CalendarWindow : UserControl
         _rescheduleRequested = rescheduleRequested;
         _createRequested = createRequested;
         _setCursor = setCursor;
+        _viewMode = settings.Current.CalendarViewMode >= 1
+            ? CalendarViewMode.Day
+            : CalendarViewMode.Month;
 
         _viewModel.Items.CollectionChanged += OnItemsChanged;
+        _viewModel.DataChanged += OnViewModelDataChanged;
         RefreshTheme();
     }
 
@@ -141,7 +165,7 @@ public sealed partial class CalendarWindow : UserControl
         }
         HeaderTitleText.FontSize = Math.Round(15 * scale, 1);
         MonthTitle.FontSize = Math.Round(12 * scale, 1);
-        MonthTitle.MinWidth = Math.Round(88 * scale);
+        MonthTitle.MinWidth = Math.Round(80 * scale);
         SelectedDateText.FontSize = Math.Round(13 * scale, 1);
         UndatedHeaderText.FontSize = Math.Round(11 * scale, 1);
         UndatedCountText.FontSize = Math.Round(10 * scale, 1);
@@ -177,6 +201,54 @@ public sealed partial class CalendarWindow : UserControl
         ThemePalette.ApplyTextControlPalette(Root.Resources);
         RightPanelToggleButton.Foreground = (Brush)Application.Current.Resources[
             _rightPanelCollapsed ? "TextSecondaryBrush" : "AccentBrush"];
+        UpdateHideCompletedVisuals();
+        UpdateViewModeVisuals();
+    }
+
+    private void UpdateHideCompletedVisuals()
+    {
+        var hide = _settings?.Current.CalendarHideCompleted == true;
+        HideCompletedIcon.Glyph = hide ? "\uED1A" : "\uE890";
+        HideCompletedButton.Foreground = (Brush)Application.Current.Resources[
+            hide ? "AccentBrush" : "TextSecondaryBrush"];
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+            HideCompletedButton, hide ? "显示已完成" : "隐藏已完成");
+    }
+
+    private void HideCompleted_Click(object sender, RoutedEventArgs e)
+    {
+        if (_settings is null)
+        {
+            return;
+        }
+
+        _settings.Current.CalendarHideCompleted = !_settings.Current.CalendarHideCompleted;
+        _settings.Save();
+        UpdateHideCompletedVisuals();
+        Refresh();
+    }
+
+    private void UpdateViewModeVisuals()
+    {
+        var selectedBrush = (Brush)Application.Current.Resources["SegmentSelectedBrush"];
+        var transparentBrush = (Brush)Application.Current.Resources["TransparentBrush"];
+        var activeText = (Brush)Application.Current.Resources["TextPrimaryBrush"];
+        var mutedText = (Brush)Application.Current.Resources["TextMutedBrush"];
+
+        void Apply(Button button, bool active)
+        {
+            button.Background = active ? selectedBrush : transparentBrush;
+            button.Foreground = active ? activeText : mutedText;
+        }
+
+        Apply(MonthViewButton, _viewMode == CalendarViewMode.Month);
+        Apply(DayViewButton, _viewMode == CalendarViewMode.Day);
+
+        var (prevName, nextName) = _viewMode == CalendarViewMode.Day
+            ? ("上一周", "下一周")
+            : ("上个月", "下个月");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(PrevNavButton, prevName);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(NextNavButton, nextName);
     }
 
     public void EnsureRefreshed()
@@ -200,12 +272,30 @@ public sealed partial class CalendarWindow : UserControl
         _lastLayoutHeight = 0;
     }
 
-    private void OnItemsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    private bool _refreshQueued;
+
+    private void OnItemsChanged(object? sender, NotifyCollectionChangedEventArgs e) =>
+        QueueRefreshIfVisible();
+
+    private void OnViewModelDataChanged(object? sender, EventArgs e) =>
+        QueueRefreshIfVisible();
+
+    private void QueueRefreshIfVisible()
     {
-        if (Visibility == Visibility.Visible)
+        if (Visibility != Visibility.Visible || _refreshQueued)
         {
-            Refresh();
+            return;
         }
+
+        _refreshQueued = true;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            _refreshQueued = false;
+            if (Visibility == Visibility.Visible)
+            {
+                Refresh();
+            }
+        });
     }
 
     private void BuildWeekdayHeader()
@@ -238,14 +328,21 @@ public sealed partial class CalendarWindow : UserControl
             return;
         }
 
+        if (_restoreScrollOffset is null && _pendingJumpDate is null &&
+            _activeScroll is not null && _builtViewMode == _viewMode)
+        {
+            _restoreScrollOffset = _activeScroll.VerticalOffset;
+        }
+
         ApplyResponsiveMetrics(GetUiScale());
+        UpdateViewModeVisuals();
         if (Root.ActualWidth > 0 && Root.ActualHeight > 0)
         {
             _lastLayoutWidth = Root.ActualWidth;
             _lastLayoutHeight = Root.ActualHeight;
         }
 
-        MonthTitle.Text = $"{_month:yyyy 年 M 月}";
+        MonthTitle.Text = FormatHeaderTitle();
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(MonthTitle, MonthTitle.Text);
 
         var entries = BuildEntries();
@@ -257,7 +354,21 @@ public sealed partial class CalendarWindow : UserControl
                 .ThenBy(entry => entry.Title)
                 .ToList());
 
-        BuildMonthCells(dated);
+        WeekdayRow.Visibility = _viewMode == CalendarViewMode.Month
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        if (_viewMode == CalendarViewMode.Day)
+        {
+            BuildDayAgendaCells(dated);
+        }
+        else
+        {
+            BuildMonthCells(dated);
+        }
+
+        _builtViewMode = _viewMode;
+        _pendingJumpDate = null;
         ShowSelectedDay(dated.TryGetValue(_selected, out var dayEntries) ? dayEntries : new List<CalendarEntry>());
 
         var undated = viewModel.AllItems
@@ -265,7 +376,49 @@ public sealed partial class CalendarWindow : UserControl
             .Select(item => new CalendarEntry(item, null))
             .ToList();
         ShowUndated(undated);
+        UpdateWeeklySummary(viewModel);
     }
+
+    private void UpdateWeeklySummary(MainViewModel viewModel)
+    {
+        var weekStart = WeekStart(DateTime.Today);
+        var weekEnd = weekStart.AddDays(6);
+        var doneCount = viewModel.AllItems.Count(item =>
+            item.IsDone &&
+            (item.CompletedAt ?? item.DueAt) is { } dt &&
+            dt.Date >= weekStart &&
+            dt.Date <= weekEnd);
+        WeeklySummaryText.Text = $"本周已完成 {doneCount} 项";
+    }
+
+    private string FormatHeaderTitle()
+    {
+        if (_viewMode == CalendarViewMode.Day)
+        {
+            return FormatWeekTitle(WeekStart(_selected));
+        }
+
+        return $"{_month:yyyy 年 M 月}";
+    }
+
+    private static string FormatWeekTitle(DateTime start)
+    {
+        var end = start.AddDays(6);
+        if (start.Year == end.Year && start.Month == end.Month)
+        {
+            return $"{start:yyyy 年 M 月 d}–{end.Day} 日";
+        }
+
+        if (start.Year == end.Year)
+        {
+            return $"{start:yyyy 年 M/d}–{end:M/d}";
+        }
+
+        return $"{start:yyyy/M/d}–{end:yyyy/M/d}";
+    }
+
+    private static DateTime WeekStart(DateTime date) =>
+        date.Date.AddDays(-(((int)date.DayOfWeek + 6) % 7));
 
     private List<CalendarEntry> BuildEntries()
     {
@@ -276,16 +429,17 @@ public sealed partial class CalendarWindow : UserControl
             return entries;
         }
 
+        var hideCompleted = _settings?.Current.CalendarHideCompleted == true;
         foreach (var item in viewModel.AllItems)
         {
-            if (item.DueAt is not null)
+            if (item.DueAt is not null && (!hideCompleted || !item.IsDone))
             {
                 entries.Add(new CalendarEntry(item, null));
             }
 
             foreach (var subtask in item.Subtasks)
             {
-                if (subtask.DueAt is not null)
+                if (subtask.DueAt is not null && (!hideCompleted || (!item.IsDone && !subtask.IsDone)))
                 {
                     entries.Add(new CalendarEntry(item, subtask));
                 }
@@ -317,31 +471,638 @@ public sealed partial class CalendarWindow : UserControl
         DaysGrid.ColumnDefinitions.Clear();
         _cells.Clear();
 
-        for (var row = 0; row < 6; row++)
+        DaysGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        DaysGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var gridHeight = DaysGrid.ActualHeight > 0
+            ? DaysGrid.ActualHeight
+            : Math.Max(MinLogicalHeight, _settings?.Current.CalendarHeight ?? DefaultLogicalHeight) - 104;
+        const double rowSpacing = 4;
+        var rowHeight = Math.Max(46, Math.Floor((gridHeight - rowSpacing * 5) / 6.0));
+        _monthRowStride = rowHeight + rowSpacing;
+
+        var keepExistingBuffer = _pendingJumpDate is null
+            && _builtViewMode == CalendarViewMode.Month
+            && _monthLoadedWeeks >= 12
+            && _month >= _monthGridStart.AddDays(14)
+            && _month <= _monthGridStart.AddDays((_monthLoadedWeeks - 6) * 7);
+
+        if (!keepExistingBuffer)
         {
-            DaysGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            var anchor = _pendingJumpDate ?? _month;
+            _monthGridStart = WeekStart(new DateTime(anchor.Year, anchor.Month, 1)).AddDays(-42);
+            _monthLoadedWeeks = 18;
         }
 
+        var monthGrid = new Grid
+        {
+            RowSpacing = rowSpacing,
+            ColumnSpacing = 4,
+            Padding = new Thickness(0, 0, 10, 0),
+        };
         for (var column = 0; column < 7; column++)
         {
-            DaysGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            monthGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         }
 
-        var offset = ((int)_month.DayOfWeek + 6) % 7;
-        var gridStart = _month.AddDays(-offset);
-
-        for (var index = 0; index < 42; index++)
+        void AppendWeeks(int startWeekIndex, int weekCount, Dictionary<DateTime, List<CalendarEntry>> datedMap)
         {
-            var date = gridStart.AddDays(index);
-            var cell = BuildCell(date, dated.TryGetValue(date, out var items) ? items : null);
-            Grid.SetRow(cell, index / 7);
-            Grid.SetColumn(cell, index % 7);
-            DaysGrid.Children.Add(cell);
-            _cells.Add((date, cell));
+            for (var w = 0; w < weekCount; w++)
+            {
+                var rowIndex = startWeekIndex + w;
+                monthGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(rowHeight) });
+                for (var col = 0; col < 7; col++)
+                {
+                    var date = _monthGridStart.AddDays(rowIndex * 7 + col);
+                    var cell = BuildCell(date, datedMap.TryGetValue(date, out var items) ? items : null, rowHeight);
+                    Grid.SetRow(cell, rowIndex);
+                    Grid.SetColumn(cell, col);
+                    monthGrid.Children.Add(cell);
+                    _cells.Add((date, cell, true));
+                }
+            }
+        }
+
+        AppendWeeks(0, _monthLoadedWeeks, dated);
+
+        var scroll = new ScrollViewer
+        {
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = monthGrid,
+        };
+        _activeScroll = scroll;
+
+        var targetWeek = WeekStart(_month);
+        var targetRow = Math.Clamp((int)Math.Round((targetWeek - _monthGridStart).TotalDays / 7.0), 0, Math.Max(0, _monthLoadedWeeks - 6));
+        var initialOffset = _restoreScrollOffset ?? (targetRow * _monthRowStride);
+        _restoreScrollOffset = null;
+
+        var initialApplied = false;
+        var extendQueued = false;
+
+        scroll.LayoutUpdated += (_, _) =>
+        {
+            if (initialApplied || scroll.ExtentHeight <= 0 || scroll.ViewportHeight <= 0)
+            {
+                return;
+            }
+
+            initialApplied = true;
+            _suppressScrollSync = true;
+            scroll.ChangeView(null, Math.Clamp(initialOffset, 0, scroll.ScrollableHeight), null, true);
+            DispatcherQueue.TryEnqueue(() => _suppressScrollSync = false);
+        };
+
+        scroll.ViewChanged += (_, args) =>
+        {
+            if (!initialApplied || _suppressScrollSync || _monthRowStride <= 0 || !ReferenceEquals(_activeScroll, scroll))
+            {
+                return;
+            }
+
+            var centerRow = Math.Clamp(
+                (int)Math.Floor((scroll.VerticalOffset + scroll.ViewportHeight * 0.45) / _monthRowStride),
+                0,
+                Math.Max(0, _monthLoadedWeeks - 1));
+            var centerDate = _monthGridStart.AddDays(centerRow * 7 + 3);
+            var visibleMonth = new DateTime(centerDate.Year, centerDate.Month, 1);
+            if (visibleMonth != _month)
+            {
+                _month = visibleMonth;
+                MonthTitle.Text = FormatHeaderTitle();
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(MonthTitle, MonthTitle.Text);
+                UpdateSelectionVisuals();
+            }
+
+            if (args.IsIntermediate || extendQueued)
+            {
+                return;
+            }
+
+            if (scroll.ScrollableHeight - scroll.VerticalOffset < _monthRowStride * 2.5)
+            {
+                extendQueued = true;
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    extendQueued = false;
+                    if (!ReferenceEquals(_activeScroll, scroll) || _viewMode != CalendarViewMode.Month)
+                    {
+                        return;
+                    }
+
+                    var startIdx = _monthLoadedWeeks;
+                    _monthLoadedWeeks += 6;
+                    var currentDated = BuildDatedLookup();
+                    AppendWeeks(startIdx, 6, currentDated);
+                    UpdateSelectionVisuals();
+                });
+                return;
+            }
+
+            if (scroll.VerticalOffset < _monthRowStride * 2.5)
+            {
+                extendQueued = true;
+                var oldOffset = scroll.VerticalOffset;
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    extendQueued = false;
+                    if (!ReferenceEquals(_activeScroll, scroll) || _viewMode != CalendarViewMode.Month)
+                    {
+                        return;
+                    }
+
+                    _monthGridStart = _monthGridStart.AddDays(-42);
+                    _monthLoadedWeeks += 6;
+                    _restoreScrollOffset = oldOffset + 6 * _monthRowStride;
+                    Refresh();
+                });
+            }
+        };
+
+        DaysGrid.Children.Add(scroll);
+    }
+
+    private Dictionary<DateTime, List<CalendarEntry>> BuildDatedLookup() =>
+        BuildEntries()
+            .Where(entry => entry.DueAt is not null)
+            .GroupBy(entry => entry.DueAt!.Value.Date)
+            .ToDictionary(group => group.Key, group => group
+                .OrderBy(entry => entry.DueAt)
+                .ThenBy(entry => entry.Title)
+                .ToList());
+
+    private void BuildDayAgendaCells(Dictionary<DateTime, List<CalendarEntry>> dated)
+    {
+        DaysGrid.Children.Clear();
+        DaysGrid.RowDefinitions.Clear();
+        DaysGrid.ColumnDefinitions.Clear();
+        _cells.Clear();
+
+        DaysGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        DaysGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var scale = GetUiScale();
+        var keepExistingBuffer = _pendingJumpDate is null
+            && _builtViewMode == CalendarViewMode.Day
+            && _streamCount >= 21
+            && _selected >= _streamStart.AddDays(7)
+            && _selected <= _streamStart.AddDays(_streamCount - 8);
+
+        if (!keepExistingBuffer)
+        {
+            var anchor = _pendingJumpDate ?? _selected;
+            _streamStart = WeekStart(anchor).AddDays(-14);
+            _streamCount = 35;
+        }
+
+        var stream = new StackPanel
+        {
+            Spacing = Math.Round(6 * scale),
+            Padding = new Thickness(0, 0, 10, 0),
+        };
+
+        var weekdayNames = new[] { "周一", "周二", "周三", "周四", "周五", "周六", "周日" };
+        var dateColWidth = Math.Round(96 * scale);
+
+        Border CreateWeekDayCard(DateTime date, Dictionary<DateTime, List<CalendarEntry>> datedMap)
+        {
+            var entries = datedMap.TryGetValue(date, out var items) ? items : null;
+            var isSelected = date == _selected;
+            var isToday = date == DateTime.Today;
+            var dayOfWeekIdx = ((int)date.DayOfWeek + 6) % 7;
+
+            var rowGrid = new Grid { ColumnSpacing = Math.Round(10 * scale) };
+            rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(dateColWidth) });
+            rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var dateStack = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = Math.Round(6 * scale),
+                VerticalAlignment = entries is { Count: > 0 } ? VerticalAlignment.Top : VerticalAlignment.Center,
+                Margin = entries is { Count: > 0 } ? new Thickness(0, 4, 0, 0) : new Thickness(0),
+            };
+
+            var dateText = new TextBlock
+            {
+                Text = $"{date:M/d}",
+                FontSize = Math.Round(12 * scale, 1),
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = isToday
+                    ? new SolidColorBrush(Colors.White)
+                    : (Brush)Application.Current.Resources["TextPrimaryBrush"],
+            };
+
+            if (isToday)
+            {
+                dateStack.Children.Add(new Border
+                {
+                    Padding = new Thickness(7, 2, 7, 2),
+                    CornerRadius = new CornerRadius(10),
+                    Background = (Brush)Application.Current.Resources["AccentBrush"],
+                    Child = dateText,
+                });
+            }
+            else
+            {
+                dateStack.Children.Add(dateText);
+            }
+
+            dateStack.Children.Add(new TextBlock
+            {
+                Text = weekdayNames[dayOfWeekIdx],
+                FontSize = Math.Round(11 * scale, 1),
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = (Brush)Application.Current.Resources[dayOfWeekIdx >= 5 ? "TextMutedBrush" : "TextSecondaryBrush"],
+            });
+
+            rowGrid.Children.Add(dateStack);
+
+            if (entries is { Count: > 0 })
+            {
+                var itemsPanel = new StackPanel { Spacing = Math.Round(4 * scale) };
+                foreach (var entry in entries)
+                {
+                    itemsPanel.Children.Add(BuildDayEntryCard(entry, scale, compact: true));
+                }
+
+                Grid.SetColumn(itemsPanel, 1);
+                rowGrid.Children.Add(itemsPanel);
+            }
+            else
+            {
+                var emptyText = new TextBlock
+                {
+                    Text = "无安排",
+                    FontSize = Math.Round(11 * scale, 1),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Opacity = 0.55,
+                    Foreground = (Brush)Application.Current.Resources["TextMutedBrush"],
+                };
+                Grid.SetColumn(emptyText, 1);
+                rowGrid.Children.Add(emptyText);
+            }
+
+            var quickAddBtn = new Button
+            {
+                Width = 22,
+                Height = 22,
+                MinWidth = 0,
+                MinHeight = 0,
+                Padding = new Thickness(0),
+                VerticalAlignment = entries is { Count: > 0 } ? VerticalAlignment.Top : VerticalAlignment.Center,
+                Opacity = 0,
+                IsHitTestVisible = false,
+                Style = (Style)Application.Current.Resources["FlatIconButtonStyle"],
+                Content = new FontIcon { Glyph = "\uE710", FontSize = 10 },
+            };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(quickAddBtn, "在此日期新建任务");
+            var captureDate = date;
+            quickAddBtn.Tapped += (_, args) => args.Handled = true;
+            quickAddBtn.Click += (_, _) => _createRequested?.Invoke(captureDate);
+            Grid.SetColumn(quickAddBtn, 2);
+            rowGrid.Children.Add(quickAddBtn);
+
+            var rowCard = new Border
+            {
+                CornerRadius = new CornerRadius(7),
+                Padding = new Thickness(10, Math.Round(7 * scale), 10, Math.Round(7 * scale)),
+                Margin = dayOfWeekIdx == 0 ? new Thickness(0, 6, 0, 0) : new Thickness(0),
+                BorderThickness = new Thickness(1),
+                Background = GetCellBackground(isSelected, true),
+                BorderBrush = GetCellBorderBrush(isSelected, isToday, true),
+                Child = rowGrid,
+                AllowDrop = true,
+            };
+            AttachCellInteractions(rowCard, date, selectable: true);
+            rowCard.PointerEntered += (_, _) =>
+            {
+                quickAddBtn.Opacity = 1;
+                quickAddBtn.IsHitTestVisible = true;
+            };
+            rowCard.PointerExited += (_, _) =>
+            {
+                quickAddBtn.Opacity = 0;
+                quickAddBtn.IsHitTestVisible = false;
+            };
+            return rowCard;
+        }
+
+        Border? scrollTarget = null;
+        var targetDate = (_pendingJumpDate ?? _selected).Date;
+        for (var i = 0; i < _streamCount; i++)
+        {
+            var date = _streamStart.AddDays(i);
+            var card = CreateWeekDayCard(date, dated);
+            stream.Children.Add(card);
+            _cells.Add((date, card, true));
+            if (date == targetDate)
+            {
+                scrollTarget = card;
+            }
+        }
+
+        var scroll = new ScrollViewer
+        {
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = stream,
+        };
+        _activeScroll = scroll;
+        var savedOffset = _restoreScrollOffset;
+        _restoreScrollOffset = null;
+
+        var initialApplied = false;
+        var extendQueued = false;
+
+        scroll.LayoutUpdated += (_, _) =>
+        {
+            if (initialApplied || scroll.ExtentHeight <= 0 || scroll.ViewportHeight <= 0)
+            {
+                return;
+            }
+
+            initialApplied = true;
+            _suppressScrollSync = true;
+            if (savedOffset is { } offset)
+            {
+                scroll.ChangeView(null, Math.Clamp(offset, 0, scroll.ScrollableHeight), null, true);
+            }
+            else if (scrollTarget is not null)
+            {
+                var pt = scrollTarget.TransformToVisual(stream).TransformPoint(new Windows.Foundation.Point(0, 0));
+                scroll.ChangeView(null, Math.Clamp(pt.Y, 0, scroll.ScrollableHeight), null, true);
+            }
+
+            DispatcherQueue.TryEnqueue(() => _suppressScrollSync = false);
+        };
+
+        scroll.ViewChanged += (_, args) =>
+        {
+            if (!initialApplied || _suppressScrollSync || _cells.Count == 0 || !ReferenceEquals(_activeScroll, scroll))
+            {
+                return;
+            }
+
+            var probeY = scroll.VerticalOffset + 24;
+            foreach (var (d, card, _) in _cells)
+            {
+                var pos = card.TransformToVisual(stream).TransformPoint(new Windows.Foundation.Point(0, 0));
+                if (pos.Y + card.ActualHeight >= probeY)
+                {
+                    var weekText = FormatWeekTitle(WeekStart(d));
+                    if (MonthTitle.Text != weekText)
+                    {
+                        MonthTitle.Text = weekText;
+                        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(MonthTitle, weekText);
+                    }
+
+                    break;
+                }
+            }
+
+            if (args.IsIntermediate || extendQueued)
+            {
+                return;
+            }
+
+            if (scroll.ScrollableHeight - scroll.VerticalOffset < 180)
+            {
+                extendQueued = true;
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    extendQueued = false;
+                    if (!ReferenceEquals(_activeScroll, scroll) || _viewMode != CalendarViewMode.Day)
+                    {
+                        return;
+                    }
+
+                    var currentDated = BuildDatedLookup();
+                    var appendStart = _streamStart.AddDays(_streamCount);
+                    _streamCount += 14;
+                    for (var i = 0; i < 14; i++)
+                    {
+                        var date = appendStart.AddDays(i);
+                        var card = CreateWeekDayCard(date, currentDated);
+                        stream.Children.Add(card);
+                        _cells.Add((date, card, true));
+                    }
+                });
+                return;
+            }
+
+            if (scroll.VerticalOffset < 180)
+            {
+                extendQueued = true;
+                var oldOffset = scroll.VerticalOffset;
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    extendQueued = false;
+                    if (!ReferenceEquals(_activeScroll, scroll) || _viewMode != CalendarViewMode.Day)
+                    {
+                        return;
+                    }
+
+                    var oldHeight = stream.ActualHeight;
+                    var currentDated = BuildDatedLookup();
+                    _streamStart = _streamStart.AddDays(-14);
+                    _streamCount += 14;
+                    for (var i = 13; i >= 0; i--)
+                    {
+                        var date = _streamStart.AddDays(i);
+                        var card = CreateWeekDayCard(date, currentDated);
+                        stream.Children.Insert(0, card);
+                        _cells.Insert(0, (date, card, true));
+                    }
+
+                    scroll.UpdateLayout();
+                    var deltaHeight = stream.ActualHeight - oldHeight;
+                    if (deltaHeight > 0)
+                    {
+                        _suppressScrollSync = true;
+                        scroll.ChangeView(null, oldOffset + deltaHeight, null, true);
+                        DispatcherQueue.TryEnqueue(() => _suppressScrollSync = false);
+                    }
+                });
+            }
+        };
+
+        DaysGrid.Children.Add(scroll);
+    }
+
+    private UIElement BuildDayEntryCard(CalendarEntry entry, double scale, bool compact = false)
+    {
+        var padY = Math.Round((compact ? 5.5 : 8) * scale);
+        var padX = compact ? 8 : 10;
+        var row = new Grid
+        {
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(padX, padY, padX, padY),
+            Background = (Brush)Application.Current.Resources["LayerFillSecondaryBrush"],
+            CanDrag = true,
+        };
+        row.Tapped += async (_, args) =>
+        {
+            args.Handled = true;
+            await ShowItemPreviewAsync(entry);
+        };
+        row.PointerEntered += (_, _) =>
+            row.Background = (Brush)Application.Current.Resources["HoverBrush"];
+        row.PointerExited += (_, _) =>
+            row.Background = (Brush)Application.Current.Resources["LayerFillSecondaryBrush"];
+        row.DragStarting += (_, args) =>
+        {
+            _draggedEntry = entry;
+            args.Data.Properties[DragKey] = true;
+            args.Data.RequestedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
+        };
+        row.DropCompleted += (_, _) => _draggedEntry = null;
+        AttachEntryContextFlyout(row, entry);
+
+        var content = new Grid { ColumnSpacing = 8 };
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var check = new CheckBox
+        {
+            IsChecked = entry.IsDone,
+            Style = (Style)Application.Current.Resources["TodoCompletionCheckBoxStyle"],
+            Margin = new Thickness(0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(check, "标记完成");
+        check.Tapped += (_, args) => args.Handled = true;
+        check.Click += async (_, _) =>
+        {
+            if (_viewModel is null)
+            {
+                return;
+            }
+
+            var done = check.IsChecked == true;
+            if (entry.Subtask is { } subtask)
+            {
+                _viewModel.SetSubtaskDone(entry.Parent, subtask, done);
+                Refresh();
+                if (done && !_previewOpen && !entry.Parent.IsDone &&
+                    entry.Parent.Subtasks.Count > 0 && entry.Parent.Subtasks.All(s => s.IsDone))
+                {
+                    await PromptCompleteParentAsync(entry.Parent);
+                }
+            }
+            else
+            {
+                _viewModel.SetDone(entry.Parent, done);
+                Refresh();
+            }
+        };
+        content.Children.Add(check);
+
+        var dotSize = Math.Max(6, Math.Round(7.5 * scale));
+        var dot = new Border
+        {
+            Width = dotSize,
+            Height = dotSize,
+            CornerRadius = new CornerRadius(dotSize / 2),
+            VerticalAlignment = VerticalAlignment.Center,
+            Background = new SolidColorBrush(TagColor(entry.TagIndex)),
+        };
+        Grid.SetColumn(dot, 1);
+        content.Children.Add(dot);
+
+        var textStack = new StackPanel
+        {
+            Spacing = 2,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var title = new TextBlock
+        {
+            Text = entry.Title,
+            FontSize = Math.Round(12.5 * scale, 1),
+            MaxLines = 2,
+            TextWrapping = TextWrapping.Wrap,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Foreground = (Brush)Application.Current.Resources[entry.IsDone ? "TextMutedBrush" : "TextPrimaryBrush"],
+            TextDecorations = entry.IsDone
+                ? Windows.UI.Text.TextDecorations.Strikethrough
+                : Windows.UI.Text.TextDecorations.None,
+        };
+        textStack.Children.Add(title);
+
+        if (entry.Subtask is not null)
+        {
+            textStack.Children.Add(new TextBlock
+            {
+                Text = $"\u21B3 {entry.Parent.Title}",
+                FontSize = Math.Round(10.5 * scale, 1),
+                MaxLines = 1,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Foreground = (Brush)Application.Current.Resources["TextMutedBrush"],
+            });
+        }
+
+        var note = entry.Subtask?.Note ?? entry.Parent.Note;
+        if (!string.IsNullOrWhiteSpace(note))
+        {
+            textStack.Children.Add(new TextBlock
+            {
+                Text = note,
+                FontSize = Math.Round(10.5 * scale, 1),
+                MaxLines = 1,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Foreground = (Brush)Application.Current.Resources["TextMutedBrush"],
+            });
+        }
+
+        Grid.SetColumn(textStack, 2);
+        content.Children.Add(textStack);
+
+        var time = new TextBlock
+        {
+            Text = entry.DueAt?.ToString("HH:mm") ?? string.Empty,
+            FontSize = Math.Round(11.5 * scale, 1),
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = (Brush)Application.Current.Resources[entry.IsOverdue ? "OverdueBrush" : "TextMutedBrush"],
+        };
+        Grid.SetColumn(time, 3);
+        content.Children.Add(time);
+
+        row.Children.Add(content);
+        return row;
+    }
+
+    private async Task PromptCompleteParentAsync(TodoItem parent)
+    {
+        if (Root.XamlRoot is null || _viewModel is null || _settings is null || _previewOpen)
+        {
+            return;
+        }
+
+        _previewOpen = true;
+        try
+        {
+            var dialog = CreateEntryDialog(
+                "子任务已全部完成",
+                $"「{parent.Title}」的子任务已全部完成，是否同时完成主任务？",
+                "完成主任务");
+            dialog.CloseButtonText = "暂不";
+
+            if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+            {
+                _viewModel.SetDone(parent, true);
+                Refresh();
+            }
+        }
+        finally
+        {
+            _previewOpen = false;
         }
     }
 
-    private Border BuildCell(DateTime date, List<CalendarEntry>? entries)
+    private Border BuildCell(DateTime date, List<CalendarEntry>? entries, double cellHeight)
     {
         var scale = GetUiScale();
         var inMonth = date.Month == _month.Month;
@@ -352,19 +1113,16 @@ public sealed partial class CalendarWindow : UserControl
         content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         content.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
-        var gridHeight = DaysGrid.ActualHeight > 0
-            ? DaysGrid.ActualHeight
-            : Math.Max(MinLogicalHeight, _settings?.Current.CalendarHeight ?? DefaultLogicalHeight) - 104;
-        var cellHeight = (gridHeight - 20) / 6.0;
         var maxChips = Math.Clamp((int)Math.Floor((cellHeight - 24 * scale) / (18 * scale)), 1, 6);
 
         var dayHeader = new Grid();
         dayHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         dayHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
+        var dayText = date.Day == 1 ? $"{date.Month}/1" : date.Day.ToString();
         var dayNumberText = new TextBlock
         {
-            Text = date.Day.ToString(),
+            Text = dayText,
             FontSize = Math.Round(10.5 * scale, 1),
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
@@ -381,8 +1139,9 @@ public sealed partial class CalendarWindow : UserControl
             var badgeSize = Math.Round(18 * scale);
             dayHeader.Children.Add(new Border
             {
-                Width = badgeSize,
+                MinWidth = badgeSize,
                 Height = badgeSize,
+                Padding = date.Day == 1 ? new Thickness(4, 0, 4, 0) : new Thickness(0),
                 CornerRadius = new CornerRadius(badgeSize / 2),
                 Background = (Brush)Application.Current.Resources["AccentBrush"],
                 Child = dayNumberText,
@@ -435,35 +1194,67 @@ public sealed partial class CalendarWindow : UserControl
             BorderThickness = new Thickness(1),
             Background = GetCellBackground(isSelected, inMonth),
             BorderBrush = GetCellBorderBrush(isSelected, isToday, inMonth),
-            Opacity = inMonth || isSelected ? 1 : 0.45,
+            Opacity = inMonth || isSelected ? 1 : 0.62,
             Child = content,
             AllowDrop = true,
         };
 
+        AttachCellInteractions(cell, date, selectable: true);
+        return cell;
+    }
+
+    private bool IsInCurrentScope(DateTime date) =>
+        _viewMode != CalendarViewMode.Month || date.Month == _month.Month;
+
+    private void AttachCellInteractions(Border cell, DateTime date, bool selectable)
+    {
+        var normalBrush = selectable
+            ? GetCellBackground(date == _selected, IsInCurrentScope(date))
+            : (Brush)Application.Current.Resources["ItemCardBrush"];
+
         cell.Tag = date;
-        cell.Tapped += (sender, _) =>
+        if (selectable)
         {
-            if (sender is not FrameworkElement { Tag: DateTime tapped })
+            cell.Tapped += (sender, _) =>
             {
-                return;
-            }
+                if (sender is not FrameworkElement { Tag: DateTime tapped })
+                {
+                    return;
+                }
 
-            _selected = tapped;
-            if (_rightPanelCollapsed)
+                _selected = tapped;
+                if (_rightPanelCollapsed)
+                {
+                    SetRightPanelCollapsed(false, refresh: false);
+                }
+
+                if (_viewMode == CalendarViewMode.Month &&
+                    (tapped.Year != _month.Year || tapped.Month != _month.Month))
+                {
+                    _month = new DateTime(tapped.Year, tapped.Month, 1);
+                    MonthTitle.Text = FormatHeaderTitle();
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(MonthTitle, MonthTitle.Text);
+                }
+
+                UpdateSelectionVisuals();
+                ShowDetailsForSelected();
+            };
+
+            cell.DoubleTapped += (sender, args) =>
             {
-                SetRightPanelCollapsed(false, refresh: false);
-            }
+                if (sender is FrameworkElement { Tag: DateTime tapped })
+                {
+                    args.Handled = true;
+                    _selected = tapped;
+                    _createRequested?.Invoke(tapped);
+                }
+            };
 
-            if (tapped.Year != _month.Year || tapped.Month != _month.Month)
-            {
-                _month = new DateTime(tapped.Year, tapped.Month, 1);
-                Refresh();
-                return;
-            }
-
-            UpdateSelectionVisuals();
-            ShowDetailsForSelected();
-        };
+            cell.PointerEntered += (_, _) =>
+                cell.Background = (Brush)Application.Current.Resources["HoverBrush"];
+            cell.PointerExited += (_, _) =>
+                cell.Background = GetCellBackground(date == _selected, IsInCurrentScope(date));
+        }
 
         cell.DragOver += (_, args) =>
         {
@@ -475,11 +1266,12 @@ public sealed partial class CalendarWindow : UserControl
             cell.Background = (Brush)Application.Current.Resources["HoverBrush"];
         };
 
-        cell.DragLeave += (_, _) => cell.Background = GetCellBackground(date == _selected, inMonth);
+        cell.DragLeave += (_, _) =>
+            cell.Background = selectable ? GetCellBackground(date == _selected, IsInCurrentScope(date)) : normalBrush;
 
         cell.Drop += async (sender, args) =>
         {
-            cell.Background = GetCellBackground(date == _selected, inMonth);
+            cell.Background = selectable ? GetCellBackground(date == _selected, IsInCurrentScope(date)) : normalBrush;
             if (_draggedEntry is not { } entry || sender is not FrameworkElement { Tag: DateTime target } || _viewModel is null)
             {
                 return;
@@ -523,25 +1315,18 @@ public sealed partial class CalendarWindow : UserControl
             _rescheduleRequested?.Invoke(entry.Parent, target);
             Refresh();
         };
-
-        cell.PointerEntered += (_, _) =>
-            cell.Background = (Brush)Application.Current.Resources["HoverBrush"];
-        cell.PointerExited += (_, _) =>
-            cell.Background = GetCellBackground(date == _selected, inMonth);
-
-        return cell;
     }
 
     private void UpdateSelectionVisuals()
     {
-        foreach (var (date, cell) in _cells)
+        foreach (var (date, cell, _) in _cells)
         {
-            var inMonth = date.Month == _month.Month;
+            var inScope = IsInCurrentScope(date);
             var isSelected = date == _selected;
             var isToday = date == DateTime.Today;
-            cell.Background = GetCellBackground(isSelected, inMonth);
-            cell.BorderBrush = GetCellBorderBrush(isSelected, isToday, inMonth);
-            cell.Opacity = inMonth || isSelected ? 1 : 0.45;
+            cell.Background = GetCellBackground(isSelected, inScope);
+            cell.BorderBrush = GetCellBorderBrush(isSelected, isToday, inScope);
+            cell.Opacity = inScope || isSelected ? 1 : 0.62;
         }
     }
 
@@ -635,8 +1420,160 @@ public sealed partial class CalendarWindow : UserControl
             args.Handled = true;
             await ShowItemPreviewAsync(entry);
         };
+        AttachEntryContextFlyout(chip, entry);
 
         return chip;
+    }
+
+    private void AttachEntryContextFlyout(FrameworkElement host, CalendarEntry entry)
+    {
+        var flyout = new MenuFlyout();
+
+        var toggleDone = new MenuFlyoutItem { Text = entry.IsDone ? "标记为未完成" : "标记为完成" };
+        toggleDone.Click += (_, _) =>
+        {
+            if (_viewModel is null)
+            {
+                return;
+            }
+
+            if (entry.Subtask is { } subtask)
+            {
+                _viewModel.SetSubtaskDone(entry.Parent, subtask, !entry.IsDone);
+            }
+            else
+            {
+                _viewModel.SetDone(entry.Parent, !entry.IsDone);
+            }
+
+            Refresh();
+        };
+        flyout.Items.Add(toggleDone);
+        flyout.Items.Add(new MenuFlyoutSeparator());
+
+        var today = DateTime.Today;
+        flyout.Items.Add(BuildMoveItem("改到今天", today, entry));
+        flyout.Items.Add(BuildMoveItem("改到明天", today.AddDays(1), entry));
+
+        var clearDue = new MenuFlyoutItem { Text = "清除时间" };
+        clearDue.Click += (_, _) =>
+        {
+            if (_viewModel is null)
+            {
+                return;
+            }
+
+            if (entry.Subtask is { } subtask)
+            {
+                _viewModel.SetSubtaskDue(entry.Parent, subtask, null);
+            }
+            else
+            {
+                _viewModel.ClearDue(entry.Parent);
+            }
+
+            Refresh();
+        };
+        flyout.Items.Add(clearDue);
+        flyout.Items.Add(new MenuFlyoutSeparator());
+
+        var edit = new MenuFlyoutItem { Text = "编辑…" };
+        edit.Click += (_, _) => _editRequested?.Invoke(entry.Parent);
+        flyout.Items.Add(edit);
+
+        var delete = new MenuFlyoutItem { Text = "删除" };
+        delete.Click += async (_, _) => await DeleteCalendarEntryAsync(entry);
+        flyout.Items.Add(delete);
+
+        host.ContextFlyout = flyout;
+    }
+
+    private MenuFlyoutItem BuildMoveItem(string text, DateTime target, CalendarEntry entry)
+    {
+        var item = new MenuFlyoutItem { Text = text };
+        item.Click += (_, _) =>
+        {
+            if (_viewModel is null)
+            {
+                return;
+            }
+
+            if (entry.Subtask is { } subtask)
+            {
+                var time = subtask.DueAt?.TimeOfDay ?? RoundToFiveMinutes(DateTime.Now.TimeOfDay);
+                _viewModel.SetSubtaskDue(entry.Parent, subtask, target.Date + time);
+            }
+            else if (entry.Parent.DueAt is not null)
+            {
+                _rescheduleRequested?.Invoke(entry.Parent, target);
+            }
+            else
+            {
+                _viewModel.ScheduleAt(entry.Parent, target.Date + RoundToFiveMinutes(DateTime.Now.TimeOfDay));
+            }
+
+            Refresh();
+        };
+        return item;
+    }
+
+    private async Task DeleteCalendarEntryAsync(CalendarEntry entry)
+    {
+        if (Root.XamlRoot is null || _viewModel is null || _previewOpen)
+        {
+            return;
+        }
+
+        _previewOpen = true;
+        try
+        {
+            var name = entry.Subtask is { } subtask
+                ? $"{entry.Parent.Title} › {subtask.Title}"
+                : entry.Parent.Title;
+            var dialog = CreateEntryDialog("删除待办", $"确定删除「{name}」吗？", "删除");
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            {
+                return;
+            }
+
+            if (entry.Subtask is { } target)
+            {
+                _viewModel.DeleteSubtask(entry.Parent, target);
+            }
+            else
+            {
+                _viewModel.Delete(entry.Parent);
+            }
+
+            Refresh();
+        }
+        finally
+        {
+            _previewOpen = false;
+        }
+    }
+
+    private ContentDialog CreateEntryDialog(string title, string message, string primaryText)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = title,
+            Content = message,
+            PrimaryButtonText = primaryText,
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        dialog.RequestedTheme = Root.RequestedTheme == ElementTheme.Default && _settings is not null
+            ? Appearance.ToElementTheme((ThemeMode)_settings.Current.ThemeMode)
+            : Root.RequestedTheme;
+        var dark = dialog.RequestedTheme == ElementTheme.Dark;
+        ThemePalette.ApplyTextControlPalette(dialog.Resources);
+        dialog.Resources["ContentDialogBackground"] = ThemePalette.CreateDialogAcrylicBrush(dark);
+        dialog.Resources["ContentDialogBorderBrush"] = Application.Current.Resources["CardStrokeBrush"];
+        dialog.Resources["ContentDialogCornerRadius"] = new CornerRadius(8);
+        dialog.Resources["ContentDialogSmokeFill"] = new SolidColorBrush(Color.FromArgb(0x33, 0x00, 0x00, 0x00));
+        return dialog;
     }
 
     private static void SetTitleToolTip(DependencyObject target, string title) =>
@@ -760,8 +1697,9 @@ public sealed partial class CalendarWindow : UserControl
         dialog.RequestedTheme = Root.RequestedTheme == ElementTheme.Default && _settings is not null
             ? Appearance.ToElementTheme((ThemeMode)_settings.Current.ThemeMode)
             : Root.RequestedTheme;
+        var dark = dialog.RequestedTheme == ElementTheme.Dark;
         ThemePalette.ApplyTextControlPalette(dialog.Resources);
-        dialog.Resources["ContentDialogBackground"] = Application.Current.Resources["DialogAcrylicBrush"];
+        dialog.Resources["ContentDialogBackground"] = ThemePalette.CreateDialogAcrylicBrush(dark);
         dialog.Resources["ContentDialogBorderBrush"] = Application.Current.Resources["CardStrokeBrush"];
         dialog.Resources["ContentDialogCornerRadius"] = new CornerRadius(8);
         dialog.Resources["ContentDialogSmokeFill"] = new SolidColorBrush(Color.FromArgb(0x33, 0x00, 0x00, 0x00));
@@ -1213,8 +2151,9 @@ public sealed partial class CalendarWindow : UserControl
             dialog.RequestedTheme = Root.RequestedTheme == ElementTheme.Default
                 ? Appearance.ToElementTheme((ThemeMode)settings.Current.ThemeMode)
                 : Root.RequestedTheme;
+            var dark = dialog.RequestedTheme == ElementTheme.Dark;
             ThemePalette.ApplyTextControlPalette(dialog.Resources);
-            dialog.Resources["ContentDialogBackground"] = Application.Current.Resources["DialogAcrylicBrush"];
+            dialog.Resources["ContentDialogBackground"] = ThemePalette.CreateDialogAcrylicBrush(dark);
             dialog.Resources["ContentDialogBorderBrush"] = Application.Current.Resources["CardStrokeBrush"];
             dialog.Resources["ContentDialogCornerRadius"] = new CornerRadius(8);
             dialog.Resources["ContentDialogSmokeFill"] = new SolidColorBrush(Color.FromArgb(0x33, 0x00, 0x00, 0x00));
@@ -1317,30 +2256,106 @@ public sealed partial class CalendarWindow : UserControl
         return (row, check, title, time);
     }
 
-    private void PrevMonth_Click(object sender, RoutedEventArgs e)
-    {
-        _month = _month.AddMonths(-1);
-        Refresh();
-    }
+    private void MonthView_Click(object sender, RoutedEventArgs e) =>
+        SetViewMode(CalendarViewMode.Month);
 
-    private void NextMonth_Click(object sender, RoutedEventArgs e)
-    {
-        _month = _month.AddMonths(1);
-        Refresh();
-    }
+    private void DayView_Click(object sender, RoutedEventArgs e) =>
+        SetViewMode(CalendarViewMode.Day);
 
-    private void MonthGrid_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
+    private void SetViewMode(CalendarViewMode mode)
     {
-        var delta = e.GetCurrentPoint(DaysGrid).Properties.MouseWheelDelta;
-        if (delta == 0)
+        if (_viewMode == mode)
         {
             return;
         }
 
-        _month = _month.AddMonths(delta > 0 ? -1 : 1);
+        _viewMode = mode;
+        if (_settings is not null)
+        {
+            _settings.Current.CalendarViewMode = (int)mode;
+            _settings.Save();
+        }
+
+        if (_viewMode != CalendarViewMode.Month &&
+            (_selected.Year != _month.Year || _selected.Month != _month.Month))
+        {
+            var today = DateTime.Today;
+            _selected = _month.Year == today.Year && _month.Month == today.Month
+                ? today
+                : _month;
+        }
+
+        _restoreScrollOffset = null;
+        _pendingJumpDate = _viewMode == CalendarViewMode.Month ? _month : _selected;
         Refresh();
-        e.Handled = true;
     }
+
+    private void StepPeriod(int delta, bool animate = true)
+    {
+        if (_viewMode == CalendarViewMode.Day)
+        {
+            _selected = _selected.AddDays(delta * 7);
+            _month = new DateTime(_selected.Year, _selected.Month, 1);
+            var targetWeek = WeekStart(_selected);
+            if (TrySmoothScrollToDate(targetWeek, animate))
+            {
+                MonthTitle.Text = FormatWeekTitle(targetWeek);
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(MonthTitle, MonthTitle.Text);
+                UpdateSelectionVisuals();
+                ShowDetailsForSelected();
+                return;
+            }
+
+            _restoreScrollOffset = null;
+            _pendingJumpDate = targetWeek;
+            Refresh();
+            return;
+        }
+
+        _month = _month.AddMonths(delta);
+        if (_activeScroll is { } scroll && _monthRowStride > 0)
+        {
+            var targetWeek = WeekStart(_month);
+            var targetRow = (int)Math.Round((targetWeek - _monthGridStart).TotalDays / 7.0);
+            if (targetRow >= 0 && targetRow + 5 < _monthLoadedWeeks)
+            {
+                var targetY = Math.Clamp(targetRow * _monthRowStride, 0, scroll.ScrollableHeight);
+                scroll.ChangeView(null, targetY, null, disableAnimation: !animate);
+                MonthTitle.Text = FormatHeaderTitle();
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(MonthTitle, MonthTitle.Text);
+                UpdateSelectionVisuals();
+                return;
+            }
+        }
+
+        _restoreScrollOffset = null;
+        _pendingJumpDate = _month;
+        Refresh();
+    }
+
+    private bool TrySmoothScrollToDate(DateTime date, bool animate = true)
+    {
+        if (_activeScroll is not { } scroll || _activeScroll.Content is not FrameworkElement root)
+        {
+            return false;
+        }
+
+        foreach (var (d, card, _) in _cells)
+        {
+            if (d == date)
+            {
+                var pt = card.TransformToVisual(root).TransformPoint(new Windows.Foundation.Point(0, 0));
+                scroll.ChangeView(null, Math.Clamp(pt.Y, 0, scroll.ScrollableHeight), null, disableAnimation: !animate);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void PrevMonth_Click(object sender, RoutedEventArgs e) => StepPeriod(-1);
+
+    private void NextMonth_Click(object sender, RoutedEventArgs e) => StepPeriod(1);
 
     private void PrevMonth_DragOver(object sender, DragEventArgs e) =>
         StartMonthNavDrag(e, -1);
@@ -1372,7 +2387,6 @@ public sealed partial class CalendarWindow : UserControl
         if (_dragMonthNavTimer is null)
         {
             _dragMonthNavTimer = DispatcherQueue.CreateTimer();
-            _dragMonthNavTimer.Interval = TimeSpan.FromMilliseconds(480);
             _dragMonthNavTimer.Tick += (_, _) =>
             {
                 if (_dragMonthNavDelta == 0)
@@ -1381,11 +2395,12 @@ public sealed partial class CalendarWindow : UserControl
                     return;
                 }
 
-                _month = _month.AddMonths(_dragMonthNavDelta);
-                Refresh();
+                _dragMonthNavTimer.Interval = TimeSpan.FromMilliseconds(720);
+                StepPeriod(_dragMonthNavDelta, animate: false);
             };
         }
 
+        _dragMonthNavTimer.Interval = TimeSpan.FromMilliseconds(520);
         _dragMonthNavTimer.Start();
     }
 
@@ -1475,6 +2490,14 @@ public sealed partial class CalendarWindow : UserControl
             btn.Click += (_, _) =>
             {
                 _month = new DateTime(pickerYear, monthValue, 1);
+                if (_viewMode != CalendarViewMode.Month)
+                {
+                    var day = Math.Min(_selected.Day, DateTime.DaysInMonth(pickerYear, monthValue));
+                    _selected = new DateTime(pickerYear, monthValue, day);
+                }
+
+                _restoreScrollOffset = null;
+                _pendingJumpDate = _viewMode == CalendarViewMode.Month ? _month : _selected;
                 flyout.Hide();
                 Refresh();
             };
@@ -1505,6 +2528,8 @@ public sealed partial class CalendarWindow : UserControl
     {
         _selected = DateTime.Today;
         _month = new DateTime(_selected.Year, _selected.Month, 1);
+        _restoreScrollOffset = null;
+        _pendingJumpDate = _viewMode == CalendarViewMode.Month ? _month : _selected;
         Refresh();
     }
 

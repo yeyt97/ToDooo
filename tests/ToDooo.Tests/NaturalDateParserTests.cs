@@ -1,4 +1,5 @@
 using ToDooo.Helpers;
+using ToDooo.Models;
 using Xunit;
 
 namespace ToDooo.Tests;
@@ -132,5 +133,27 @@ public sealed class NaturalDateParserTests
         Assert.True(NaturalDateParser.TryParse("交报告，明天，10点", Now, out var due, out var title));
         Assert.Equal(new DateTime(2026, 11, 19, 10, 0, 0), due);
         Assert.Equal("交报告", title);
+    }
+
+    [Fact]
+    public void ParseRich_RecognizesRecurrenceAndImportance()
+    {
+        var daily = NaturalDateParser.ParseRich("每天 9点 喝水", Now);
+        Assert.Equal("喝水", daily.Title);
+        Assert.Equal(TodoRecurrence.Daily, daily.Recurrence);
+        Assert.Equal(new DateTime(2026, 11, 19, 9, 0, 0), daily.DueAt);
+        Assert.False(daily.IsImportant);
+
+        var weekly = NaturalDateParser.ParseRich("每周五 14:00 发送工作报告 !重要", Now);
+        Assert.Equal("发送工作报告", weekly.Title);
+        Assert.Equal(TodoRecurrence.Weekly, weekly.Recurrence);
+        Assert.Equal(new DateTime(2026, 11, 20, 14, 0, 0), weekly.DueAt);
+        Assert.True(weekly.IsImportant);
+
+        var monthly = NaturalDateParser.ParseRich("每月5号交水电费 !!", Now);
+        Assert.Equal("交水电费", monthly.Title);
+        Assert.Equal(TodoRecurrence.Monthly, monthly.Recurrence);
+        Assert.Equal(new DateTime(2026, 12, 5, 9, 0, 0), monthly.DueAt);
+        Assert.True(monthly.IsImportant);
     }
 }

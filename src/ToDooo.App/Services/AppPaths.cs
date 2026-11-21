@@ -9,6 +9,8 @@ public static class AppPaths
 
     public static string DatabasePath => Path.Combine(Root, "todo.db");
 
+    public static string BackupDir => Path.Combine(Root, "backups");
+
     public static string SettingsPath => Path.Combine(Root, "settings.json");
 
     public static string LogPath => Path.Combine(Root, "error.log");

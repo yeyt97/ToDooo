@@ -50,7 +50,7 @@ internal static class SubtaskDuePrompt
         };
         dialog.RequestedTheme = theme;
         ThemePalette.ApplyTextControlPalette(dialog.Resources);
-        dialog.Resources["ContentDialogBackground"] = Application.Current.Resources["DialogAcrylicBrush"];
+        dialog.Resources["ContentDialogBackground"] = ThemePalette.CreateDialogAcrylicBrush(theme == ElementTheme.Dark);
         dialog.Resources["ContentDialogBorderBrush"] = Application.Current.Resources["CardStrokeBrush"];
         dialog.Resources["ContentDialogCornerRadius"] = new CornerRadius(8);
         dialog.Resources["ContentDialogSmokeFill"] = new SolidColorBrush(Color.FromArgb(0x33, 0x00, 0x00, 0x00));

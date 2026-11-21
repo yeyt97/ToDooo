@@ -36,7 +36,14 @@ public sealed class AppSettings
 
     public int CalendarHeight { get; set; } = 560;
 
+    public int CalendarViewMode { get; set; }
+
+    public bool CalendarHideCompleted { get; set; }
+
     public int ThemeMode { get; set; }
+
+    /// <summary>启动时默认选中的筛选标签：0=全部，1=进行中，2=重要，3=已完成。</summary>
+    public int DefaultTab { get; set; }
 
     /// <summary>窗口不透明度（设置页显示为“透明度”）：0.1–1.0，默认 0.8。</summary>
     public double WindowOpacity { get; set; } = 0.8;
@@ -49,6 +56,9 @@ public sealed class AppSettings
 
     /// <summary>全局呼出快捷键：0=关闭，1=Ctrl+Alt+T，2=Ctrl+Shift+T，3=Alt+Q。</summary>
     public int GlobalHotkeyMode { get; set; } = 1;
+
+    /// <summary>快速记一条快捷键：0=关闭，1=Ctrl+Alt+N，2=Ctrl+Shift+N，3=Alt+N。</summary>
+    public int QuickAddHotkeyMode { get; set; }
 
     /// <summary>8 种颜色标签的自定义名称。</summary>
     public List<string> TagNames { get; set; } = new();

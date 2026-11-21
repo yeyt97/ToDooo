@@ -44,6 +44,9 @@ public sealed partial class MainViewModel : ObservableObject
 
     public ObservableCollection<TodoItem> Items { get; } = new();
 
+    /// <summary>可替换的当前时间来源：单元测试注入固定时钟，生产默认真实时间。</summary>
+    public Func<DateTime> Clock { get; set; } = () => DateTime.Now;
+
     public IReadOnlyList<TodoItem> AllItems => _all;
 
     public TodoFilter Filter { get; private set; } = TodoFilter.All;
@@ -64,6 +67,10 @@ public sealed partial class MainViewModel : ObservableObject
 
     public bool HasCompleted => DoneCount > 0;
 
+    public bool HasOverdue => _all.Any(item =>
+        !item.IsDone &&
+        (item.IsOverdue || item.Subtasks.Any(subtask => subtask.IsOverdue)));
+
     public int AllCount => _all.Count;
 
     public bool HasVisibleSubtasks => Items.Any(item => item.HasSubtasks);
@@ -72,6 +79,16 @@ public sealed partial class MainViewModel : ObservableObject
         HasVisibleSubtasks && Items.Where(item => item.HasSubtasks).All(item => item.SubtasksExpanded);
 
     public string SubtasksToggleText => AreAllVisibleSubtasksExpanded ? "收起子任务" : "展开子任务";
+
+    public event EventHandler? DataChanged;
+
+    private void NotifyDataChanged() => DataChanged?.Invoke(this, EventArgs.Empty);
+
+    public void RefreshForDayChange()
+    {
+        ApplyFilter();
+        NotifyDataChanged();
+    }
 
     public void NotifySubtaskExpansionChanged()
     {
@@ -147,6 +164,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (viewChanged)
         {
             ApplyFilter();
+            NotifyDataChanged();
             return;
         }
 
@@ -154,6 +172,7 @@ public sealed partial class MainViewModel : ObservableObject
         // 不要走 Clear + 重新填充——那会让 ListView 拆掉所有容器重建，列表闪一下、滚动位置也归零。
         SyncVisible(item);
         RefreshCounts();
+        NotifyDataChanged();
     }
 
     public void SetDone(TodoItem item, bool done)
@@ -206,6 +225,7 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         RefreshCounts();
+        NotifyDataChanged();
     }
 
     /// <summary>主窗口双击标题就地改名；空内容视为放弃修改。</summary>
@@ -220,6 +240,7 @@ public sealed partial class MainViewModel : ObservableObject
         item.Title = title;
         _repository.Update(item);
         SyncVisible(item);
+        NotifyDataChanged();
     }
 
     public void SetTag(TodoItem item, int tagIndex)
@@ -233,6 +254,7 @@ public sealed partial class MainViewModel : ObservableObject
         _repository.Update(item);
         SyncVisible(item);
         RefreshCounts();
+        NotifyDataChanged();
     }
 
     public void ToggleImportant(TodoItem item)
@@ -244,6 +266,7 @@ public sealed partial class MainViewModel : ObservableObject
         // 其余情况列表不动，避免重建把悬停状态一起冲掉。
         SyncVisible(item);
         RefreshCounts();
+        NotifyDataChanged();
     }
 
     public TodoItem Delete(TodoItem item)
@@ -252,6 +275,7 @@ public sealed partial class MainViewModel : ObservableObject
         _all.Remove(item);
         Items.Remove(item);
         RefreshCounts();
+        NotifyDataChanged();
         return item;
     }
 
@@ -267,6 +291,7 @@ public sealed partial class MainViewModel : ObservableObject
         _repository.ClearCompleted();
         _all.RemoveAll(item => item.IsDone);
         ApplyFilter();
+        NotifyDataChanged();
         return removed;
     }
 
@@ -281,6 +306,7 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         ApplyFilter();
+        NotifyDataChanged();
     }
 
     public int ImportItems(IEnumerable<TodoItem> imported)
@@ -303,6 +329,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (count > 0)
         {
             ApplyFilter();
+            NotifyDataChanged();
         }
 
         return count;
@@ -340,6 +367,7 @@ public sealed partial class MainViewModel : ObservableObject
         // 编辑只可能让这一条变显或变隐（标签/重要变化），按需增删一行，不重建列表。
         SyncVisible(item);
         RefreshCounts();
+        NotifyDataChanged();
     }
 
     /// <summary>主窗口子任务就地改名；空内容视为放弃修改。</summary>
@@ -359,6 +387,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         // 搜索会匹配子任务标题，改完要重新判断这条主任务是否还该留在当前视图里。
         SyncVisible(item);
+        NotifyDataChanged();
     }
 
     public void AddSubtask(TodoItem item, string title)
@@ -369,7 +398,19 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
 
-        var subtask = new SubtaskItem { Title = title, SortOrder = item.Subtasks.Count };
+        DateTime? dueAt = null;
+        if (ToDooo.Helpers.NaturalDateParser.TryParse(title, DateTime.Now, out var parsedDue, out var cleaned))
+        {
+            title = cleaned;
+            dueAt = parsedDue;
+        }
+
+        var subtask = new SubtaskItem
+        {
+            Title = title,
+            DueAt = dueAt,
+            SortOrder = item.Subtasks.Count,
+        };
         if (item.Id > 0)
         {
             _repository.AddSubtask(item.Id, subtask);
@@ -378,6 +419,7 @@ public sealed partial class MainViewModel : ObservableObject
         item.Subtasks.Add(subtask);
         item.RaiseSubtasksChanged();
         NotifySubtaskExpansionChanged();
+        NotifyDataChanged();
     }
 
     public void SetSubtaskDone(TodoItem item, SubtaskItem subtask, bool done)
@@ -394,6 +436,7 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         item.RaiseSubtasksChanged();
+        NotifyDataChanged();
     }
 
     public void UpdateSubtask(
@@ -425,6 +468,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         item.RaiseSubtasksChanged();
         SyncVisible(item);
+        NotifyDataChanged();
     }
 
     /// <summary>给子任务设置或清除截止时间。</summary>
@@ -443,6 +487,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         item.RaiseSubtasksChanged();
         SyncVisible(item);
+        NotifyDataChanged();
     }
 
     public void DeleteSubtask(TodoItem item, SubtaskItem subtask)
@@ -463,6 +508,7 @@ public sealed partial class MainViewModel : ObservableObject
         // 搜索命中子任务时，删掉这一条可能让整条待办不再匹配。
         SyncVisible(item);
         NotifySubtaskExpansionChanged();
+        NotifyDataChanged();
     }
 
     /// <summary>改到另一天：保留原来的时分，清掉提醒/推迟状态，按需重新过滤。</summary>
@@ -484,6 +530,7 @@ public sealed partial class MainViewModel : ObservableObject
         item.SnoozeUntil = null;
         _repository.Update(item);
         SyncVisible(item);
+        NotifyDataChanged();
     }
 
     /// <summary>给无截止日期的待办指定具体日期和时间。</summary>
@@ -494,6 +541,7 @@ public sealed partial class MainViewModel : ObservableObject
         item.SnoozeUntil = null;
         _repository.Update(item);
         SyncVisible(item);
+        NotifyDataChanged();
     }
 
     /// <summary>把待办移回无截止日期。</summary>
@@ -504,6 +552,111 @@ public sealed partial class MainViewModel : ObservableObject
         item.SnoozeUntil = null;
         _repository.Update(item);
         SyncVisible(item);
+        NotifyDataChanged();
+    }
+
+    public sealed record OverdueSnapshot(TodoItem Item, SubtaskItem? Subtask, DateTime? OldDueAt);
+
+    public int RescheduleOverdueToToday(DateTime? nowOverride = null) =>
+        RescheduleOverdueToToday(out _, nowOverride);
+
+    /// <summary>把所有已逾期的待办与子任务顺延到今天（保留未到时刻，否则顺延到当前时间 1 小时后），并输出快照支持撤销。</summary>
+    public int RescheduleOverdueToToday(out List<OverdueSnapshot> snapshot, DateTime? nowOverride = null)
+    {
+        snapshot = new List<OverdueSnapshot>();
+        var now = nowOverride ?? DateTime.Now;
+        var today = now.Date;
+        var remainder = now.AddHours(1).Minute % 5;
+        var rounded = now.AddHours(1);
+        if (remainder != 0)
+        {
+            rounded = rounded.AddMinutes(5 - remainder);
+        }
+
+        var fallbackToday = rounded.Date > today
+            ? today.AddHours(23).AddMinutes(55)
+            : new DateTime(today.Year, today.Month, today.Day, rounded.Hour, rounded.Minute, 0);
+
+        DateTime NextDueFor(DateTime oldDue)
+        {
+            var sameTimeToday = today + oldDue.TimeOfDay;
+            return sameTimeToday > now ? sameTimeToday : fallbackToday;
+        }
+
+        var count = 0;
+        foreach (var item in _all)
+        {
+            if (item.IsDone)
+            {
+                continue;
+            }
+
+            if (item.DueAt is { } due && due < now)
+            {
+                snapshot.Add(new OverdueSnapshot(item, null, due));
+                item.DueAt = NextDueFor(due);
+                item.DueNotified = false;
+                item.SnoozeUntil = null;
+                _repository.Update(item);
+                count++;
+            }
+
+            foreach (var subtask in item.Subtasks)
+            {
+                if (!subtask.IsDone && subtask.DueAt is { } subDue && subDue < now)
+                {
+                    snapshot.Add(new OverdueSnapshot(item, subtask, subDue));
+                    subtask.DueAt = NextDueFor(subDue);
+                    subtask.DueNotified = false;
+                    if (subtask.Id > 0)
+                    {
+                        _repository.UpdateSubtask(subtask);
+                    }
+
+                    count++;
+                }
+            }
+        }
+
+        if (count > 0)
+        {
+            ApplyFilter();
+            NotifyDataChanged();
+        }
+
+        return count;
+    }
+
+    public void RestoreDueDates(IReadOnlyList<OverdueSnapshot> snapshot)
+    {
+        if (snapshot.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var entry in snapshot)
+        {
+            if (entry.Subtask is { } subtask)
+            {
+                subtask.DueAt = entry.OldDueAt;
+                subtask.DueNotified = false;
+                if (subtask.Id > 0)
+                {
+                    _repository.UpdateSubtask(subtask);
+                }
+
+                entry.Item.RaiseSubtasksChanged();
+            }
+            else
+            {
+                entry.Item.DueAt = entry.OldDueAt;
+                entry.Item.DueNotified = false;
+                _repository.Update(entry.Item);
+            }
+        }
+
+        ApplyFilter();
+        NotifyDataChanged();
     }
 
     /// <summary>拖动过程中的实时换位：只动内存里的顺序，松手时才落库。</summary>
@@ -624,6 +777,7 @@ public sealed partial class MainViewModel : ObservableObject
         item.RaiseSubtasksChanged();
         SyncVisible(item);
         NotifySubtaskExpansionChanged();
+        NotifyDataChanged();
     }
 
     public void SetSearch(string? query)
@@ -809,6 +963,7 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(EmptyTitle));
         OnPropertyChanged(nameof(EmptyDescription));
         OnPropertyChanged(nameof(HasCompleted));
+        OnPropertyChanged(nameof(HasOverdue));
         OnPropertyChanged(nameof(AllCount));
         NotifySubtaskExpansionChanged();
     }
@@ -821,7 +976,7 @@ public sealed partial class MainViewModel : ObservableObject
             return false;
         }
 
-        var now = DateTime.Now;
+        var now = Clock();
         var today = now.Date;
         var view = (SmartView)SelectedSmartView;
         return MatchesSmartViewDate(item.DueAt, view, now, today) ||

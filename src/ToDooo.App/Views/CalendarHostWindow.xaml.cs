@@ -118,7 +118,7 @@ public sealed partial class CalendarHostWindow : Window
         Closed += (_, _) =>
         {
             WindowCloak.Cancel(_hwnd, reveal: false);
-            _acrylic = null;
+            WindowAcrylic.DetachAndDispose(ref _acrylic, ref _backdropConfig);
         };
     }
 
@@ -128,6 +128,13 @@ public sealed partial class CalendarHostWindow : Window
 
     public IntPtr Hwnd => _hwnd;
 
+    public bool IsDraggingOrResizing => _dragging || _resizeHit != 0;
+
+    public event EventHandler? DockPointerEntered;
+    public event EventHandler? DockPointerExited;
+    public event EventHandler? DockPointerPressed;
+    public event EventHandler? DockDragReleased;
+
     public void RefreshTheme()
     {
         Root.RequestedTheme = Appearance.ToElementTheme((ThemeMode)_settings.Current.ThemeMode);
@@ -136,7 +143,7 @@ public sealed partial class CalendarHostWindow : Window
         CalendarPane.RefreshTheme();
     }
 
-    public void ShowNextTo(AppWindow owner, Action? onShown = null)
+    public void ShowNextTo(AppWindow owner, Action? onShown = null, bool keepTopmost = false)
     {
         var scale = DpiScale.ForOwner(owner, _hwnd);
         var ownerHwnd = Win32Interop.GetWindowFromWindowId(owner.Id);
@@ -214,8 +221,10 @@ public sealed partial class CalendarHostWindow : Window
             () =>
             {
                 NativeMethods.SetWindowPos(
-                    _hwnd, IntPtr.Zero, x, y, width, height,
-                    NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
+                    _hwnd,
+                    keepTopmost ? NativeMethods.HWND_TOPMOST : NativeMethods.HWND_NOTOPMOST,
+                    x, y, width, height,
+                    NativeMethods.SWP_NOACTIVATE);
                 _appWindow.Show();
                 Activate();
             },
@@ -635,6 +644,7 @@ public sealed partial class CalendarHostWindow : Window
         if (movedOwner)
         {
             _ownerMoved?.Invoke();
+            DockDragReleased?.Invoke(this, EventArgs.Empty);
         }
 
         e.Handled = true;
@@ -656,8 +666,11 @@ public sealed partial class CalendarHostWindow : Window
         }
     }
 
-    private void Root_PointerEntered(object sender, PointerRoutedEventArgs e) =>
+    private void Root_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
         UpdateResizeCursor(e.GetCurrentPoint(Root).Position);
+        DockPointerEntered?.Invoke(this, EventArgs.Empty);
+    }
 
     private void Root_PointerExited(object sender, PointerRoutedEventArgs e)
     {
@@ -665,10 +678,13 @@ public sealed partial class CalendarHostWindow : Window
         {
             Root.SetCursor(null);
         }
+
+        DockPointerExited?.Invoke(this, EventArgs.Empty);
     }
 
     private void Root_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
+        DockPointerPressed?.Invoke(this, EventArgs.Empty);
         if (!e.GetCurrentPoint(Root).Properties.IsLeftButtonPressed)
         {
             return;

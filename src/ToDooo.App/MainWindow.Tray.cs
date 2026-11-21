@@ -238,6 +238,28 @@ public sealed partial class MainWindow : Window
         UndoBar.Visibility = Visibility.Collapsed;
     }
 
+    /// <summary>启动后静默检查一次 GitHub Release，有新版本只提示一次。</summary>
+    private void ScheduleUpdateCheck()
+    {
+        var timer = _dispatcher.CreateTimer();
+        timer.Interval = TimeSpan.FromSeconds(8);
+        timer.IsRepeating = false;
+        timer.Tick += async (_, _) =>
+        {
+            timer.Stop();
+            var result = await UpdateService.CheckAsync(ToDooo.Helpers.AppInfo.Version);
+            if (!result.HasUpdate || result.Version == _settings.Current.LastNotifiedVersion)
+            {
+                return;
+            }
+
+            _settings.Current.LastNotifiedVersion = result.Version!;
+            _settings.Save();
+            ShowBalloon("发现新版本", $"ToDooo {result.Version} 已发布，可在设置里点「检查更新」打开下载页");
+        };
+        timer.Start();
+    }
+
     private void UndoButton_Click(object sender, RoutedEventArgs e)
     {
         if (_undoItems is { Count: > 0 } items)

@@ -15,6 +15,7 @@ A lightweight Windows 11 desktop todo and calendar companion built with **WinUI 
 - **Subtasks & Notes**: Expandable subtasks with individual notes, due times, drag reordering, and a prompt to complete the parent task when all subtasks are checked; right-click **Edit** opens the subtask editor.
 - **Views, Tags & Batch Actions**: Filter tabs (`All` / `Active` / `Important` / `Done` with configurable default tab), customizable & reorderable Smart Views (`Today` / `Tomorrow` / `This Week` / `Overdue`), 8 customizable color tags, live search, and one-click **Postpone all overdue to today**.
 - **Reminders & Hotkeys**: Windows toast notifications (0–60 min lead time) with direct **Mark Done** and **Snooze 10 min** buttons, configurable global **Show Window** and **Quick Add** hotkeys, system tray menu, launch at startup, and JSON import/export.
+- **Update Check**: Silent GitHub Release check on startup (notifies once per version); **Check for updates** in Settings opens the download page.
 - **Acrylic Appearance**: Live System / Dark / Light theme sync, Windows Desktop Acrylic material, `0%–90%` transparency slider, and optional auto-fade on mouse leave.
 
 ## Requirements

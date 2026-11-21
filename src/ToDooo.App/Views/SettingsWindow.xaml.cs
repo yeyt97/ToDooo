@@ -539,6 +539,37 @@ public sealed partial class SettingsWindow : Window
         }
     }
 
+    private async void CheckUpdateButton_Click(object sender, RoutedEventArgs e)
+    {
+        CheckUpdateButton.IsEnabled = false;
+        UpdateStatusText.Text = "正在检查…";
+        try
+        {
+            var result = await UpdateService.CheckAsync(AppInfo.Version);
+            if (!result.Succeeded)
+            {
+                UpdateStatusText.Text = "检查失败，请确认网络后重试";
+                return;
+            }
+
+            if (!result.HasUpdate)
+            {
+                UpdateStatusText.Text = $"已是最新版本（{AppInfo.DisplayVersion}）";
+                return;
+            }
+
+            UpdateStatusText.Text = $"发现新版本 {result.Version}，正在打开下载页…";
+            if (result.Url is { } url)
+            {
+                await Windows.System.Launcher.LaunchUriAsync(new Uri(url));
+            }
+        }
+        finally
+        {
+            CheckUpdateButton.IsEnabled = true;
+        }
+    }
+
     private void DoneButton_Click(object sender, RoutedEventArgs e) => CloseWindow();
 
     private void CancelAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)

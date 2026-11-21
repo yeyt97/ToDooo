@@ -136,6 +136,7 @@ public sealed partial class MainWindow : Window
         StartupService.EnsureMatchesCurrentProcess();
         _reminder.LeadMinutes = _settings.Current.ReminderLeadMinutes;
         _reminder.Start();
+        ScheduleUpdateCheck();
     }
 
     public void ShowFromTray()

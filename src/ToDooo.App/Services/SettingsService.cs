@@ -60,6 +60,9 @@ public sealed class AppSettings
     /// <summary>快速记一条快捷键：0=关闭，1=Ctrl+Alt+N，2=Ctrl+Shift+N，3=Alt+N。</summary>
     public int QuickAddHotkeyMode { get; set; }
 
+    /// <summary>已经提示过的新版本号，避免每次启动重复弹提示。</summary>
+    public string LastNotifiedVersion { get; set; } = string.Empty;
+
     /// <summary>8 种颜色标签的自定义名称。</summary>
     public List<string> TagNames { get; set; } = new();
 

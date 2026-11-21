@@ -277,6 +277,17 @@
                             HorizontalContentAlignment="Left"
                             Click="OpenFolderButton_Click"
                             Content="打开数据文件夹" />
+                        <Button
+                            x:Name="CheckUpdateButton"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Left"
+                            AutomationProperties.Name="检查更新"
+                            Click="CheckUpdateButton_Click"
+                            Content="检查更新…" />
+                        <TextBlock
+                            x:Name="UpdateStatusText"
+                            Style="{StaticResource HintText}"
+                            TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>
 

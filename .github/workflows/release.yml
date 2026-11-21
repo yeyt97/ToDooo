@@ -32,13 +32,13 @@ jobs:
         run: dotnet test tests/ToDooo.Tests/ToDooo.Tests.csproj
 
       - name: Publish
-        run: dotnet publish src/ToDooo.App/ToDooo.csproj -c Release -p:Platform=x64 -p:PublishProfile=win-x64
+        run: dotnet publish src/ToDooo.App/ToDooo.csproj -c Release -p:Platform=x64 -p:PublishProfile=win-x64 -o out/publish
 
       - name: Package
         shell: pwsh
         run: |
           $version = "${{ github.ref_name }}".TrimStart("v")
-          $publish = "src/ToDooo.App/bin/Release/net11.0-windows10.0.26100.0/win-x64/publish"
+          $publish = "out/publish"
           $stage = Join-Path $env:RUNNER_TEMP "stage"
           $stageApp = Join-Path $stage "ToDooo"
           New-Item -ItemType Directory -Path $stageApp -Force | Out-Null

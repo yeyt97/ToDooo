@@ -67,3 +67,7 @@ Stored under `%LocalAppData%\ToDooo\`:
 - `settings.json` — Theme, transparency, default tab, hotkeys, tag names, smart views, and window bounds
 
 Replacing the executable directory preserves all local data.
+
+## License
+
+[MIT](LICENSE) © 2026 yyt

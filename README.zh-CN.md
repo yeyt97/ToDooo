@@ -67,3 +67,7 @@ tests/ToDooo.Tests/              # xUnit 单元测试（模型、ViewModel、仓
 - `settings.json` — 外观主题、透明度、默认标签、热键、自定义标签名、智能视图与窗口尺寸位置
 
 覆盖替换程序目录即可升级，不影响本地已有数据。
+
+## 许可
+
+[MIT](LICENSE) © 2026 yyt

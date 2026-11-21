@@ -1,5 +1,5 @@
 # ToDooo release helper.
-# Keeps version numbers in one place (csproj + app.manifest), builds, tests and packs a ZIP.
+# Keeps version numbers in one place (csproj + app.manifest), builds, tests, packs a ZIP and an installer.
 # ASCII-only on purpose: Windows PowerShell 5.1 reads BOM-less scripts as ANSI.
 #
 # Usage:
@@ -44,23 +44,23 @@ function Update-ManifestVersion {
     Set-Content -Path $Path -Value $text -NoNewline -Encoding UTF8
 }
 
-Write-Host "[1/4] Version -> $Version"
+Write-Host "[1/5] Version -> $Version"
 Update-CsprojVersion -Path $csproj -Version $Version
 Update-ManifestVersion -Path $manifest -Version $Version
 
 if ($SkipTests) {
-    Write-Host '[2/4] Tests skipped'
+    Write-Host '[2/5] Tests skipped'
 } else {
-    Write-Host '[2/4] Running tests'
+    Write-Host '[2/5] Running tests'
     dotnet test $tests
     if ($LASTEXITCODE -ne 0) { throw "Tests failed with exit code $LASTEXITCODE" }
 }
 
-Write-Host '[3/4] Publishing self-contained Release (win-x64)'
+Write-Host '[3/5] Publishing self-contained Release (win-x64)'
 dotnet publish $csproj -c Release -p:Platform=x64 -p:PublishProfile=win-x64
 if ($LASTEXITCODE -ne 0) { throw "Publish failed with exit code $LASTEXITCODE" }
 
-Write-Host '[4/4] Packing ZIP'
+Write-Host '[4/5] Packing ZIP'
 New-Item -ItemType Directory -Path $zipDir -Force | Out-Null
 $zip = Join-Path $zipDir "ToDooo-$Version-win-x64.zip"
 $stage = Join-Path ([System.IO.Path]::GetTempPath()) ('todooo-stage-' + [guid]::NewGuid().ToString('N'))
@@ -80,6 +80,27 @@ Write-Host ''
 Write-Host "ZIP  : $zip"
 Write-Host ("SIZE : {0:N1} MB" -f ((Get-Item $zip).Length / 1MB))
 Write-Host "SHA  : $hash"
+
+Write-Host '[5/5] Building installer (skipped when Inno Setup is absent)'
+$iscc = @(
+    'C:\Program Files (x86)\Inno Setup 6\ISCC.exe',
+    'C:\Program Files\Inno Setup 6\ISCC.exe'
+) | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+if ($iscc) {
+    & $iscc "/DAppVersion=$Version" "/DSourceDir=$publishDir" (Join-Path $root 'installer\ToDooo.iss')
+    if ($LASTEXITCODE -ne 0) { throw "ISCC failed with exit code $LASTEXITCODE" }
+
+    $setup = Join-Path $zipDir "ToDooo-$Version-setup.exe"
+    $setupHash = (Get-FileHash $setup -Algorithm SHA256).Hash
+    Set-Content -Path ($setup + '.sha256') -Value $setupHash -Encoding ASCII
+    Write-Host ''
+    Write-Host "SETUP: $setup"
+    Write-Host ("SIZE : {0:N1} MB" -f ((Get-Item $setup).Length / 1MB))
+    Write-Host "SHA  : $setupHash"
+} else {
+    Write-Host 'Inno Setup not found, installer skipped'
+}
 
 if ($Deploy) {
     if (-not (Test-Path $DeployDir)) { throw "Deploy dir not found: $DeployDir" }

@@ -49,9 +49,25 @@ jobs:
           Set-Content -Path "$zip.sha256" -Value $hash -Encoding ASCII
           Write-Host "Package: $zip ($hash)"
 
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          choco install innosetup --no-progress -y | Out-Null
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "ISCC not found" }
+          & $iscc "/DAppVersion=$version" "/DSourceDir=$PWD\out\publish" "installer\ToDooo.iss"
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with exit code $LASTEXITCODE" }
+          $setup = "publish\ToDooo-$version-setup.exe"
+          $hash = (Get-FileHash $setup -Algorithm SHA256).Hash
+          Set-Content -Path "$setup.sha256" -Value $hash -Encoding ASCII
+          Write-Host "Installer: $setup ($hash)"
+
       - uses: softprops/action-gh-release@v2
         with:
           files: |
             ToDooo-*-win-x64.zip
             ToDooo-*-win-x64.zip.sha256
+            publish/ToDooo-*-setup.exe
+            publish/ToDooo-*-setup.exe.sha256
           generate_release_notes: true

@@ -18,6 +18,13 @@ A lightweight Windows 11 desktop todo and calendar companion built with **WinUI 
 - **Update Check**: Silent GitHub Release check on startup (notifies once per version); **Check for updates** in Settings opens the download page.
 - **Acrylic Appearance**: Live System / Dark / Light theme sync, Windows Desktop Acrylic material, `0%–90%` transparency slider, and optional auto-fade on mouse leave.
 
+## Install
+
+- **Installer (recommended)**: download `ToDooo-<version>-setup.exe` from [Releases](https://github.com/yeyt97/ToDooo/releases). It installs per-user (no admin prompt), adds a Start Menu shortcut and an uninstaller.
+- **Portable**: download `ToDooo-<version>-win-x64.zip`, extract anywhere and run `ToDooo.exe`.
+
+Both forms share `%LocalAppData%\ToDooo`, so reinstalling or replacing files keeps your tasks and settings. Builds are not code-signed yet, so SmartScreen may ask you to confirm on first run.
+
 ## Requirements
 
 - **Runtime**: Windows 11 22H2 (Build 22621) or later (`x64`)

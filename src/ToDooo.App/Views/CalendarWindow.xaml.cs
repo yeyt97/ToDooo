@@ -528,6 +528,8 @@ public sealed partial class CalendarWindow : UserControl
         var scroll = new ScrollViewer
         {
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            HorizontalScrollMode = ScrollMode.Disabled,
             Content = monthGrid,
         };
         _activeScroll = scroll;

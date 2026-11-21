@@ -445,14 +445,27 @@ public sealed partial class CalendarHostWindow : Window
             ? Math.Max(minW, currentW - drawerPx)
             : Math.Min(maxW, Math.Max(minW, currentW + drawerPx));
 
+        int ClampX(int left, int width) =>
+            Math.Clamp(left, area.X, area.X + Math.Max(0, area.Width - width));
+        int ClampY(int top, int h) =>
+            Math.Clamp(top, area.Y, area.Y + Math.Max(0, area.Height - h));
+
         if (!ownerAttached)
         {
-            var left = Math.Clamp(rect.Right - targetW, area.X, area.X + Math.Max(0, area.Width - targetW));
+            // 默认右缘固定；若右缘已越出工作区（或右锚会把窗口推到区外），改为左缘固定，
+            // 否则收起抽屉时整扇窗口会被推到屏幕外，看起来就是「内容没了」。
+            var rightAnchored = rect.Right - targetW;
+            var wantLeft = rect.Right > area.X + area.Width || rightAnchored < area.X
+                ? rect.Left
+                : rightAnchored;
+            var left = ClampX(wantLeft, targetW);
+            var top = ClampY(rect.Top, height);
             NativeMethods.SetWindowPos(
-                _hwnd, IntPtr.Zero, left, rect.Top, targetW, height,
+                _hwnd, IntPtr.Zero, left, top, targetW, height,
                 NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
             Root.UpdateLayout();
             SaveCalendarSize();
+            DispatcherQueue.TryEnqueue(() => CalendarPane.EnsureRefreshed());
             return;
         }
 
@@ -484,6 +497,16 @@ public sealed partial class CalendarHostWindow : Window
             }
         }
 
+        // 贴边场景下若目标位置仍会越出工作区，放弃顺推主窗，直接把日历夹回区里。
+        var clampedLeft = ClampX(calLeft, targetW);
+        if (clampedLeft != calLeft)
+        {
+            calLeft = clampedLeft;
+            moveMain = false;
+        }
+
+        var calTop = ClampY(rect.Top, height);
+
         if (moveMain)
         {
             var hdwp = NativeMethods.BeginDeferWindowPos(2);
@@ -491,7 +514,7 @@ public sealed partial class CalendarHostWindow : Window
             {
                 hdwp = NativeMethods.DeferWindowPos(
                     hdwp, _hwnd, IntPtr.Zero,
-                    calLeft, rect.Top, targetW, height,
+                    calLeft, calTop, targetW, height,
                     NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
                 if (hdwp != IntPtr.Zero)
                 {
@@ -512,7 +535,7 @@ public sealed partial class CalendarHostWindow : Window
                     _ownerHwnd, IntPtr.Zero, newMainLeft, mainRect.Top, mainW, mainH,
                     NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
                 NativeMethods.SetWindowPos(
-                    _hwnd, IntPtr.Zero, calLeft, rect.Top, targetW, height,
+                    _hwnd, IntPtr.Zero, calLeft, calTop, targetW, height,
                     NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
             }
 
@@ -521,12 +544,13 @@ public sealed partial class CalendarHostWindow : Window
         else
         {
             NativeMethods.SetWindowPos(
-                _hwnd, IntPtr.Zero, calLeft, rect.Top, targetW, height,
+                _hwnd, IntPtr.Zero, calLeft, calTop, targetW, height,
                 NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
         }
 
         Root.UpdateLayout();
         SaveCalendarSize();
+        DispatcherQueue.TryEnqueue(() => CalendarPane.EnsureRefreshed());
     }
 
     private void HeaderDragPressed(object? sender, PointerRoutedEventArgs e)

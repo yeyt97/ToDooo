@@ -53,6 +53,7 @@ public sealed partial class CalendarWindow : UserControl
     private bool _suppressScrollSync;
     private DateTime? _pendingJumpDate;
     private double? _restoreScrollOffset;
+    private bool _activeScrollReady;
     private double _lastLayoutWidth;
     private double _lastLayoutHeight;
     private bool _selectedDayHasEntries;
@@ -328,7 +329,8 @@ public sealed partial class CalendarWindow : UserControl
             return;
         }
 
-        if (_restoreScrollOffset is null && _pendingJumpDate is null &&
+        // 只从「已完成初始定位」的滚动条读取偏移：窗口缩放会连续触发两次重建，        // 此时新滚动条的 VerticalOffset 还是 0，记下来就会跳到缓冲最顶端（看着像格子全空）。
+        if (_restoreScrollOffset is null && _pendingJumpDate is null && _activeScrollReady &&
             _activeScroll is not null && _builtViewMode == _viewMode)
         {
             _restoreScrollOffset = _activeScroll.VerticalOffset;
@@ -533,6 +535,7 @@ public sealed partial class CalendarWindow : UserControl
             Content = monthGrid,
         };
         _activeScroll = scroll;
+        _activeScrollReady = false;
 
         var targetWeek = WeekStart(_month);
         var targetRow = Math.Clamp((int)Math.Round((targetWeek - _monthGridStart).TotalDays / 7.0), 0, Math.Max(0, _monthLoadedWeeks - 6));
@@ -552,7 +555,14 @@ public sealed partial class CalendarWindow : UserControl
             initialApplied = true;
             _suppressScrollSync = true;
             scroll.ChangeView(null, Math.Clamp(initialOffset, 0, scroll.ScrollableHeight), null, true);
-            DispatcherQueue.TryEnqueue(() => _suppressScrollSync = false);
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                _suppressScrollSync = false;
+                if (ReferenceEquals(_activeScroll, scroll))
+                {
+                    _activeScrollReady = true;
+                }
+            });
         };
 
         scroll.ViewChanged += (_, args) =>
@@ -812,6 +822,7 @@ public sealed partial class CalendarWindow : UserControl
             Content = stream,
         };
         _activeScroll = scroll;
+        _activeScrollReady = false;
         var savedOffset = _restoreScrollOffset;
         _restoreScrollOffset = null;
 
@@ -837,7 +848,14 @@ public sealed partial class CalendarWindow : UserControl
                 scroll.ChangeView(null, Math.Clamp(pt.Y, 0, scroll.ScrollableHeight), null, true);
             }
 
-            DispatcherQueue.TryEnqueue(() => _suppressScrollSync = false);
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                _suppressScrollSync = false;
+                if (ReferenceEquals(_activeScroll, scroll))
+                {
+                    _activeScrollReady = true;
+                }
+            });
         };
 
         scroll.ViewChanged += (_, args) =>

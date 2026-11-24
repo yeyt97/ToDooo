@@ -533,6 +533,30 @@
                     Visibility="Collapsed"
                     VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="0,0,12,0">
+                        <!--  总开关：关掉就是纯离线，只用本地日历数据  -->
+                        <Border Style="{StaticResource SettingCard}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Spacing="3">
+                                    <TextBlock Style="{StaticResource LabelText}" Text="iCloud 日历同步" />
+                                    <TextBlock Style="{StaticResource HintText}" Text="打开后与 iCloud 双向同步日程；关闭则只使用本机已有的日历数据，不联网。" />
+                                </StackPanel>
+                                <ToggleSwitch
+                                    x:Name="CalendarSyncToggle"
+                                    Grid.Column="1"
+                                    MinWidth="0"
+                                    AutomationProperties.Name="启用日历同步"
+                                    OffContent=""
+                                    OnContent=""
+                                    Toggled="CalendarSyncToggle_Toggled" />
+                            </Grid>
+                        </Border>
+
+                        <!--  关闭同步时不显示任何配置项  -->
+                        <StackPanel x:Name="CalendarOnlinePanel" Spacing="0">
                         <!--  连接状态：一眼看出连没连上、用的哪个账号  -->
                         <Border x:Name="CalendarCard" Style="{StaticResource SettingCard}">
                             <Grid ColumnSpacing="12">
@@ -761,6 +785,7 @@
                                 </Grid>
                             </StackPanel>
                         </Border>
+                        </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
             </Grid>

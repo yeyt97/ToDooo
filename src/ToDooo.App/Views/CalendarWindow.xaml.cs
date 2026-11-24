@@ -306,15 +306,18 @@ public sealed partial class CalendarWindow : UserControl
     /// </summary>
     public async Task CreateEventAsync(DateTime date)
     {
-        if (_calendarSync is null || _settings is null || !_calendarSync.IsConfigured)
+        if (_calendarSync is null || _settings is null)
         {
-            await ShowMessageAsync("还没有配置日历", "先到设置里填写 Apple ID 和应用专用密码，才能新建日程。");
             return;
         }
 
+        // 离线也能建：只要本地有日历集合就行，改动会排进待补传队列。
         if (_calendarSync.Repository.GetSources().Count == 0)
         {
-            await ShowMessageAsync("没有可用日历", "同步一次拿到日历列表后，才能新建日程。");
+            await ShowMessageAsync("还没有可用日历",
+                _calendarSync.IsConfigured
+                    ? "先同步一次拿到日历列表，才能新建日程。"
+                    : "先到设置里打开日历同步并连接 iCloud，拿到日历列表后就能新建日程。");
             return;
         }
 

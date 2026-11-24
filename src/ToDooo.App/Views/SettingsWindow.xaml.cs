@@ -940,6 +940,7 @@ public sealed partial class SettingsWindow : Window
         }
 
         _calendarReady = false;
+        CalendarSyncToggle.IsOn = _settings.Current.CalendarSyncEnabled;
         AppleIdBox.Text = _calendarSync.AppleId;
         var refreshIndex = Math.Max(0, Array.IndexOf(RefreshOptions, _settings.Current.CalendarRefreshMinutes));
         CalendarRefreshBox.SelectedIndex = refreshIndex;
@@ -966,12 +967,32 @@ public sealed partial class SettingsWindow : Window
                 : $"上次同步 {synced:HH:mm}";
     }
 
+    /// <summary>
+    /// 同步总开关。关掉就切回纯离线：隐藏所有配置项，也不再发起任何网络请求；
+    /// 本地已有的日历数据照常可以查看和编辑。
+    /// </summary>
+    private void CalendarSyncToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (!_calendarReady || _calendarSync is null)
+        {
+            return;
+        }
+
+        _settings.Current.CalendarSyncEnabled = CalendarSyncToggle.IsOn;
+        _settings.Save();
+        UpdateCalendarStatus();
+        _settingsChanged();
+    }
+
     private void UpdateCalendarStatus()
     {
         if (_calendarSync is null)
         {
             return;
         }
+
+        var enabled = _settings.Current.CalendarSyncEnabled;
+        CalendarOnlinePanel.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
 
         var connected = _calendarSync.IsConfigured;
 

@@ -2,33 +2,58 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-A lightweight Windows 11 desktop todo and calendar companion built with **WinUI 3**, **.NET 11**, and **SQLite**. All tasks, subtasks, and settings are stored locally.
+A lightweight Windows 11 desktop todo and calendar companion built with **WinUI 3**, **.NET 11**, and **SQLite**. Todos stay on your machine; calendar events sync with iCloud.
+
+<p align="center">
+  <img src="docs/images/main.png" width="460" alt="Main window">
+</p>
 
 ## Features
 
-- **Quick Capture & Natural Language**: Add tasks inline or via dedicated editor with automatic parsing for dates/times (e.g., `明天下午3点`, `周五 10:30`), recurrence (`每天` / `每周` / `每月`), and priority (`!重要` / `!!`). Natural date/time parsing also works when quick-adding subtasks.
-- **Docked Calendar Companion**: Side-by-side borderless acrylic calendar window that snaps next to the main window (`6px` gap), follows dragging, and syncs height resizing.
-  - **Month & Day Views**: Continuous scrolling across months (18-week rolling grid) and a vertical day-by-day agenda stream (`Day` view) with dynamic header range tracking.
-  - **Drag & Drop Scheduling**: Drag tasks or subtasks between the main list, calendar dates, and the undated drawer; double-click any date to create a task.
-  - **Drawer & Summary**: Collapsible right drawer showing selected-day details, undated items, a **Hide Completed** toggle, and a **Weekly Completed** summary.
-- **Top-Edge Auto-Retract**: Drag the window to the top edge of the screen to retract both the todo window and attached calendar into a `6px` strip; hover either strip to expand.
-- **Subtasks & Notes**: Expandable subtasks with individual notes, due times, drag reordering, and a prompt to complete the parent task when all subtasks are checked; right-click **Edit** opens the subtask editor.
-- **Views, Tags & Batch Actions**: Filter tabs (`All` / `Active` / `Important` / `Done` with configurable default tab), customizable & reorderable Smart Views (`Today` / `Tomorrow` / `This Week` / `Overdue`), 8 customizable color tags, live search, and one-click **Postpone all overdue to today**.
-- **Reminders & Hotkeys**: Windows toast notifications (0–60 min lead time) with direct **Mark Done** and **Snooze 10 min** buttons, configurable global **Show Window** and **Quick Add** hotkeys, system tray menu, launch at startup, and JSON import/export.
-- **Update Check**: Silent GitHub Release check on startup (notifies once per version); **Check for updates** in Settings opens the download page.
-- **Acrylic Appearance**: Live System / Dark / Light theme sync, Windows Desktop Acrylic material, `0%–90%` transparency slider, and optional auto-fade on mouse leave.
+### Todos
+
+- **Quick capture with natural language** — Type inline, or open the full editor. Dates and times are parsed automatically (`tomorrow 3pm`, `friday 10:30`), as are recurrence (`daily` / `weekly` / `monthly`) and importance (`!important` / `!!`).
+- **Subtasks & notes** — Each task can carry subtasks, each with its own note, due time, and drag-reorder. When every subtask is checked you're asked whether to complete the parent too.
+- **Views, tags & batch actions** — Filter tabs (All / Active / Important / Done) with a configurable default, reorderable smart views (Today / Tomorrow / This Week / Overdue), 8 color tags, live search, and one-click postpone of everything overdue to today.
+- **Reminders & hotkeys** — Windows toast notifications with **Mark Done** and **Snooze 10 min** buttons on the notification itself, plus global hotkeys for showing the window and quick capture, tray menu, launch at startup, and JSON import/export.
+- **Acrylic appearance** — Follows the system theme live, with a transparency slider and optional fade-on-mouse-leave.
+
+<p align="center">
+  <img src="docs/images/editor.png" width="440" alt="Edit a todo">
+</p>
+
+### Calendar
+
+- **Two-way iCloud sync** — Connect with an Apple ID and an app-specific password. Events live in iCloud; todos stay local. Writes apply locally first and are pushed in the background, with a persistent retry queue for offline use.
+- **Month and day views** — Multi-day events render as continuous bars laid out by week; single-day events and todos are mixed into the cells by time.
+- **Per-calendar colors and filters** — Colors come from iCloud, and each calendar can be toggled on or off.
+- **Drag to reschedule** — Drag a single-day event onto another date and the change syncs right away.
+- **Recurring events** — Daily / weekly / biweekly / monthly / yearly, with EXDATE and per-occurrence overrides handled correctly. Editing or deleting offers "this event only" or "the whole series".
+- **Move between calendars** — Reassign an event to a different calendar.
+- **Free window** — The calendar is an independent window that remembers its position and size, and resizes from all four edges and corners.
+
+<p align="center">
+  <img src="docs/images/calendar.png" width="980" alt="Calendar window">
+</p>
+
+### Settings
+
+- Categorized into General / Reminders / Calendar, with a sidebar that collapses to icons on narrow windows.
+- The calendar page walks through generating an app-specific password, with a direct link to `account.apple.com` — including the note that changing your Apple ID password invalidates every app-specific password.
 
 ## Install
 
-- **Installer (recommended)**: download `ToDooo-<version>-setup.exe` from [Releases](https://github.com/yeyt97/ToDooo/releases). It installs per-user (no admin prompt), adds a Start Menu shortcut and an uninstaller.
-- **Portable**: download `ToDooo-<version>-win-x64.zip`, extract anywhere and run `ToDooo.exe`.
+- **Installer (recommended)** — Download `ToDooo-<version>-setup.exe` from [Releases](https://github.com/yeyt97/ToDooo/releases). It installs per-user (no admin prompt) and adds a Start Menu shortcut and an uninstaller.
+- **Portable** — Download `ToDooo-<version>-win-x64.zip`, extract anywhere, and run `ToDooo.exe`.
 
-Both forms share `%LocalAppData%\ToDooo`, so reinstalling or replacing files keeps your tasks and settings. Builds are not code-signed yet, so SmartScreen may ask you to confirm on first run.
+Both forms share `%LocalAppData%\ToDooo`, so reinstalling or replacing files keeps your tasks, settings, and calendar cache. Builds are not code-signed yet, so SmartScreen may ask you to confirm on first run.
 
 ## Requirements
 
-- **Runtime**: Windows 11 22H2 (Build 22621) or later (`x64`)
-- **Build from source**: [.NET 11 SDK](https://dotnet.microsoft.com/) with Windows App SDK workload
+- **Runtime**: Windows 11 22H2 (Build 22621) or later, `x64`
+- **Build from source**: [.NET 11 SDK](https://dotnet.microsoft.com/) with the Windows App SDK workload
+
+The calendar connection needs an Apple ID with two-factor authentication enabled, so that an app-specific password can be generated.
 
 ## Build, Test & Publish
 
@@ -39,40 +64,71 @@ dotnet build src/ToDooo.App/ToDooo.csproj -p:Platform=x64
 # Run unit tests
 dotnet test tests/ToDooo.Tests/ToDooo.Tests.csproj
 
-# Publish self-contained Release build (no .NET runtime required for end users)
+# Publish a self-contained Release build (end users need no .NET runtime)
 dotnet publish src/ToDooo.App/ToDooo.csproj -c Release -p:Platform=x64 -p:PublishProfile=win-x64
 
-# One-step release: bump version (csproj + manifest), test, publish, pack ZIP
-pwsh scripts/release.ps1 -Version 1.4.0
+# One-step release: bump version (csproj + manifest), test, publish, pack ZIP and installer
+pwsh scripts/release.ps1 -Version 1.6.0
 ```
 
-Version numbers live only in `ToDooo.csproj`; the settings page reads the assembly version at runtime. Pushing a `v*` tag triggers `.github/workflows/release.yml`, which re-runs tests, packs `ToDooo-<version>-win-x64.zip` (+ SHA256) and publishes a GitHub Release.
+The live iCloud tests are skipped unless both `CALDAV_APPLE_ID` and `CALDAV_APP_PASSWORD` are set:
+
+```powershell
+$env:CALDAV_APPLE_ID = 'you@example.com'
+$env:CALDAV_APP_PASSWORD = 'xxxx-xxxx-xxxx-xxxx'
+dotnet test --filter LiveICloud
+```
+
+Version numbers live in `ToDooo.csproj` and `app.manifest`; the settings page reads the assembly version at runtime. Pushing a `v*` tag triggers `.github/workflows/release.yml`, which re-runs tests, packs the ZIP and installer, and publishes a GitHub Release.
+
+## Screenshots with demo data
+
+The images above are rendered from a throwaway dataset, not from real user data. To regenerate them:
+
+```powershell
+$env:TODOOO_DATA_DIR = 'C:\temp\todooo-demo'
+python scripts/make-demo-data.py
+# launch the app with the same variable set, then:
+pwsh scripts/capture-readme-shots.ps1
+```
+
+`TODOOO_DATA_DIR` moves the whole data directory and the single-instance key, so a demo instance can run alongside your normal one without touching real data.
 
 ## Project Structure
 
 ```text
 src/ToDooo.App/
-├── MainWindow.xaml(.cs)         # Core window lifecycle, hotkeys, WndProc, calendar/settings host
-├── MainWindow.Tray.cs           # Tray icon & menus, undo bar, JSON import/export, toast callbacks
-├── MainWindow.Dock.cs           # Edge resizing & synchronized top-edge retract/expand
+├── MainWindow.xaml(.cs)         # Window lifecycle, hotkeys, WndProc, calendar/settings host
+├── MainWindow.Tray.cs           # Tray icon and menus, undo bar, JSON import/export, toast callbacks
+├── MainWindow.Dock.cs           # Edge resizing and synchronized top-edge retract
 ├── MainWindow.Filters.cs        # Search bar, filter tabs, tag dots, smart views, accelerators
 ├── MainWindow.Todos.cs          # Quick add, task cards, context menus, subtask interactions
-├── Models/                      # TodoItem, SubtaskItem, SmartView
-├── Services/                    # SQLite repository, settings, reminder scheduler, notifier, palette
-├── ViewModels/                  # MainViewModel filtering, sorting, and persistence orchestration
-├── Views/                       # CalendarHostWindow, CalendarWindow, SettingsWindow, Editors
-├── Helpers/                     # NaturalDateParser, Bind, DpiScale
+├── Models/                      # TodoItem, SubtaskItem, SmartView, CalendarEvent
+├── Services/                    # SQLite repositories, settings, reminders, CalDAV sync, iCalendar
+├── ViewModels/                  # MainViewModel filtering, sorting, persistence orchestration
+├── Views/                       # Calendar host and pane, settings, editors, month layout
+├── Helpers/                     # NaturalDateParser, Bind, DpiScale, TimePickerSizing, WindowEdgeResize
 ├── Interop/                     # NativeMethods, WindowAcrylic, WindowCloak, WindowSnap, TrayIcon
-└── Themes/                      # Shared resource brushes and control styles
-tests/ToDooo.Tests/              # xUnit tests (models, ViewModel, SQLite repository, parser)
+└── Themes/                      # Shared brushes and control styles
+tests/ToDooo.Tests/              # xUnit tests (models, ViewModel, repositories, parser, iCalendar)
+scripts/                         # release.ps1, demo data and README screenshot helpers
 ```
+
+## How the calendar sync works
+
+- **Masters, not flattened copies** — Synced resources are stored as the original `.ics` text, and occurrences are expanded when read. This keeps `RRULE`, `EXDATE`, and `RECURRENCE-ID` overrides authoritative instead of drifting from a second copy.
+- **Local-first writes** — Every create, edit, and delete applies locally first, then pushes. Failures go into a persistent queue that is replayed on reconnect; the sync icon shows a small amber dot while anything is pending.
+- **Coalesced drags** — Dragging several events in a row batches into a single push after a short quiet period, instead of one connection per event.
+- **Moving between calendars** — CalDAV has no move operation, so an event is re-created in the target collection and the old resource is deleted, with the deletion queued if it fails.
 
 ## Local Data
 
 Stored under `%LocalAppData%\ToDooo\`:
 
-- `todo.db` — SQLite database for tasks and subtasks
-- `settings.json` — Theme, transparency, default tab, hotkeys, tag names, smart views, and window bounds
+- `todo.db` — SQLite database for tasks, subtasks, calendar cache, and the pending-sync queue
+- `settings.json` — Theme, transparency, default tab, hotkeys, tag names, smart views, window bounds, and the encrypted calendar password
+
+The calendar password is encrypted with Windows DPAPI (current user scope), so copying `settings.json` to another machine or account does not expose it.
 
 Replacing the executable directory preserves all local data.
 

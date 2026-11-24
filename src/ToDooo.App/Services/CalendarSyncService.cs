@@ -64,8 +64,15 @@ public sealed class CalendarSyncService
     }
 
     public bool IsConfigured =>
+        _settings.Current.CalendarSyncEnabled &&
         !string.IsNullOrWhiteSpace(_settings.Current.CalendarAppleId) &&
         !string.IsNullOrWhiteSpace(_settings.Current.CalendarPasswordCipher);
+
+    /// <summary>
+    /// 本地是否有日历可用：配了账号，或者同步过、缓存里有日历集合。
+    /// 离线或还没配账号时，日历照常可以查看和编辑，改动排进待补传队列。
+    /// </summary>
+    public bool HasLocalCalendar => IsConfigured || _repository.GetSources().Count > 0;
 
     public CalendarRepository Repository => _repository;
 
@@ -135,6 +142,7 @@ public sealed class CalendarSyncService
     public async Task<CalendarSyncResult> SyncAsync(DateTime from, DateTime to,
         IProgress<string>? progress = null, CancellationToken token = default)
     {
+        // 整窗同步要真的连服务器，没账号就没得同步；本地查看编辑不受影响。
         if (!IsConfigured)
         {
             return CalendarSyncResult.Fail("尚未配置日历账号。");
@@ -552,11 +560,6 @@ public sealed class CalendarSyncService
     public async Task<CalendarEvent> CreateEventAsync(string calendarHref, CalendarEventDraft draft,
         CancellationToken token = default)
     {
-        if (!IsConfigured)
-        {
-            throw new CalDavException("尚未配置日历账号。");
-        }
-
         var uid = Guid.NewGuid().ToString().ToUpperInvariant() + "@todooo";
         var ics = BuildIcs(uid, draft, sequence: 0);
         var resourceName = uid.Replace("@", "_").Replace(".", "-") + ".ics";
@@ -608,6 +611,13 @@ public sealed class CalendarSyncService
 
         EventsChanged?.Invoke(this, EventArgs.Empty);
 
+        // 没配账号（离线也能新建）：本地已生效，进队列等配上账号再推。
+        if (!IsConfigured)
+        {
+            _repository.AddPending(predictedPath, "create", calendarHref, string.Empty, ics);
+            return created;
+        }
+
         try
         {
             using var client = new CalDavClient(AppleId, Password);
@@ -629,11 +639,6 @@ public sealed class CalendarSyncService
     public async Task UpdateEventAsync(CalendarEvent existing, CalendarEventDraft draft,
         CancellationToken token = default)
     {
-        if (!IsConfigured)
-        {
-            throw new CalDavException("尚未配置日历账号。");
-        }
-
         var fallback = BuildIcs(existing.Uid, draft, sequence: 1);
 
         // 本地母事件存在时做读-改-写，保留 EXDATE、覆盖实例、VALARM 等未管理内容；
@@ -647,6 +652,14 @@ public sealed class CalendarSyncService
         {
             _repository.AddPending(existing.ResourceHref, "create", existing.CalendarHref,
                 string.Empty, localPayload);
+            return;
+        }
+
+        // 没配账号（离线也能编辑）：本地已生效，改动排进队列等配上账号再推。
+        if (!IsConfigured)
+        {
+            _repository.AddPending(existing.ResourceHref, "update", existing.CalendarHref,
+                existing.ETag ?? string.Empty, localPayload);
             return;
         }
 
@@ -703,11 +716,6 @@ public sealed class CalendarSyncService
     public async Task<CalendarEvent> MoveEventToCalendarAsync(CalendarEvent existing,
         string targetCalendarHref, CalendarEventDraft draft, CancellationToken token = default)
     {
-        if (!IsConfigured)
-        {
-            throw new CalDavException("尚未配置日历账号。");
-        }
-
         // 先把已有的本地母事件改好（保留 EXDATE / 覆盖实例等），再原样搬到新集合。
         var ics = PatchLocalMaster(existing.ResourceHref, draft,
             BuildIcs(existing.Uid, draft, sequence: 1));
@@ -766,6 +774,15 @@ public sealed class CalendarSyncService
             _repository.RemovePending(existing.ResourceHref);
             _repository.AddPending(newHref, "create", targetCalendarHref, string.Empty, ics);
             ScheduleDeferredPush();
+            return moved;
+        }
+
+        // 没配账号（离线也能移动）：本地已换到新集合，云端那一步排进队列。
+        if (!IsConfigured)
+        {
+            _repository.AddPending(newHref, "create", targetCalendarHref, string.Empty, ics);
+            _repository.AddPending(existing.ResourceHref, "delete", existing.CalendarHref,
+                existing.ETag ?? string.Empty);
             return moved;
         }
 
@@ -947,11 +964,6 @@ public sealed class CalendarSyncService
     public async Task UpdateOccurrenceAsync(CalendarEvent occurrence, CalendarEventDraft draft,
         CancellationToken token = default)
     {
-        if (!IsConfigured)
-        {
-            throw new CalDavException("尚未配置日历账号。");
-        }
-
         var originalStart = occurrence.StartAt;
         var localMaster = _repository.GetMasterIcs(occurrence.ResourceHref);
         if (!string.IsNullOrWhiteSpace(localMaster))
@@ -987,6 +999,19 @@ public sealed class CalendarSyncService
             EventsChanged?.Invoke(this, EventArgs.Empty);
         }
 
+        // 没配账号（离线也能改）：本地已生效，队列里放一份，等配上账号再推。
+        if (!IsConfigured)
+        {
+            var queued = _repository.GetMasterIcs(occurrence.ResourceHref);
+            if (!string.IsNullOrWhiteSpace(queued))
+            {
+                _repository.AddPending(occurrence.ResourceHref, "update", occurrence.CalendarHref,
+                    occurrence.ETag ?? string.Empty, queued);
+            }
+
+            return;
+        }
+
         try
         {
             using var client = new CalDavClient(AppleId, Password);
@@ -1016,11 +1041,6 @@ public sealed class CalendarSyncService
     /// <summary>删除循环日程中的某一次：给主事件加 EXDATE，只去掉这一天。</summary>
     public async Task DeleteOccurrenceAsync(CalendarEvent occurrence, CancellationToken token = default)
     {
-        if (!IsConfigured)
-        {
-            throw new CalDavException("尚未配置日历账号。");
-        }
-
         // 本地把这次写进 EXDATE，母事件仍然保留，后续实例继续展开。
         var localMaster = _repository.GetMasterIcs(occurrence.ResourceHref);
         if (!string.IsNullOrWhiteSpace(localMaster))
@@ -1033,6 +1053,19 @@ public sealed class CalendarSyncService
         }
 
         EventsChanged?.Invoke(this, EventArgs.Empty);
+
+        // 没配账号（离线也能删）：本地已排除这一天，队列里放更新后的母事件。
+        if (!IsConfigured)
+        {
+            var queued = _repository.GetMasterIcs(occurrence.ResourceHref);
+            if (!string.IsNullOrWhiteSpace(queued))
+            {
+                _repository.AddPending(occurrence.ResourceHref, "update", occurrence.CalendarHref,
+                    occurrence.ETag ?? string.Empty, queued);
+            }
+
+            return;
+        }
 
         try
         {
@@ -1061,15 +1094,18 @@ public sealed class CalendarSyncService
 
     public async Task DeleteEventAsync(CalendarEvent calendarEvent, CancellationToken token = default)
     {
-        if (!IsConfigured)
-        {
-            throw new CalDavException("尚未配置日历账号。");
-        }
-
         // 先删本地：界面立刻消失；云端失败就排队等下次补删。
         _repository.RemoveMaster(calendarEvent.ResourceHref);
         _repository.RemoveEventsByResource(calendarEvent.ResourceHref);
         EventsChanged?.Invoke(this, EventArgs.Empty);
+
+        // 没配账号（离线也能删）：本地已删，排一条补删等配上账号再执行。
+        if (!IsConfigured)
+        {
+            _repository.AddPending(calendarEvent.ResourceHref, "delete", calendarEvent.CalendarHref,
+                calendarEvent.ETag ?? string.Empty);
+            return;
+        }
 
         try
         {

@@ -186,7 +186,8 @@ public partial class App : Application
         try
         {
             _dispatcher = DispatcherQueue.GetForCurrentThread();
-            var main = AppInstance.FindOrRegisterForKey("ToDooo-main");
+            // key 跟着数据目录走：默认目录仍是 ToDooo-main，截图/调试用的独立目录互不干扰。
+            var main = AppInstance.FindOrRegisterForKey(AppPaths.InstanceKey);
             if (main.IsCurrent)
             {
                 main.Activated += (_, _) =>

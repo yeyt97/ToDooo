@@ -85,6 +85,11 @@ public sealed class AppSettings
     /// <summary>智能视图的启用状态与显示顺序（列表顺序即显示顺序）。</summary>
     public List<SmartViewSetting> SmartViews { get; set; } = SmartViewSetting.CreateDefault();
 
+    /// <summary>
+    /// 是否启用 iCloud 日历同步。关闭即纯离线：只用本地日历数据，不发任何网络请求。
+    /// </summary>
+    public bool CalendarSyncEnabled { get; set; }
+
     /// <summary>日历同步用的 Apple ID；为空表示未配置。</summary>
     public string CalendarAppleId { get; set; } = string.Empty;
 

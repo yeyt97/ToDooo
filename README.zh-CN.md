@@ -2,80 +2,136 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-轻量级 Windows 11 桌面待办与日历工具（WinUI 3 / .NET 11 / SQLite），所有任务与设置均保存在本机。
+轻量级 Windows 11 桌面待办与日历工具（WinUI 3 / .NET 11 / SQLite）。待办只保存在本机，日历日程与 iCloud 双向同步。
+
+<p align="center">
+  <img src="docs/images/main.png" width="460" alt="主窗口">
+</p>
 
 ## 功能特性
 
-- **快速输入与自然语言解析**：主添加栏支持自动识别日期时间（如 `明天下午3点`、`周五 10:30`）、重复周期（`每天` / `每周` / `每月`）及重要标记（`!重要` / `!!`）；子任务快速添加同样支持识别截止时间。
-- **贴边日历工具窗**：独立无边框亚克力日历窗紧贴主窗口一侧（`6px` 间距）展开，支持靠近磁吸、双向拖动跟随与高度同步缩放。
-  - **月 / 日连续视图**：月视图（18 周连续滚动网格）与日视图（纵向按天横排日程流）均支持连续平滑滚动，跨月跨周同屏浏览、顶栏标题自动联动。
-  - **拖拽改期与直接新建**：支持主列表、日历格子与无截止日期区之间互拖改期；双击日历任意日期可直接新建待办。
-  - **右侧抽屉与小结**：可收起右侧抽屉（同步缩放日历窗宽），提供「隐藏已完成」开关与「本周已完成」汇总条。
-- **顶部自动收边**：将主窗口（或随主窗口一起）拖到屏幕顶部边缘松手即可收成 `6px` 顶部薄条并置顶，鼠标悬停即刻同步呼出。
-- **子任务与备注**：主列表展开子任务并支持独立备注、截止时间、拖动排序与右键「编辑…」弹窗；全部子任务勾完时提示是否同步完成主任务。
-- **筛选视图与批量操作**：支持「全部 / 进行中 / 重要 / 已完成」及启动默认标签设置、可自定义启用与排序的智能视图（今天 / 明天 / 本周 / 已逾期）、8 色自定义标签、实时搜索，以及在已逾期视图一键「全部顺延到今天」。
-- **桌面提醒与全局热键**：支持提前 0–60 分钟的 Windows 系统通知，通知卡片直接提供「标记完成」与「推迟 10 分钟」按钮；支持自定义全局呼出与「快速记一条」热键、托盘菜单、开机自启与 JSON 导入导出。
-- **版本更新**：启动后静默检查 GitHub Release（同一版本只提示一次），设置页「检查更新」可直接打开下载页。
-- **亚克力外观**：跟随系统深浅色实时切换、`0%–90%` 透明度调节、桌面亚克力磨砂与离窗自动变淡。
+### 待办
+
+- **快速输入与自然语言解析** — 主添加栏直接敲，或打开完整编辑窗。日期时间自动识别（`明天下午3点`、`周五 10:30`），重复周期（`每天` / `每周` / `每月`）和重要标记（`!重要` / `!!`）同样识别。
+- **子任务与备注** — 每条待办可带子任务，各自有备注、截止时间和拖动排序。子任务全部勾完时会询问是否一并完成主任务。
+- **筛选、标签与批量操作** — 「全部 / 进行中 / 重要 / 已完成」筛选标签（可设默认），可排序的智能视图（今天 / 明天 / 本周 / 已逾期），8 色标签，实时搜索，以及一键把所有逾期项顺延到今天。
+- **提醒与热键** — Windows 系统通知上直接带「标记完成」和「推迟 10 分钟」按钮；支持全局呼出与快速记一条热键、托盘菜单、开机自启、JSON 导入导出。
+- **亚克力外观** — 跟随系统深浅色，`0%–90%` 透明度调节，可选鼠标离开时自动变淡。
+
+<p align="center">
+  <img src="docs/images/editor.png" width="440" alt="编辑待办">
+</p>
+
+### 日历
+
+- **iCloud 双向同步** — 用 Apple ID 和应用专用密码连接。日程存在 iCloud，待办仍然只在本机。所有写入先落本地再后台推送，断网时进入持久队列等待补传。
+- **月视图与日视图** — 跨日日程按周排成连续色条；单日日程和待办按时间混排进格子里。
+- **按日历配色与筛选** — 颜色取自 iCloud，每个日历可以单独开关是否显示。
+- **拖拽改期** — 把单日日程拖到另一天，改动立即同步。
+- **循环日程** — 每天 / 每周 / 每两周 / 每月 / 每年，正确处理 EXDATE 和单次覆盖。编辑或删除时可选「仅这一次」或「整个系列」。
+- **改所属日历** — 日程可以在不同日历之间移动。
+- **独立窗口** — 日历是独立窗口，记住位置和尺寸，四边四角都能拖拽缩放。
+
+<p align="center">
+  <img src="docs/images/calendar.png" width="980" alt="日历窗口">
+</p>
+
+### 设置
+
+- 分为通用 / 提醒事项 / 日历三类，窗口变窄时侧栏收缩成图标。
+- 日历页带一份应用专用密码的获取教程，一键直达 `account.apple.com`，并说明「改过 Apple 账户主密码后专用密码会全部失效」这个常见坑。
 
 ## 安装
 
-- **安装版（推荐）**：从 [Releases](https://github.com/yeyt97/ToDooo/releases) 下载 `ToDooo-<版本>-setup.exe`，按用户安装（不需要管理员权限），自动创建开始菜单快捷方式并注册卸载项。
-- **便携版**：下载 `ToDooo-<版本>-win-x64.zip`，解压到任意目录运行 `ToDooo.exe`。
+- **安装版（推荐）** — 从 [Releases](https://github.com/yeyt97/ToDooo/releases) 下载 `ToDooo-<版本>-setup.exe`。按用户安装，不需要管理员权限，自动创建开始菜单快捷方式和卸载项。
+- **便携版** — 下载 `ToDooo-<版本>-win-x64.zip`，解压到任意目录运行 `ToDooo.exe`。
 
-两种形式共用 `%LocalAppData%\ToDooo`，重装或覆盖文件都不会丢失待办与设置。目前安装包未做代码签名，首次运行可能被 SmartScreen 拦一次，点「更多信息 → 仍要运行」即可。
+两种形式共用 `%LocalAppData%\ToDooo`，重装或覆盖文件都不会丢失待办、设置和日历缓存。目前安装包未做代码签名，首次运行可能被 SmartScreen 拦一次，点「更多信息 → 仍要运行」即可。
 
 ## 运行与构建环境
 
-- **运行环境**：Windows 11 22H2（22621）及以上，`x64`（自包含发布包无需额外安装运行时）
-- **源码构建**：.NET 11 SDK
+- **运行环境**：Windows 11 22H2（22621）及以上，`x64`
+- **从源码构建**：[.NET 11 SDK](https://dotnet.microsoft.com/) 及 Windows App SDK 工作负载
+
+日历功能需要账户开启双重认证，才能生成应用专用密码。
 
 ## 构建、测试与发布
 
 ```powershell
-# 编译（Debug）
+# 构建（Debug）
 dotnet build src/ToDooo.App/ToDooo.csproj -p:Platform=x64
 
 # 运行单元测试
 dotnet test tests/ToDooo.Tests/ToDooo.Tests.csproj
 
-# 发布自包含 Release 版本
+# 发布自包含 Release 版（终端用户无需安装 .NET 运行时）
 dotnet publish src/ToDooo.App/ToDooo.csproj -c Release -p:Platform=x64 -p:PublishProfile=win-x64
 
-# 一键发版：同步版本号（csproj + manifest）→ 跑测试 → 发布 → 打包 ZIP
-pwsh scripts/release.ps1 -Version 1.4.0
+# 一步发版：改版本号（csproj + manifest）、跑测试、发布、打 ZIP 和安装包
+pwsh scripts/release.ps1 -Version 1.6.0
 ```
 
-版本号只维护 `ToDooo.csproj` 一处，设置页「关于」在运行时读取程序集版本。推送 `v*` 标签会触发 `.github/workflows/release.yml`：自动跑测试、打包 `ToDooo-<版本>-win-x64.zip`（附 SHA256）并发布 GitHub Release。
+真实 iCloud 测试默认跳过，只有同时设置两个环境变量才会运行：
 
-## 目录结构
+```powershell
+$env:CALDAV_APPLE_ID = 'you@example.com'
+$env:CALDAV_APP_PASSWORD = 'xxxx-xxxx-xxxx-xxxx'
+dotnet test --filter LiveICloud
+```
+
+版本号写在 `ToDooo.csproj` 和 `app.manifest` 里，设置页运行时读取程序集版本。推送 `v*` 标签会触发 `.github/workflows/release.yml`，重新跑测试、打包 ZIP 与安装包并发布 GitHub Release。
+
+## 截图与演示数据
+
+上面的截图用的是完全虚构的数据，不是真实用户数据。重新生成：
+
+```powershell
+$env:TODOOO_DATA_DIR = 'C:\temp\todooo-demo'
+python scripts/make-demo-data.py
+# 用同样的环境变量启动应用，然后执行：
+pwsh scripts/capture-readme-shots.ps1
+```
+
+`TODOOO_DATA_DIR` 会一并切换数据目录和单实例名，所以演示实例可以和正常实例同时运行，互不影响。
+
+## 项目结构
 
 ```text
 src/ToDooo.App/
-├── MainWindow.xaml(.cs)         # 主窗口生命周期、全局热键、消息循环与日历/设置宿主
-├── MainWindow.Tray.cs           # 托盘图标与菜单、撤销条、JSON 导入导出、通知动作回调
-├── MainWindow.Dock.cs           # 边缘缩放与顶部共同收边/呼出逻辑
-├── MainWindow.Filters.cs        # 搜索栏、标签页筛选、颜色标签、智能视图与快捷键
-├── MainWindow.Todos.cs          # 快速添加、任务卡片、右键菜单与子任务交互
-├── Models/                      # TodoItem、SubtaskItem、SmartView 数据模型
-├── Services/                    # SQLite 仓储、设置服务、提醒调度、系统通知与主题色板
-├── ViewModels/                  # MainViewModel 列表筛选、排序与持久化调度
-├── Views/                       # 日历宿主窗、日历控件、设置窗口、待办与子任务编辑窗口
-├── Helpers/                     # 自然语言日期解析、x:Bind 转换、DPI 缩放辅助
-├── Interop/                     # Win32 互操作、亚克力控制、DWM 防黑帧遮罩、窗口磁吸与托盘
-└── Themes/                      # 全局主题画刷与控件样式
-tests/ToDooo.Tests/              # xUnit 单元测试（模型、ViewModel、仓储、自然语言解析）
+├── MainWindow.xaml(.cs)         # 窗口生命周期、热键、WndProc、日历与设置宿主
+├── MainWindow.Tray.cs           # 托盘图标与菜单、撤销条、JSON 导入导出、通知回调
+├── MainWindow.Dock.cs           # 边缘缩放与顶部收边
+├── MainWindow.Filters.cs        # 搜索栏、筛选标签、标签色点、智能视图
+├── MainWindow.Todos.cs          # 快速添加、任务卡片、右键菜单、子任务交互
+├── Models/                      # TodoItem、SubtaskItem、SmartView、CalendarEvent
+├── Services/                    # SQLite 仓储、设置、提醒、CalDAV 同步、iCalendar 读写
+├── ViewModels/                  # MainViewModel 筛选、排序与持久化编排
+├── Views/                       # 日历宿主与面板、设置、各编辑窗、月视图排布
+├── Helpers/                     # NaturalDateParser、Bind、DpiScale、TimePickerSizing、WindowEdgeResize
+├── Interop/                     # NativeMethods、WindowAcrylic、WindowCloak、WindowSnap、TrayIcon
+└── Themes/                      # 共享画刷与控件样式
+tests/ToDooo.Tests/              # xUnit 测试（模型、ViewModel、仓储、解析器、iCalendar）
+scripts/                         # release.ps1、演示数据与 README 截图脚本
 ```
+
+## 日历同步是怎么做的
+
+- **存母事件，不存展开副本** — 同步下来的资源保存为原始 `.ics` 文本，读取时再展开。这样 `RRULE`、`EXDATE` 和 `RECURRENCE-ID` 覆盖始终以原始文件为准，不会因为维护第二份副本而逐渐走偏。
+- **本地优先** — 新建、编辑、删除都先落本地再推送。失败进入持久队列，恢复后补传；有积压时同步图标上会出现一个橙色小点。
+- **拖拽合并推送** — 连续拖动多条日程时，会在短暂静默期后合并成一次推送，而不是每条都新建一次连接。
+- **跨日历移动** — CalDAV 没有移动操作，因此会在目标集合重新创建再从旧集合删除；删除失败就排队补删。
 
 ## 本地数据
 
-数据保存在 `%LocalAppData%\ToDooo\`：
+保存在 `%LocalAppData%\ToDooo\`：
 
-- `todo.db` — SQLite 数据库（待办、子任务及备注）
-- `settings.json` — 外观主题、透明度、默认标签、热键、自定义标签名、智能视图与窗口尺寸位置
+- `todo.db` — SQLite 数据库，含待办、子任务、日历缓存和待同步队列
+- `settings.json` — 主题、透明度、默认标签、热键、标签名、智能视图、窗口位置，以及加密后的日历密码
 
-覆盖替换程序目录即可升级，不影响本地已有数据。
+日历密码用 Windows DPAPI（当前用户范围）加密，把 `settings.json` 拷到别的机器或账户下也解不开。
 
-## 许可
+替换程序目录不会影响任何本地数据。
+
+## 许可证
 
 [MIT](LICENSE) © 2026 yyt

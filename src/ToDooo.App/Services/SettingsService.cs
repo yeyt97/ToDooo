@@ -32,13 +32,26 @@ public sealed class AppSettings
 
     public int WindowHeight { get; set; } = 716;
 
+    /// <summary>待办编辑窗上次被用户拖到的尺寸（逻辑像素）；为 0 则用默认尺寸。</summary>
+    public int TodoEditorWidth { get; set; }
+
+    public int TodoEditorHeight { get; set; }
+
     public int CalendarWidth { get; set; } = 860;
 
     public int CalendarHeight { get; set; } = 560;
 
+    /// <summary>日历窗口上次的位置（屏幕像素）；为空则打开时摆到主窗口旁边。</summary>
+    public int? CalendarX { get; set; }
+
+    public int? CalendarY { get; set; }
+
     public int CalendarViewMode { get; set; }
 
     public bool CalendarHideCompleted { get; set; }
+
+    /// <summary>日历里是否显示本地待办；关闭后只显示 iCloud 日程。</summary>
+    public bool CalendarShowTodos { get; set; } = true;
 
     public int ThemeMode { get; set; }
 
@@ -47,6 +60,9 @@ public sealed class AppSettings
 
     /// <summary>窗口不透明度（设置页显示为“透明度”）：0.1–1.0，默认 0.8。</summary>
     public double WindowOpacity { get; set; } = 0.8;
+
+    /// <summary>窗口底色：见 Appearance.TintMode（0 跟随主题 / 1 深灰 / 2 藏青 / 3 暖褐）。</summary>
+    public int WindowTintMode { get; set; }
 
     /// <summary>提前多少分钟提醒：0 = 到期时提醒。</summary>
     public int ReminderLeadMinutes { get; set; }
@@ -68,6 +84,15 @@ public sealed class AppSettings
 
     /// <summary>智能视图的启用状态与显示顺序（列表顺序即显示顺序）。</summary>
     public List<SmartViewSetting> SmartViews { get; set; } = SmartViewSetting.CreateDefault();
+
+    /// <summary>日历同步用的 Apple ID；为空表示未配置。</summary>
+    public string CalendarAppleId { get; set; } = string.Empty;
+
+    /// <summary>应用专用密码的 DPAPI 密文，绝不存明文。</summary>
+    public string CalendarPasswordCipher { get; set; } = string.Empty;
+
+    /// <summary>后台自动刷新间隔（分钟）：0 = 只手动刷新。</summary>
+    public int CalendarRefreshMinutes { get; set; } = 15;
 }
 
 public sealed class SettingsService

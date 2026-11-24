@@ -23,6 +23,7 @@
     <SolidColorBrush x:Key="ItemCardStrokeBrush" Color="#0CFFFFFF" />
     <SolidColorBrush x:Key="SegmentBarBrush" Color="#0AFFFFFF" />
     <SolidColorBrush x:Key="SegmentSelectedBrush" Color="#26FFFFFF" />
+    <SolidColorBrush x:Key="NavSelectedBrush" Color="#30FFFFFF" />
     <SolidColorBrush x:Key="OverlaySurfaceBrush" Color="#2A3038" />
     <SolidColorBrush x:Key="NeutralCheckFillBrush" Color="#EDEFF2" />
     <SolidColorBrush x:Key="CheckGlyphBrush" Color="#262B33" />
@@ -116,7 +117,8 @@
                         <ContentPresenter
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"
-                            Content="{TemplateBinding Content}" />
+                            Content="{TemplateBinding Content}"
+                            Foreground="{TemplateBinding Foreground}" />
                     </Grid>
                 </ControlTemplate>
             </Setter.Value>
@@ -252,6 +254,7 @@
     <!-- 添加入口与任务卡片共用同一张「卡片」外观 -->
     <!-- 添加框专用：原生 TextBox 的占位文字不吃 VerticalContentAlignment，
          拉高后会贴顶。这里用极简模板把编辑区钉在垂直中心，占位文字由外层 TextBlock 承担。 -->
+    <!--  无边框输入：光标与文字严格贴在输入区（标题框、添加框共用）  -->
     <Style x:Key="AddTextBoxStyle" TargetType="TextBox">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderBrush" Value="Transparent" />
@@ -264,18 +267,19 @@
             <Setter.Value>
                 <ControlTemplate TargetType="TextBox">
                     <Grid Background="Transparent">
-                        <TextBlock
+                        <ContentPresenter
                             x:Name="PlaceholderTextContentPresenter"
-                            Visibility="Collapsed"
+                            VerticalAlignment="Center"
                             IsHitTestVisible="False" />
                         <ScrollViewer
                             x:Name="ContentElement"
-                            VerticalAlignment="Center"
+                            Padding="{TemplateBinding Padding}"
+                            VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
                             HorizontalAlignment="Stretch"
                             HorizontalScrollMode="Disabled"
                             HorizontalScrollBarVisibility="Disabled"
-                            VerticalScrollMode="Disabled"
-                            VerticalScrollBarVisibility="Disabled"
+                            VerticalScrollMode="{TemplateBinding ScrollViewer.VerticalScrollMode}"
+                            VerticalScrollBarVisibility="{TemplateBinding ScrollViewer.VerticalScrollBarVisibility}"
                             IsTabStop="False"
                             ZoomMode="Disabled" />
                     </Grid>

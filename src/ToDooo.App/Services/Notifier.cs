@@ -59,6 +59,23 @@ public sealed class Notifier
                     .AddText(title)
                     .AddText(message);
 
+                // 通知左上角的图标默认取 AppUserModelID 注册的图标，未注册就是系统占位图。
+                // 显式指到 exe 自带的同一个 ico，和托盘图标保持一致。
+                if (ResolveIconPath() is { } iconPath)
+                {
+                    try
+                    {
+                        builder.SetAppLogoOverride(
+                            iconPath,
+                            AppNotificationImageCrop.Default,
+                            "ToDooo");
+                    }
+                    catch
+                    {
+                        // 个别系统不接受这个 Uri 形式，退回默认图标，不影响通知本身
+                    }
+                }
+
                 if (todoId is { } id)
                 {
                     if (subtaskId is { } subId)
@@ -86,6 +103,26 @@ public sealed class Notifier
         }
 
         Fallback?.Invoke(title, message);
+    }
+
+    /// <summary>通知图标：用和 exe、托盘同一份 Assets\AppIcon.ico，保证三处一致。</summary>
+    private static Uri? ResolveIconPath()
+    {
+        try
+        {
+            var path = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico");
+            if (!System.IO.File.Exists(path))
+            {
+                return null;
+            }
+
+            // AppNotification 的图片参数要求 Uri，本地文件用 file:// 形式。
+            return new Uri(path, UriKind.Absolute);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     /// <summary>通知参数形如 “snooze=12”；没点按钮直接点通知时参数为空。</summary>

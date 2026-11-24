@@ -16,6 +16,7 @@ internal static class NativeMethods
     public const long WS_BORDER = 0x00800000L;
 
     public const long WS_EX_TOOLWINDOW = 0x00000080L;
+    public const long WS_EX_TOPMOST = 0x00000008L;
     public const long WS_EX_APPWINDOW = 0x00040000L;
 
     public const int WM_NCCALCSIZE = 0x0083;
@@ -310,8 +311,19 @@ internal static class NativeMethods
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
     public static extern IntPtr ExtractIconW(IntPtr instance, string exeFileName, int iconIndex);
 
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
+    public static extern void SetCurrentProcessExplicitAppUserModelID(string appId);
+
     [DllImport("user32.dll")]
     public static extern bool DestroyIcon(IntPtr hIcon);
+
+    [DllImport("user32.dll")]
+    public static extern int GetSystemMetrics(int index);
+
+    public const int SM_XVIRTUALSCREEN = 76;
+    public const int SM_YVIRTUALSCREEN = 77;
+    public const int SM_CXVIRTUALSCREEN = 78;
+    public const int SM_CYVIRTUALSCREEN = 79;
 
     [DllImport("comctl32.dll", SetLastError = true)]
     public static extern bool SetWindowSubclass(

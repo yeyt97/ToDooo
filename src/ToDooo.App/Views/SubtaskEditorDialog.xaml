@@ -118,37 +118,32 @@
                             <Grid ColumnSpacing="12">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock
-                                    Width="40"
-                                    Style="{StaticResource LabelText}"
-                                    Text="日期" />
-                                <CalendarDatePicker
-                                    x:Name="DueDate"
-                                    Grid.Column="1"
-                                    AutomationProperties.Name="截止日期"
-                                    HorizontalAlignment="Stretch"
-                                    CornerRadius="6"
-                                    PlaceholderText="选择日期" />
-                            </Grid>
-                            <Grid ColumnSpacing="12">
-                                <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock
                                     Width="40"
                                     Style="{StaticResource LabelText}"
-                                    Text="时间" />
+                                    Text="截止" />
+                                <CalendarDatePicker
+                                    x:Name="DueDate"
+                                    Grid.Column="1"
+                                    MinWidth="0"
+                                    Width="132"
+                                    AutomationProperties.Name="截止日期"
+                                    HorizontalAlignment="Left"
+                                    CornerRadius="6"
+                                    PlaceholderText="选择日期" />
                                 <TimePicker
                                     x:Name="DueTime"
-                                    Grid.Column="1"
+                                    Grid.Column="2"
+                                    MinWidth="0"
                                     HorizontalAlignment="Stretch"
                                     AutomationProperties.Name="截止时间"
                                     ClockIdentifier="24HourClock"
-                                    MinuteIncrement="5"
-                                    CornerRadius="6" />
+                                    CornerRadius="6"
+                                    Loaded="NativeTimePicker_Loaded"
+                                    MinuteIncrement="5" />
                             </Grid>
                         </StackPanel>
 

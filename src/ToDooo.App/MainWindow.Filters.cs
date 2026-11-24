@@ -280,6 +280,13 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    /// <summary>顶栏子任务开关：全部展开时用强调色，否则保持普通次要色。</summary>
+    private void UpdateSubtasksToggleVisual()
+    {
+        ToggleSubtasksIconButton.Foreground = (Brush)Application.Current.Resources[
+            ViewModel.AreAllVisibleSubtasksExpanded ? "AccentBrush" : "TextSecondaryBrush"];
+    }
+
     private void UpdateFilterVisuals()
     {
         SetStatVisual(AllFilterButton, ViewModel.Filter == TodoFilter.All);

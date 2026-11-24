@@ -53,7 +53,8 @@ public sealed partial class SubtaskEditorDialog : Window
             Theme = dark ? SystemBackdropTheme.Dark : SystemBackdropTheme.Light,
         };
         _acrylic = WindowAcrylic.Apply(
-            this, Appearance.TintForOpacity(settings.Current.WindowOpacity), dark, _backdropConfig);
+            this, Appearance.TintForOpacity(settings.Current.WindowOpacity), dark, _backdropConfig,
+            (Appearance.TintMode)Math.Clamp(settings.Current.WindowTintMode, 0, 3));
         var darkFlag = dark ? 1 : 0;
         NativeMethods.DwmSetWindowAttribute(
             _hwnd, NativeMethods.DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkFlag, sizeof(int));
@@ -69,6 +70,9 @@ public sealed partial class SubtaskEditorDialog : Window
             DueDate.Date = new DateTimeOffset(due.Date);
             DueTime.SelectedTime = due.TimeOfDay;
         }
+
+        // 截止区可能初始是收起的，模板到展开那帧才实例化，挂监听直到真正布局完成。
+        TimePickerSizing.EnsureReleased(DueTime);
 
         ApplyDueVisibility();
         _ready = true;
@@ -268,6 +272,9 @@ public sealed partial class SubtaskEditorDialog : Window
         Close();
     }
 
+    private void NativeTimePicker_Loaded(object sender, RoutedEventArgs e) =>
+        TimePickerSizing.ReleaseMinWidth(sender, e);
+
     private void DueToggle_Toggled(object sender, RoutedEventArgs e)
     {
         if (DueToggle.IsOn)
@@ -291,8 +298,17 @@ public sealed partial class SubtaskEditorDialog : Window
         }
     }
 
-    private void ApplyDueVisibility() =>
-        DueSection.Visibility = DueToggle.IsOn ? Visibility.Visible : Visibility.Collapsed;
+    private void ApplyDueVisibility()
+    {
+        var on = DueToggle.IsOn;
+        DueSection.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+
+        // 由隐藏变可见这一帧 TimePicker 模板才实例化，Loaded 已错过，这里补解除最小宽度。
+        if (on)
+        {
+            DispatcherQueue.TryEnqueue(() => TimePickerSizing.ReleaseMinWidth(DueTime));
+        }
+    }
 
     private void ApplyLogicalSize(double scale)
     {

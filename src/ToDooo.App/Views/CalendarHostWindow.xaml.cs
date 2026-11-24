@@ -24,8 +24,6 @@ public sealed partial class CalendarHostWindow : Window
 
     private readonly SettingsService _settings;
     private readonly Action _collapseRequested;
-    private readonly Func<IReadOnlyList<IntPtr>>? _extraFollowerProvider;
-    private readonly Action? _ownerMoved;
     private readonly IntPtr _hwnd;
     private readonly IntPtr _ownerHwnd;
     private readonly AppWindow _appWindow;
@@ -37,32 +35,24 @@ public sealed partial class CalendarHostWindow : Window
     private bool _dragging;
     private NativeMethods.POINT _dragStartCursor;
     private NativeMethods.RECT _dragStartRect;
-    private readonly List<(IntPtr Hwnd, int OffsetX, int OffsetY)> _dragFollowers = new();
 
     private int _resizeHit;
     private NativeMethods.POINT _resizeStartCursor;
     private NativeMethods.RECT _resizeStartRect;
-    private bool _resizeOwnerAttached;
-    private NativeMethods.RECT _resizeOwnerStartRect;
-    private bool _resizeOwnerOnRight;
-    private int _resizeGap;
 
     public CalendarHostWindow(
         MainViewModel viewModel,
         SettingsService settings,
+        CalendarSyncService calendarSync,
         IntPtr ownerHwnd,
         Action<TodoItem> editRequested,
         Action<TodoItem, DateTime> rescheduleRequested,
         Action<DateTime> createRequested,
-        Action collapseRequested,
-        Func<IReadOnlyList<IntPtr>>? extraFollowerProvider = null,
-        Action? ownerMoved = null)
+        Action collapseRequested)
     {
         _settings = settings;
         _collapseRequested = collapseRequested;
         _ownerHwnd = ownerHwnd;
-        _extraFollowerProvider = extraFollowerProvider;
-        _ownerMoved = ownerMoved;
 
         InitializeComponent();
         Root.RequestedTheme = Appearance.ToElementTheme((ThemeMode)settings.Current.ThemeMode);
@@ -83,13 +73,19 @@ public sealed partial class CalendarHostWindow : Window
             editRequested,
             rescheduleRequested,
             createRequested,
-            shape => Root.SetCursor(shape));
+            shape => Root.SetCursor(shape),
+            calendarSync,
+            evt => _ = CalendarPane.ShowEventDetailAsync(evt));
 
         CalendarPane.HeaderDragPressed += HeaderDragPressed;
         CalendarPane.HeaderDragMoved += HeaderDragMoved;
         CalendarPane.HeaderDragReleased += HeaderDragReleased;
         CalendarPane.HeaderDragCaptureLost += HeaderDragCaptureLost;
         CalendarPane.RightPanelCollapsedChanged += OnDrawerCollapsedChanged;
+        CalendarPane.SetCloseRequested(collapseRequested);
+        CalendarPane.IsHostTopmost = () =>
+            (NativeMethods.GetWindowLongPtr(_hwnd, NativeMethods.GWL_EXSTYLE).ToInt64()
+                & NativeMethods.WS_EX_TOPMOST) != 0;
 
         Root.AddHandler(
             UIElement.PointerPressedEvent,
@@ -143,7 +139,7 @@ public sealed partial class CalendarHostWindow : Window
         CalendarPane.RefreshTheme();
     }
 
-    public void ShowNextTo(AppWindow owner, Action? onShown = null, bool keepTopmost = false)
+    public void ShowNextTo(AppWindow owner, Action? onShown = null)
     {
         var scale = DpiScale.ForOwner(owner, _hwnd);
         var ownerHwnd = Win32Interop.GetWindowFromWindowId(owner.Id);
@@ -167,41 +163,30 @@ public sealed partial class CalendarHostWindow : Window
         var logicalWidth = CalendarPane.IsRightPanelCollapsed
             ? Math.Max(MinCollapsedLogicalWidth, _settings.Current.CalendarWidth - CalendarPane.CurrentDrawerWidthLogical)
             : Math.Max(MinLogicalWidth, _settings.Current.CalendarWidth);
-        var width = Math.Min((int)Math.Round(logicalWidth * scale), area.Width);
+        var width = (int)Math.Round(logicalWidth * scale);
         var ownerHeight = ownerRect.Bottom - ownerRect.Top;
         var minH = (int)Math.Round(MinLogicalHeight * scale);
         var height = Math.Clamp(
             ownerHeight > 0 ? ownerHeight : (int)Math.Round(Math.Max(MinLogicalHeight, _settings.Current.CalendarHeight) * scale),
             Math.Min(minH, area.Height),
             area.Height);
-        var (x, y, placedOnLeft) = WindowSnap.PlaceNextTo(_hwnd, owner, width, height, preferLeft: true);
-        var gapPx = (int)Math.Round(WindowSnap.DefaultGapLogical * scale);
-        var ownerW = ownerRect.Right - ownerRect.Left;
-        var overlapsOwner = ownerHwnd != IntPtr.Zero &&
-            x < ownerRect.Right && x + width > ownerRect.Left &&
-            y < ownerRect.Bottom && y + height > ownerRect.Top;
-        if (overlapsOwner && width + gapPx + ownerW <= area.Width)
+        int x;
+        int y;
+        bool placedOnLeft;
+        var savedX = _settings.Current.CalendarX;
+        var savedY = _settings.Current.CalendarY;
+        if (savedX is { } sx && savedY is { } sy && IsPointOnAnyDisplay(sx + 40, sy + 20))
         {
-            var newOwnerX = Math.Clamp(area.X + width + gapPx, area.X, area.X + Math.Max(0, area.Width - ownerW));
-            var ownerY = Math.Clamp(ownerRect.Top, area.Y, area.Y + Math.Max(0, area.Height - height));
-            NativeMethods.SetWindowPos(
-                ownerHwnd, IntPtr.Zero, newOwnerX, ownerY, ownerW, height,
-                NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
-            x = newOwnerX - gapPx - width;
-            y = ownerY;
-            placedOnLeft = true;
-            _ownerMoved?.Invoke();
+            // 两个窗口不再捆绑：打开时回到上次的位置，而不是重新贴到主窗口旁。
+            x = sx;
+            y = sy;
+            placedOnLeft = false;
         }
-        else if (ownerHwnd != IntPtr.Zero && ownerHeight < height &&
-            NativeMethods.IsWindowVisible(ownerHwnd))
+        else
         {
-            var ownerY = Math.Clamp(ownerRect.Top, area.Y, area.Y + Math.Max(0, area.Height - height));
-            NativeMethods.SetWindowPos(
-                ownerHwnd, IntPtr.Zero, ownerRect.Left, ownerY, ownerW, height,
-                NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
-            y = ownerY;
-            _ownerMoved?.Invoke();
+            (x, y, placedOnLeft) = WindowSnap.PlaceNextTo(_hwnd, owner, width, height, preferLeft: false, allowOffscreen: true);
         }
+        // 只摆放日历自己，绝不移动主窗口。
 
         _slideFromRight = placedOnLeft;
 
@@ -220,9 +205,10 @@ public sealed partial class CalendarHostWindow : Window
             DispatcherQueue,
             () =>
             {
+                // 日历窗口不置顶：点回待办窗口时它应当能被盖住。
                 NativeMethods.SetWindowPos(
                     _hwnd,
-                    keepTopmost ? NativeMethods.HWND_TOPMOST : NativeMethods.HWND_NOTOPMOST,
+                    NativeMethods.HWND_NOTOPMOST,
                     x, y, width, height,
                     NativeMethods.SWP_NOACTIVATE);
                 _appWindow.Show();
@@ -340,10 +326,8 @@ public sealed partial class CalendarHostWindow : Window
         exStyle &= ~NativeMethods.WS_EX_APPWINDOW;
         NativeMethods.SetWindowLongPtr(_hwnd, NativeMethods.GWL_EXSTYLE, new IntPtr(exStyle));
 
-        if (ownerHwnd != IntPtr.Zero)
-        {
-            NativeMethods.SetWindowLongPtr(_hwnd, NativeMethods.GWLP_HWNDPARENT, ownerHwnd);
-        }
+        // 不把日历设成待办窗口的“拥有窗口”：被拥有的窗口在 Windows 里永远浮在拥有者之上，
+        // 那样任何 z 序调整都无效，点待办窗口时日历也会一直压在上面。
 
         var round = NativeMethods.DWMWCP_ROUND;
         NativeMethods.DwmSetWindowAttribute(
@@ -371,15 +355,44 @@ public sealed partial class CalendarHostWindow : Window
                 Theme = dark ? SystemBackdropTheme.Dark : SystemBackdropTheme.Light,
             };
             _acrylic = WindowAcrylic.Apply(
-                this, Appearance.TintForOpacity(_settings.Current.WindowOpacity), dark, _backdropConfig);
+                this, Appearance.TintForOpacity(_settings.Current.WindowOpacity), dark, _backdropConfig,
+                (Appearance.TintMode)Math.Clamp(_settings.Current.WindowTintMode, 0, 3));
             return;
         }
 
-        WindowAcrylic.ApplyTint(_acrylic, Appearance.TintForOpacity(_settings.Current.WindowOpacity), dark);
+        WindowAcrylic.ApplyTint(_acrylic, Appearance.TintForOpacity(_settings.Current.WindowOpacity), dark,
+            (Appearance.TintMode)Math.Clamp(_settings.Current.WindowTintMode, 0, 3));
         if (_backdropConfig is not null)
         {
             _backdropConfig.Theme = dark ? SystemBackdropTheme.Dark : SystemBackdropTheme.Light;
         }
+    }
+
+    /// <summary>记住日历窗口位置，下次打开回到原处。</summary>
+    public void SaveCalendarPosition()
+    {
+        if (_hwnd == IntPtr.Zero || !NativeMethods.GetWindowRect(_hwnd, out var rect))
+        {
+            return;
+        }
+
+        _settings.Current.CalendarX = rect.Left;
+        _settings.Current.CalendarY = rect.Top;
+        _settings.Save();
+    }
+
+    /// <summary>
+    /// 判断坐标是否落在虚拟桌面范围内。这里用 GetSystemMetrics 而不是 DisplayArea.FindAll：
+    /// 后者在当前非打包环境下枚举会抛 InvalidCastException，导致打开日历直接闪退。
+    /// </summary>
+    private static bool IsPointOnAnyDisplay(int x, int y)
+    {
+        var left = NativeMethods.GetSystemMetrics(NativeMethods.SM_XVIRTUALSCREEN);
+        var top = NativeMethods.GetSystemMetrics(NativeMethods.SM_YVIRTUALSCREEN);
+        var width = NativeMethods.GetSystemMetrics(NativeMethods.SM_CXVIRTUALSCREEN);
+        var height = NativeMethods.GetSystemMetrics(NativeMethods.SM_CYVIRTUALSCREEN);
+
+        return x >= left && x < left + width && y >= top && y < top + height;
     }
 
     public void SaveCalendarSize()
@@ -413,144 +426,43 @@ public sealed partial class CalendarHostWindow : Window
 
         var scale = NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
         var drawerPx = (int)Math.Round(CalendarPane.CurrentDrawerWidthLogical * scale);
-        var currentW = rect.Right - rect.Left;
         var height = rect.Bottom - rect.Top;
+        var currentW = rect.Right - rect.Left;
 
-        var area = DisplayArea.GetFromPoint(
-            new PointInt32((rect.Left + rect.Right) / 2, rect.Top + 20),
-            DisplayAreaFallback.Nearest).WorkArea;
-
-        var ownerAttached = false;
-        var ownerOnRight = true;
-        var gap = (int)Math.Round(WindowSnap.DefaultGapLogical * scale);
-        NativeMethods.RECT mainRect = default;
-
-        if (_ownerHwnd != IntPtr.Zero &&
-            NativeMethods.IsWindowVisible(_ownerHwnd) &&
-            NativeMethods.GetWindowRect(_ownerHwnd, out mainRect) &&
-            WindowSnap.IsAttachedTo(rect, mainRect, scale))
-        {
-            ownerAttached = true;
-            ownerOnRight = rect.Right <= mainRect.Left + (int)Math.Round(24 * scale);
-            gap = ownerOnRight
-                ? Math.Max(0, mainRect.Left - rect.Right)
-                : Math.Max(0, rect.Left - mainRect.Right);
-        }
-
+        // 抽屉在窗口左侧：保持左缘和上缘不动，只向右伸缩宽度，窗口绝不整体平移。
         var minW = (int)Math.Round((collapsed ? MinCollapsedLogicalWidth : MinLogicalWidth) * scale);
-        var maxW = ownerAttached
-            ? Math.Max(minW, area.Width - gap - (mainRect.Right - mainRect.Left))
-            : area.Width;
         var targetW = collapsed
             ? Math.Max(minW, currentW - drawerPx)
-            : Math.Min(maxW, Math.Max(minW, currentW + drawerPx));
+            : Math.Max(minW, currentW + drawerPx);
 
-        int ClampX(int left, int width) =>
-            Math.Clamp(left, area.X, area.X + Math.Max(0, area.Width - width));
-        int ClampY(int top, int h) =>
-            Math.Clamp(top, area.Y, area.Y + Math.Max(0, area.Height - h));
+        ResizeForDrawer(rect.Left, rect.Top, targetW, height,
+            NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
+    }
 
-        if (!ownerAttached)
-        {
-            // 默认右缘固定；若右缘已越出工作区（或右锚会把窗口推到区外），改为左缘固定，
-            // 否则收起抽屉时整扇窗口会被推到屏幕外，看起来就是「内容没了」。
-            var rightAnchored = rect.Right - targetW;
-            var wantLeft = rect.Right > area.X + area.Width || rightAnchored < area.X
-                ? rect.Left
-                : rightAnchored;
-            var left = ClampX(wantLeft, targetW);
-            var top = ClampY(rect.Top, height);
-            NativeMethods.SetWindowPos(
-                _hwnd, IntPtr.Zero, left, top, targetW, height,
-                NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
-            Root.UpdateLayout();
-            SaveCalendarSize();
-            DispatcherQueue.TryEnqueue(() => CalendarPane.EnsureRefreshed());
-            return;
-        }
+    /// <summary>
+    /// 抽屉开合的统一收口：左右两侧走完全相同的路径。
+    /// 曾经给左缘移动单独加过 SWP_NOCOPYBITS，那会强制整窗重绘，正是左侧闪的来源。
+    /// </summary>
+    private void ResizeForDrawer(int left, int top, int width, int height, uint flags)
+    {
+        var moved = NativeMethods.SetWindowPos(_hwnd, IntPtr.Zero, left, top, width, height, flags);
+        TraceDrawerWindowRect($"resize-return moved={moved}");
 
-        var mainW = mainRect.Right - mainRect.Left;
-        var mainH = mainRect.Bottom - mainRect.Top;
-        int calLeft;
-        var newMainLeft = mainRect.Left;
-        var moveMain = false;
-
-        if (ownerOnRight)
-        {
-            calLeft = mainRect.Left - gap - targetW;
-            if (calLeft < area.X)
-            {
-                calLeft = area.X;
-                newMainLeft = Math.Clamp(calLeft + targetW + gap, area.X, area.X + Math.Max(0, area.Width - mainW));
-                calLeft = newMainLeft - gap - targetW;
-                moveMain = true;
-            }
-        }
-        else
-        {
-            calLeft = mainRect.Right + gap;
-            if (calLeft + targetW > area.X + area.Width)
-            {
-                newMainLeft = Math.Max(area.X, area.X + area.Width - targetW - gap - mainW);
-                calLeft = newMainLeft + mainW + gap;
-                moveMain = true;
-            }
-        }
-
-        // 贴边场景下若目标位置仍会越出工作区，放弃顺推主窗，直接把日历夹回区里。
-        var clampedLeft = ClampX(calLeft, targetW);
-        if (clampedLeft != calLeft)
-        {
-            calLeft = clampedLeft;
-            moveMain = false;
-        }
-
-        var calTop = ClampY(rect.Top, height);
-
-        if (moveMain)
-        {
-            var hdwp = NativeMethods.BeginDeferWindowPos(2);
-            if (hdwp != IntPtr.Zero)
-            {
-                hdwp = NativeMethods.DeferWindowPos(
-                    hdwp, _hwnd, IntPtr.Zero,
-                    calLeft, calTop, targetW, height,
-                    NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
-                if (hdwp != IntPtr.Zero)
-                {
-                    hdwp = NativeMethods.DeferWindowPos(
-                        hdwp, _ownerHwnd, IntPtr.Zero,
-                        newMainLeft, mainRect.Top, mainW, mainH,
-                        NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
-                }
-
-                if (hdwp != IntPtr.Zero)
-                {
-                    NativeMethods.EndDeferWindowPos(hdwp);
-                }
-            }
-            else
-            {
-                NativeMethods.SetWindowPos(
-                    _ownerHwnd, IntPtr.Zero, newMainLeft, mainRect.Top, mainW, mainH,
-                    NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
-                NativeMethods.SetWindowPos(
-                    _hwnd, IntPtr.Zero, calLeft, calTop, targetW, height,
-                    NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
-            }
-
-            _ownerMoved?.Invoke();
-        }
-        else
-        {
-            NativeMethods.SetWindowPos(
-                _hwnd, IntPtr.Zero, calLeft, calTop, targetW, height,
-                NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
-        }
-
-        Root.UpdateLayout();
+        // 用改完之后的客户区宽度作为「布局已到位」的目标值。
+        var scale = NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
+        var clientWidth = NativeMethods.GetClientRect(_hwnd, out var client)
+            ? (client.Right - client.Left) / scale
+            : width / scale;
+        CalendarPane.AwaitDrawerResize(clientWidth);
         SaveCalendarSize();
-        DispatcherQueue.TryEnqueue(() => CalendarPane.EnsureRefreshed());
+    }
+
+    private void TraceDrawerWindowRect(string stage)
+    {
+        if (NativeMethods.GetWindowRect(_hwnd, out var rect))
+        {
+            CalendarPane.TraceDrawerToggle($"{stage} rect={rect.Left},{rect.Top},{rect.Right - rect.Left}x{rect.Bottom - rect.Top}");
+        }
     }
 
     private void HeaderDragPressed(object? sender, PointerRoutedEventArgs e)
@@ -562,30 +474,18 @@ public sealed partial class CalendarHostWindow : Window
             return;
         }
 
-        _dragFollowers.Clear();
-        var scale = NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
-        if (_ownerHwnd != IntPtr.Zero &&
-            NativeMethods.IsWindowVisible(_ownerHwnd) &&
-            NativeMethods.GetWindowRect(_ownerHwnd, out var ownerRect) &&
-            WindowSnap.IsAttachedTo(_dragStartRect, ownerRect, scale))
+        // 标题栏压在最上面的 8px 上：按下点落在缩放边缘时要去缩放，不能开始拖窗口。
+        // 这一步在根节点之前触发并会捕获指针，不在这里分流的话顶边和上面两个角永远拖不动。
+        var hit = EdgeHit(e.GetCurrentPoint(Root).Position);
+        if (hit != 0)
         {
-            _dragFollowers.Add((_ownerHwnd, ownerRect.Left - _dragStartRect.Left, ownerRect.Top - _dragStartRect.Top));
-
-            if (_extraFollowerProvider is not null)
-            {
-                foreach (var subHwnd in _extraFollowerProvider())
-                {
-                    if (subHwnd != IntPtr.Zero &&
-                        subHwnd != _hwnd &&
-                        subHwnd != _ownerHwnd &&
-                        NativeMethods.IsWindowVisible(subHwnd) &&
-                        NativeMethods.GetWindowRect(subHwnd, out var subRect) &&
-                        WindowSnap.IsAttachedTo(subRect, ownerRect, scale))
-                    {
-                        _dragFollowers.Add((subHwnd, subRect.Left - _dragStartRect.Left, subRect.Top - _dragStartRect.Top));
-                    }
-                }
-            }
+            _resizeHit = hit;
+            _resizeStartCursor = _dragStartCursor;
+            _resizeStartRect = _dragStartRect;
+            Root.CapturePointer(e.Pointer);
+            UpdateResizeCursor(e.GetCurrentPoint(Root).Position);
+            e.Handled = true;
+            return;
         }
 
         _dragging = Root.CapturePointer(e.Pointer);
@@ -604,53 +504,13 @@ public sealed partial class CalendarHostWindow : Window
         var candidateX = _dragStartRect.Left + cursor.X - _dragStartCursor.X;
         var candidateY = _dragStartRect.Top + cursor.Y - _dragStartCursor.Y;
 
-        if (_dragFollowers.Count == 0)
-        {
-            var (x, y) = WindowSnap.SnapDragged(
-                _hwnd, candidateX, candidateY, width, height, _ownerHwnd);
-            NativeMethods.SetWindowPos(
-                _hwnd, IntPtr.Zero, x, y, width, height,
-                NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
-            e.Handled = true;
-            return;
-        }
-
-        var hdwp = NativeMethods.BeginDeferWindowPos(1 + _dragFollowers.Count);
-        if (hdwp == IntPtr.Zero)
-        {
-            NativeMethods.SetWindowPos(
-                _hwnd, IntPtr.Zero, candidateX, candidateY, width, height,
-                NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
-            e.Handled = true;
-            return;
-        }
-
-        hdwp = NativeMethods.DeferWindowPos(
-            hdwp, _hwnd, IntPtr.Zero,
-            candidateX, candidateY, width, height,
+        // 窗口之间互不捆绑：拖动只保留屏幕边缘吸附，不吸附主窗口。
+        // 允许把日历拖到屏幕外（多屏或临时遮挡时有用），只保留屏幕边缘吸附。
+        var (x, y) = WindowSnap.SnapDragged(
+            _hwnd, candidateX, candidateY, width, height, IntPtr.Zero, allowOffscreen: true);
+        NativeMethods.SetWindowPos(
+            _hwnd, IntPtr.Zero, x, y, width, height,
             NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
-
-        foreach (var (subHwnd, offsetX, offsetY) in _dragFollowers)
-        {
-            if (hdwp == IntPtr.Zero)
-            {
-                break;
-            }
-
-            if (NativeMethods.IsWindowVisible(subHwnd))
-            {
-                hdwp = NativeMethods.DeferWindowPos(
-                    hdwp, subHwnd, IntPtr.Zero,
-                    candidateX + offsetX, candidateY + offsetY, 0, 0,
-                    NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
-            }
-        }
-
-        if (hdwp != IntPtr.Zero)
-        {
-            NativeMethods.EndDeferWindowPos(hdwp);
-        }
-
         e.Handled = true;
     }
 
@@ -662,15 +522,8 @@ public sealed partial class CalendarHostWindow : Window
         }
 
         _dragging = false;
-        var movedOwner = _dragFollowers.Count > 0;
-        _dragFollowers.Clear();
         Root.ReleasePointerCapture(e.Pointer);
-        if (movedOwner)
-        {
-            _ownerMoved?.Invoke();
-            DockDragReleased?.Invoke(this, EventArgs.Empty);
-        }
-
+        SaveCalendarPosition();
         e.Handled = true;
     }
 
@@ -682,12 +535,6 @@ public sealed partial class CalendarHostWindow : Window
         }
 
         _dragging = false;
-        var movedOwner = _dragFollowers.Count > 0;
-        _dragFollowers.Clear();
-        if (movedOwner)
-        {
-            _ownerMoved?.Invoke();
-        }
     }
 
     private void Root_PointerEntered(object sender, PointerRoutedEventArgs e)
@@ -725,20 +572,6 @@ public sealed partial class CalendarHostWindow : Window
             !NativeMethods.GetWindowRect(_hwnd, out _resizeStartRect))
         {
             return;
-        }
-
-        _resizeOwnerAttached = false;
-        var scale = NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
-        if (_ownerHwnd != IntPtr.Zero &&
-            NativeMethods.IsWindowVisible(_ownerHwnd) &&
-            NativeMethods.GetWindowRect(_ownerHwnd, out _resizeOwnerStartRect) &&
-            WindowSnap.IsAttachedTo(_resizeStartRect, _resizeOwnerStartRect, scale))
-        {
-            _resizeOwnerAttached = true;
-            _resizeOwnerOnRight = _resizeStartRect.Right <= _resizeOwnerStartRect.Left + (int)Math.Round(24 * scale);
-            _resizeGap = _resizeOwnerOnRight
-                ? _resizeOwnerStartRect.Left - _resizeStartRect.Right
-                : _resizeStartRect.Left - _resizeOwnerStartRect.Right;
         }
 
         _resizeHit = hit;
@@ -796,50 +629,9 @@ public sealed partial class CalendarHostWindow : Window
                 bottom = Math.Max(_resizeStartRect.Bottom + dy, _resizeStartRect.Top + minHeight);
             }
 
-            if (!_resizeOwnerAttached || _ownerHwnd == IntPtr.Zero || !NativeMethods.IsWindowVisible(_ownerHwnd))
-            {
-                NativeMethods.SetWindowPos(
-                    _hwnd, IntPtr.Zero, left, top, right - left, bottom - top,
-                    NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
-                e.Handled = true;
-                return;
-            }
-
-            var ownerW = _resizeOwnerStartRect.Right - _resizeOwnerStartRect.Left;
-            var ownerLeft = _resizeOwnerOnRight
-                ? right + _resizeGap
-                : left - _resizeGap - ownerW;
-            var ownerH = bottom - top;
-
-            var hdwp = NativeMethods.BeginDeferWindowPos(2);
-            if (hdwp != IntPtr.Zero)
-            {
-                hdwp = NativeMethods.DeferWindowPos(
-                    hdwp, _hwnd, IntPtr.Zero,
-                    left, top, right - left, ownerH,
-                    NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
-                if (hdwp != IntPtr.Zero)
-                {
-                    hdwp = NativeMethods.DeferWindowPos(
-                        hdwp, _ownerHwnd, IntPtr.Zero,
-                        ownerLeft, top, ownerW, ownerH,
-                        NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
-                }
-
-                if (hdwp != IntPtr.Zero)
-                {
-                    NativeMethods.EndDeferWindowPos(hdwp);
-                }
-            }
-            else
-            {
-                NativeMethods.SetWindowPos(
-                    _hwnd, IntPtr.Zero, left, top, right - left, ownerH,
-                    NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
-                NativeMethods.SetWindowPos(
-                    _ownerHwnd, IntPtr.Zero, ownerLeft, top, ownerW, ownerH,
-                    NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
-            }
+            NativeMethods.SetWindowPos(
+                _hwnd, IntPtr.Zero, left, top, right - left, bottom - top,
+                NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
         }
 
         e.Handled = true;
@@ -858,16 +650,9 @@ public sealed partial class CalendarHostWindow : Window
             return;
         }
 
-        var syncOwner = _resizeOwnerAttached;
         _resizeHit = 0;
-        _resizeOwnerAttached = false;
         Root.ReleasePointerCapture(e.Pointer);
         SaveCalendarSize();
-        if (syncOwner)
-        {
-            _ownerMoved?.Invoke();
-        }
-
         UpdateResizeCursor(e.GetCurrentPoint(Root).Position);
         e.Handled = true;
     }
@@ -880,15 +665,8 @@ public sealed partial class CalendarHostWindow : Window
             return;
         }
 
-        var syncOwner = _resizeOwnerAttached;
         _resizeHit = 0;
-        _resizeOwnerAttached = false;
         SaveCalendarSize();
-        if (syncOwner)
-        {
-            _ownerMoved?.Invoke();
-        }
-
         Root.SetCursor(null);
     }
 

@@ -27,6 +27,7 @@ public static class ThemePalette
         ["ItemCardStrokeBrush"] = Argb(0x0C, 0xFF, 0xFF, 0xFF),
         ["SegmentBarBrush"] = Argb(0x0A, 0xFF, 0xFF, 0xFF),
         ["SegmentSelectedBrush"] = Argb(0x26, 0xFF, 0xFF, 0xFF),
+        ["NavSelectedBrush"] = Argb(0x30, 0xFF, 0xFF, 0xFF),
         ["OverlaySurfaceBrush"] = Rgb(0x2A, 0x30, 0x38),
         ["NeutralCheckFillBrush"] = Rgb(0xED, 0xEF, 0xF2),
         ["CheckGlyphBrush"] = Rgb(0x26, 0x2B, 0x33),
@@ -49,6 +50,7 @@ public static class ThemePalette
         ["ItemCardStrokeBrush"] = Argb(0x0F, 0x00, 0x00, 0x00),
         ["SegmentBarBrush"] = Argb(0x08, 0x00, 0x00, 0x00),
         ["SegmentSelectedBrush"] = Argb(0x1A, 0x00, 0x00, 0x00),
+        ["NavSelectedBrush"] = Argb(0x1E, 0x00, 0x00, 0x00),
         ["OverlaySurfaceBrush"] = Rgb(0xF3, 0xF3, 0xF6),
         ["NeutralCheckFillBrush"] = Rgb(0x2A, 0x2A, 0x2E),
         ["CheckGlyphBrush"] = Rgb(0xFF, 0xFF, 0xFF),
@@ -108,18 +110,20 @@ public static class ThemePalette
         Set("TextControlPlaceholderForegroundPointerOver", "TextMutedBrush");
     }
 
-    public static AcrylicBrush CreateDialogAcrylicBrush(bool dark) => new()
+    public static AcrylicBrush CreateDialogAcrylicBrush(
+        bool dark, Appearance.TintMode tintMode = Appearance.TintMode.Auto)
     {
-        TintColor = dark
-            ? Color.FromArgb(255, 0x2A, 0x30, 0x38)
-            : Color.FromArgb(255, 0xF2, 0xF2, 0xF7),
-        FallbackColor = dark
-            ? Color.FromArgb(255, 0x20, 0x25, 0x2C)
-            : Color.FromArgb(255, 0xF6, 0xF6, 0xF9),
-        TintOpacity = dark ? 0.75 : 0.85,
-    };
+        var (tint, fallback) = Appearance.TintColors(tintMode, dark);
+        return new AcrylicBrush
+        {
+            TintColor = tint,
+            FallbackColor = fallback,
+            TintOpacity = dark ? 0.75 : 0.85,
+        };
+    }
 
-    public static void Apply(bool dark, double opacity)
+    public static void Apply(bool dark, double opacity,
+        Appearance.TintMode tintMode = Appearance.TintMode.Auto)
     {
         var resources = Application.Current.Resources;
         foreach (var (key, color) in dark ? DarkSolid : LightSolid)
@@ -140,12 +144,9 @@ public static class ThemePalette
         // 弹框用独立磨砂刷：太透会看不清，这里不跟随窗口透明度一起减淡。
         if (resources["DialogAcrylicBrush"] is AcrylicBrush dialogAcrylic)
         {
-            dialogAcrylic.TintColor = dark
-                ? Color.FromArgb(255, 0x2A, 0x30, 0x38)
-                : Color.FromArgb(255, 0xF2, 0xF2, 0xF7);
-            dialogAcrylic.FallbackColor = dark
-                ? Color.FromArgb(255, 0x20, 0x25, 0x2C)
-                : Color.FromArgb(255, 0xF6, 0xF6, 0xF9);
+            var (dialogTint, dialogFallback) = Appearance.TintColors(tintMode, dark);
+            dialogAcrylic.TintColor = dialogTint;
+            dialogAcrylic.FallbackColor = dialogFallback;
             dialogAcrylic.TintOpacity = dark ? 0.75 : 0.85;
         }
     }

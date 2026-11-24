@@ -19,7 +19,8 @@ internal static class WindowSnap
         int height,
         bool preferLeft = true,
         int gapLogical = DefaultGapLogical,
-        IntPtr avoidHwnd = default)
+        IntPtr avoidHwnd = default,
+        bool allowOffscreen = false)
     {
         NativeMethods.RECT ownerRect;
         var hasOwner = false;
@@ -97,6 +98,11 @@ internal static class WindowSnap
         {
             chosenX = second;
         }
+        else if (allowOffscreen)
+        {
+            // 屏幕放不下也要保住吸附：让窗口一部分越出屏幕，而不是夹回区里压在主窗口上。
+            chosenX = first;
+        }
         else
         {
             chosenX = Math.Clamp(first, area.X, area.X + Math.Max(0, area.Width - width));
@@ -114,7 +120,9 @@ internal static class WindowSnap
         int height,
         IntPtr primaryAnchorHwnd,
         IntPtr secondaryAnchorHwnd = default,
-        int gapLogical = DefaultGapLogical)
+        int gapLogical = DefaultGapLogical,
+        bool allowLeftSnap = true,
+        bool allowOffscreen = false)
     {
         var scale = Math.Max(1.0, NativeMethods.GetDpiForWindow(hwnd) / 96.0);
         var gap = (int)Math.Round(gapLogical * scale);
@@ -140,7 +148,7 @@ internal static class WindowSnap
             if (y < anchor.Bottom + snap && y + height > anchor.Top - snap)
             {
                 var snappedH = false;
-                if (Math.Abs((x + width) - (anchor.Left - gap)) <= snap)
+                if (allowLeftSnap && Math.Abs((x + width) - (anchor.Left - gap)) <= snap)
                 {
                     x = anchor.Left - gap - width;
                     snappedH = true;
@@ -150,7 +158,7 @@ internal static class WindowSnap
                     x = anchor.Right + gap;
                     snappedH = true;
                 }
-                else if (Math.Abs((x + width) - (anchor.Left - gap)) <= gap + snap ||
+                else if ((allowLeftSnap && Math.Abs((x + width) - (anchor.Left - gap)) <= gap + snap) ||
                          Math.Abs(x - (anchor.Right + gap)) <= gap + snap)
                 {
                     snappedH = true;
@@ -218,8 +226,12 @@ internal static class WindowSnap
             y = area.Y + area.Height - height;
         }
 
-        x = Math.Clamp(x, area.X, area.X + Math.Max(0, area.Width - width));
-        y = Math.Clamp(y, area.Y, area.Y + Math.Max(0, area.Height - height));
+        if (!allowOffscreen)
+        {
+            x = Math.Clamp(x, area.X, area.X + Math.Max(0, area.Width - width));
+            y = Math.Clamp(y, area.Y, area.Y + Math.Max(0, area.Height - height));
+        }
+
         return (x, y);
     }
 

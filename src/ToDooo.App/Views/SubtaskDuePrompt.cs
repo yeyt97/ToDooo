@@ -13,7 +13,8 @@ internal static class SubtaskDuePrompt
         XamlRoot? xamlRoot,
         ElementTheme theme,
         DateTime? current,
-        string title = "设置子任务时间")
+        string title = "设置子任务时间",
+        Appearance.TintMode tintMode = Appearance.TintMode.Auto)
     {
         if (xamlRoot is null)
         {
@@ -50,7 +51,7 @@ internal static class SubtaskDuePrompt
         };
         dialog.RequestedTheme = theme;
         ThemePalette.ApplyTextControlPalette(dialog.Resources);
-        dialog.Resources["ContentDialogBackground"] = ThemePalette.CreateDialogAcrylicBrush(theme == ElementTheme.Dark);
+        dialog.Resources["ContentDialogBackground"] = ThemePalette.CreateDialogAcrylicBrush(theme == ElementTheme.Dark, tintMode);
         dialog.Resources["ContentDialogBorderBrush"] = Application.Current.Resources["CardStrokeBrush"];
         dialog.Resources["ContentDialogCornerRadius"] = new CornerRadius(8);
         dialog.Resources["ContentDialogSmokeFill"] = new SolidColorBrush(Color.FromArgb(0x33, 0x00, 0x00, 0x00));

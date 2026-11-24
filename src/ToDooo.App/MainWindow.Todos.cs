@@ -261,7 +261,9 @@ public sealed partial class MainWindow : Window
     private async Task AddTaskAtAsync(DateTime date, AppWindow? owner = null)
     {
         var dialog = new TodoEditorDialog(_settings, string.Empty, date.Date + DateTime.Now.TimeOfDay);
-        if (!await ShowEditorAsync(dialog, owner))
+        var created = await ShowEditorAsync(dialog, owner);
+        RestoreOwnerFocus(owner);
+        if (!created)
         {
             return;
         }
@@ -839,7 +841,7 @@ public sealed partial class MainWindow : Window
         };
 
         dialog.Resources["ContentDialogBackground"] = ThemePalette.CreateDialogAcrylicBrush(
-            dialog.RequestedTheme == ElementTheme.Dark);
+            dialog.RequestedTheme == ElementTheme.Dark, CurrentTintMode());
         dialog.Resources["ContentDialogBorderBrush"] = Application.Current.Resources["CardStrokeBrush"];
         dialog.Resources["ContentDialogCornerRadius"] = new CornerRadius(8);
         dialog.Resources["ContentDialogSmokeFill"] = new SolidColorBrush(Color.FromArgb(0x33, 0x00, 0x00, 0x00));
@@ -1125,7 +1127,7 @@ public sealed partial class MainWindow : Window
         try
         {
             var (confirmed, dueAt) = await SubtaskDuePrompt.ShowAsync(
-                Root.XamlRoot, Root.RequestedTheme, item.DueAt, "设置截止时间");
+                Root.XamlRoot, Root.RequestedTheme, item.DueAt, "设置截止时间", CurrentTintMode());
             if (!confirmed)
             {
                 return;
@@ -1382,12 +1384,32 @@ public sealed partial class MainWindow : Window
     {
         var dialog = new TodoEditorDialog(_settings, item);
 
-        if (await ShowEditorAsync(dialog, owner))
+        var saved = await ShowEditorAsync(dialog, owner);
+        RestoreOwnerFocus(owner);
+        if (saved)
         {
             ViewModel.ApplyEdit(
                 item, dialog.TodoTitle, dialog.DueAt, dialog.Recurrence, dialog.IsImportant, dialog.TagIndex, dialog.TodoNote);
             ViewModel.ApplySubtasks(item, dialog.Subtasks);
             UpdateFilterVisuals();
+        }
+    }
+
+    /// <summary>
+    /// 编辑窗是独立窗口，关闭后系统会把焦点还给主窗口；从日历打开时要把日历重新提到最前，
+    /// 否则日历会被主窗口盖住，看起来像「保存后日历消失了」。
+    /// </summary>
+    private static void RestoreOwnerFocus(AppWindow? owner)
+    {
+        if (owner is null)
+        {
+            return;
+        }
+
+        var hwnd = Microsoft.UI.Win32Interop.GetWindowFromWindowId(owner.Id);
+        if (hwnd != IntPtr.Zero && NativeMethods.IsWindowVisible(hwnd))
+        {
+            NativeMethods.SetForegroundWindow(hwnd);
         }
     }
 

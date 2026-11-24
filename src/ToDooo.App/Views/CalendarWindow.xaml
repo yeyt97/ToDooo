@@ -31,94 +31,146 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                <Border
-                    Width="22"
-                    Height="22"
-                    CornerRadius="7"
-                    Background="{ThemeResource LayerFillSecondaryBrush}"
-                    BorderBrush="{ThemeResource LayerStrokeBrush}"
-                    BorderThickness="1">
-                    <FontIcon Glyph="&#xE787;" FontSize="11" Foreground="{ThemeResource TextSecondaryBrush}" />
-                </Border>
-                <TextBlock
-                    x:Name="HeaderTitleText"
-                    VerticalAlignment="Center"
-                    FontSize="15"
-                    FontWeight="SemiBold"
-                    Foreground="{ThemeResource TextPrimaryBrush}"
-                    Text="日历" />
+            <!--  左侧：侧栏开关、筛选  -->
+            <StackPanel
+                Grid.Column="0"
+                VerticalAlignment="Center"
+                Orientation="Horizontal"
+                Spacing="2">
+                <Button
+                    x:Name="RightPanelToggleButton"
+                    AutomationProperties.Name="收起详情"
+                    Click="RightPanelToggle_Click"
+                    Foreground="{ThemeResource AccentBrush}"
+                    Style="{StaticResource FlatIconButtonStyle}">
+                    <FontIcon x:Name="RightPanelToggleIcon" Glyph="&#xE90D;" FontSize="14" />
+                </Button>
+                <Button
+                    x:Name="CalendarFiltersButton"
+                    AutomationProperties.Name="日历显示选项"
+                    Style="{StaticResource FlatIconButtonStyle}">
+                    <FontIcon x:Name="CalendarFiltersIcon" Glyph="&#xE71C;" FontSize="13" />
+                    <Button.Flyout>
+                        <MenuFlyout Placement="BottomEdgeAlignedRight">
+                            <ToggleMenuFlyoutItem
+                                x:Name="ShowTodosMenuItem"
+                                Click="ShowTodos_Click"
+                                Text="待办" />
+                            <ToggleMenuFlyoutItem
+                                x:Name="HideCompletedMenuItem"
+                                Click="HideCompleted_Click"
+                                Text="已完成待办" />
+                        </MenuFlyout>
+                    </Button.Flyout>
+                </Button>
+                <Button
+                    x:Name="SyncButton"
+                    AutomationProperties.Name="同步日历"
+                    Click="SyncButton_Click"
+                    Style="{StaticResource FlatIconButtonStyle}">
+                    <Grid
+                        Width="20"
+                        Height="20"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center">
+                        <!--  只有这一层参与旋转；提示点在外面，不会跟着转。  -->
+                        <Grid
+                            x:Name="SyncSpinnerHost"
+                            Width="16"
+                            Height="16"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center">
+                            <FontIcon
+                                x:Name="SyncIcon"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                FontSize="13"
+                                Glyph="&#xE895;" />
+                        </Grid>
+                        <!--  待同步提示点：默认隐藏，有积压时亮橙色，悬停看具体原因。  -->
+                        <Border
+                            x:Name="SyncPendingDot"
+                            Width="7"
+                            Height="7"
+                            Margin="0,0,0,0"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Bottom"
+                            Background="#F0A030"
+                            CornerRadius="4"
+                            Visibility="Collapsed" />
+                    </Grid>
+                </Button>
             </StackPanel>
 
-            <Border
-                x:Name="MonthNavBar"
-                Grid.Column="1"
-                Margin="6,0,0,0"
-                Padding="2"
-                HorizontalAlignment="Left"
-                VerticalAlignment="Center"
-                Background="{ThemeResource SegmentBarBrush}"
-                BorderBrush="{ThemeResource LayerStrokeBrush}"
-                BorderThickness="1"
-                CornerRadius="7">
-                <StackPanel Orientation="Horizontal" Spacing="1" VerticalAlignment="Center">
-                    <Button
-                        x:Name="PrevNavButton"
-                        Width="26"
-                        Height="26"
-                        AutomationProperties.Name="上个月"
-                        AllowDrop="True"
-                        Click="PrevMonth_Click"
-                        DragLeave="MonthNav_DragLeave"
-                        DragOver="PrevMonth_DragOver"
-                        Style="{StaticResource FlatIconButtonStyle}">
-                        <FontIcon Glyph="&#xE76B;" FontSize="11" />
-                    </Button>
-                    <Button
-                        x:Name="MonthTitleButton"
-                        Height="26"
-                        Padding="6,0"
-                        AutomationProperties.Name="选择年月"
-                        Click="MonthTitle_Click"
-                        Style="{StaticResource LinkButtonStyle}">
-                        <TextBlock
-                            x:Name="MonthTitle"
-                            MinWidth="80"
-                            VerticalAlignment="Center"
-                            FontSize="12"
-                            FontWeight="SemiBold"
-                            TextAlignment="Center"
-                            Foreground="{ThemeResource TextPrimaryBrush}" />
-                    </Button>
-                    <Button
-                        x:Name="NextNavButton"
-                        Width="26"
-                        Height="26"
-                        AutomationProperties.Name="下个月"
-                        AllowDrop="True"
-                        Click="NextMonth_Click"
-                        DragLeave="MonthNav_DragLeave"
-                        DragOver="NextMonth_DragOver"
-                        Style="{StaticResource FlatIconButtonStyle}">
-                        <FontIcon Glyph="&#xE76C;" FontSize="11" />
-                    </Button>
-                    <Button
-                        Height="26"
-                        Padding="8,0"
-                        AutomationProperties.Name="回到今天"
-                        Click="Today_Click"
-                        Style="{StaticResource LinkButtonStyle}"
-                        Content="今天" />
-                </StackPanel>
-            </Border>
-
+            <!--  日期切换 + 月/日 + 关闭：靠右  -->
             <StackPanel
+                x:Name="NavigationGroup"
                 Grid.Column="2"
+                HorizontalAlignment="Right"
                 VerticalAlignment="Center"
                 Orientation="Horizontal"
                 Spacing="6">
                 <Border
+                    x:Name="MonthNavBar"
                     Padding="2"
+                    VerticalAlignment="Center"
+                    Background="{ThemeResource SegmentBarBrush}"
+                    BorderBrush="{ThemeResource LayerStrokeBrush}"
+                    BorderThickness="1"
+                    CornerRadius="7">
+                    <StackPanel Orientation="Horizontal" Spacing="1" VerticalAlignment="Center">
+                        <Button
+                            x:Name="PrevNavButton"
+                            Width="26"
+                            Height="26"
+                            AutomationProperties.Name="上个月"
+                            AllowDrop="True"
+                            Click="PrevMonth_Click"
+                            DragLeave="MonthNav_DragLeave"
+                            DragOver="PrevMonth_DragOver"
+                            Style="{StaticResource FlatIconButtonStyle}">
+                            <FontIcon Glyph="&#xE76B;" FontSize="11" />
+                        </Button>
+                        <Button
+                            x:Name="MonthTitleButton"
+                            Height="26"
+                            Padding="6,0"
+                            AutomationProperties.Name="选择年月"
+                            Click="MonthTitle_Click"
+                            Style="{StaticResource LinkButtonStyle}">
+                            <TextBlock
+                                x:Name="MonthTitle"
+                                MinWidth="80"
+                                VerticalAlignment="Center"
+                                FontSize="12"
+                                FontWeight="SemiBold"
+                                TextAlignment="Center"
+                                Foreground="{ThemeResource TextPrimaryBrush}" />
+                        </Button>
+                        <Button
+                            x:Name="NextNavButton"
+                            Width="26"
+                            Height="26"
+                            AutomationProperties.Name="下个月"
+                            AllowDrop="True"
+                            Click="NextMonth_Click"
+                            DragLeave="MonthNav_DragLeave"
+                            DragOver="NextMonth_DragOver"
+                            Style="{StaticResource FlatIconButtonStyle}">
+                            <FontIcon Glyph="&#xE76C;" FontSize="11" />
+                        </Button>
+                        <Button
+                            Height="26"
+                            Padding="8,0"
+                            AutomationProperties.Name="回到今天"
+                            Click="Today_Click"
+                            Style="{StaticResource LinkButtonStyle}"
+                            Content="今天" />
+                    </StackPanel>
+                </Border>
+                <Border
+                    Padding="2"
+                    VerticalAlignment="Center"
                     Background="{ThemeResource SegmentBarBrush}"
                     BorderBrush="{ThemeResource LayerStrokeBrush}"
                     BorderThickness="1"
@@ -126,8 +178,9 @@
                     <StackPanel Orientation="Horizontal" Spacing="1" VerticalAlignment="Center">
                         <Button
                             x:Name="MonthViewButton"
+                            Height="26"
                             MinWidth="26"
-                            MinHeight="24"
+                            MinHeight="26"
                             Padding="7,2"
                             FontSize="11"
                             AutomationProperties.Name="月视图"
@@ -136,8 +189,9 @@
                             Content="月" />
                         <Button
                             x:Name="DayViewButton"
+                            Height="26"
                             MinWidth="26"
-                            MinHeight="24"
+                            MinHeight="26"
                             Padding="7,2"
                             FontSize="11"
                             AutomationProperties.Name="日视图"
@@ -147,32 +201,27 @@
                     </StackPanel>
                 </Border>
                 <Button
-                    x:Name="HideCompletedButton"
-                    AutomationProperties.Name="隐藏已完成"
-                    Click="HideCompleted_Click"
+                    x:Name="CloseCalendarButton"
+                    AutomationProperties.Name="关闭日窗"
+                    Click="CloseCalendar_Click"
                     Style="{StaticResource FlatIconButtonStyle}">
-                    <FontIcon x:Name="HideCompletedIcon" Glyph="&#xE890;" FontSize="13" />
-                </Button>
-                <Button
-                    x:Name="RightPanelToggleButton"
-                    AutomationProperties.Name="收起详情"
-                    Click="RightPanelToggle_Click"
-                    Foreground="{ThemeResource AccentBrush}"
-                    Style="{StaticResource FlatIconButtonStyle}">
-                    <FontIcon x:Name="RightPanelToggleIcon" Glyph="&#xE90D;" FontSize="14" />
+                    <FontIcon Glyph="&#xE711;" FontSize="12" />
                 </Button>
             </StackPanel>
         </Grid>
 
         <Grid
+            x:Name="BodyGrid"
             Grid.Row="1"
-            Padding="12,0,10,12">
+            Padding="12,0,12,12">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition x:Name="RightPanelColumn" Width="260" />
+                <ColumnDefinition x:Name="LeftColumn" Width="260" />
+                <ColumnDefinition x:Name="RightColumn" Width="*" />
             </Grid.ColumnDefinitions>
 
             <Border
+                x:Name="CalendarSurface"
+                Grid.Column="1"
                 Padding="8"
                 Background="{ThemeResource LayerFillSecondaryBrush}"
                 BorderBrush="{ThemeResource LayerStrokeBrush}"
@@ -184,7 +233,7 @@
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
-                    <Grid x:Name="WeekdayRow" Margin="0,0,10,6" />
+                    <Grid x:Name="WeekdayRow" Margin="8,0,8,6" />
                     <Grid
                         x:Name="DaysGrid"
                         Grid.Row="1"
@@ -193,12 +242,13 @@
                 </Grid>
             </Border>
 
-            <Grid x:Name="RightDrawerHost" Grid.Column="1" Margin="10,0,0,0">
+            <Grid
+                x:Name="RightDrawerHost"
+                Grid.Column="0"
+                Margin="0,0,10,0">
             <Grid x:Name="RightPanelGrid">
                 <Grid.RowDefinitions>
-                    <RowDefinition x:Name="SelectedDayRow" Height="*" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition x:Name="UndatedRow" Height="*" />
+                    <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
@@ -242,94 +292,6 @@
                     </Grid>
                 </Border>
 
-                <Grid
-                    x:Name="RightSplitHandle"
-                    Grid.Row="1"
-                    Height="10"
-                    Background="Transparent"
-                    PointerCaptureLost="RightSplitHandle_PointerCaptureLost"
-                    PointerEntered="RightSplitHandle_PointerEntered"
-                    PointerExited="RightSplitHandle_PointerExited"
-                    PointerMoved="RightSplitHandle_PointerMoved"
-                    PointerPressed="RightSplitHandle_PointerPressed"
-                    PointerReleased="RightSplitHandle_PointerReleased">
-                    <Border
-                        Width="32"
-                        Height="3"
-                        CornerRadius="1.5"
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center"
-                        Background="{ThemeResource LayerStrokeBrush}" />
-                </Grid>
-
-                <Border
-                    x:Name="UndatedDropZone"
-                    Grid.Row="2"
-                    Padding="10,8,10,8"
-                    Background="{ThemeResource ItemCardBrush}"
-                    BorderBrush="{ThemeResource ItemCardStrokeBrush}"
-                    BorderThickness="1"
-                    CornerRadius="8"
-                    AllowDrop="True"
-                    DragOver="UndatedDropZone_DragOver"
-                    DragLeave="UndatedDropZone_DragLeave"
-                    Drop="UndatedDropZone_Drop">
-                    <Grid RowSpacing="6">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
-
-                        <Grid ColumnSpacing="8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock
-                                x:Name="UndatedHeaderText"
-                                VerticalAlignment="Center"
-                                FontSize="11"
-                                FontWeight="SemiBold"
-                                Foreground="{ThemeResource TextSecondaryBrush}"
-                                Text="无截止日期" />
-                            <Border
-                                Grid.Column="1"
-                                Padding="6,1,6,1"
-                                Background="{ThemeResource LayerFillSecondaryBrush}"
-                                CornerRadius="8">
-                                <TextBlock
-                                    x:Name="UndatedCountText"
-                                    VerticalAlignment="Center"
-                                    FontSize="10"
-                                    Foreground="{ThemeResource TextMutedBrush}" />
-                            </Border>
-                        </Grid>
-
-                        <ScrollViewer
-                            Grid.Row="1"
-                            VerticalScrollBarVisibility="Auto">
-                            <StackPanel x:Name="UndatedPanel" Padding="0,0,10,0" Spacing="4" />
-                        </ScrollViewer>
-                    </Grid>
-                </Border>
-
-                <Border
-                    Grid.Row="3"
-                    Margin="0,8,0,0"
-                    Padding="10,7,10,7"
-                    Background="{ThemeResource ItemCardBrush}"
-                    BorderBrush="{ThemeResource ItemCardStrokeBrush}"
-                    BorderThickness="1"
-                    CornerRadius="8">
-                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                        <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="{ThemeResource AccentBrush}" />
-                        <TextBlock
-                            x:Name="WeeklySummaryText"
-                            FontSize="11"
-                            Foreground="{ThemeResource TextSecondaryBrush}"
-                            Text="本周已完成 0 项" />
-                    </StackPanel>
-                </Border>
             </Grid>
             </Grid>
         </Grid>

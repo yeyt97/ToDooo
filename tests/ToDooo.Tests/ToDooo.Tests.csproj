@@ -24,6 +24,16 @@
     <Compile Include="..\..\src\ToDooo.App\Services\TodoRepository.cs" Link="Linked\Services\TodoRepository.cs" />
     <Compile Include="..\..\src\ToDooo.App\Helpers\NaturalDateParser.cs" Link="Linked\Helpers\NaturalDateParser.cs" />
     <Compile Include="..\..\src\ToDooo.App\Services\UpdateService.cs" Link="Linked\Services\UpdateService.cs" />
+    <Compile Include="..\..\src\ToDooo.App\Models\CalendarEvent.cs" Link="Linked\Models\CalendarEvent.cs" />
+    <Compile Include="..\..\src\ToDooo.App\Services\IcsCalendar.cs" Link="Linked\Services\IcsCalendar.cs" />
+    <Compile Include="..\..\src\ToDooo.App\Services\RecurrenceExpander.cs" Link="Linked\Services\RecurrenceExpander.cs" />
+    <Compile Include="..\..\src\ToDooo.App\Services\CalendarRepository.cs" Link="Linked\Services\CalendarRepository.cs" />
+    <Compile Include="..\..\src\ToDooo.App\Services\CalendarSyncService.cs" Link="Linked\Services\CalendarSyncService.cs" />
+    <Compile Include="..\..\src\ToDooo.App\Services\CalDavClient.cs" Link="Linked\Services\CalDavClient.cs" />
+    <Compile Include="..\..\src\ToDooo.App\Services\SecretProtector.cs" Link="Linked\Services\SecretProtector.cs" />
+    <Compile Include="..\..\src\ToDooo.App\Services\SettingsService.cs" Link="Linked\Services\SettingsService.cs" />
+    <Compile Include="..\..\src\ToDooo.App\Services\AppPaths.cs" Link="Linked\Services\AppPaths.cs" />
+    <Compile Include="..\..\src\ToDooo.App\Views\MonthWeekLayout.cs" Link="Linked\Views\MonthWeekLayout.cs" />
   </ItemGroup>
 
 </Project>

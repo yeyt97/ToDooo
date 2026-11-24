@@ -29,6 +29,7 @@ public sealed partial class MainWindow : Window
     private readonly TodoRepository _repository;
     private readonly SettingsService _settings;
     private readonly Notifier _notifier;
+    private readonly CalendarSyncService _calendarSync;
     private readonly ReminderService _reminder;
     private readonly IntPtr _hwnd;
     private readonly AppWindow _appWindow;
@@ -59,11 +60,13 @@ public sealed partial class MainWindow : Window
     private NativeMethods.RECT _dragStartRect;
     private readonly List<(IntPtr Hwnd, int OffsetX, int OffsetY)> _attachedFollowers = new();
 
-    public MainWindow(TodoRepository repository, SettingsService settings, Notifier notifier)
+    public MainWindow(TodoRepository repository, SettingsService settings, Notifier notifier,
+        CalendarSyncService calendarSync)
     {
         _repository = repository;
         _settings = settings;
         _notifier = notifier;
+        _calendarSync = calendarSync;
         ViewModel = new MainViewModel(repository);
 
         InitializeComponent();
@@ -78,6 +81,15 @@ public sealed partial class MainWindow : Window
         _appWindow = AppWindow.GetFromWindowId(Microsoft.UI.Win32Interop.GetWindowIdFromWindow(_hwnd));
 
         ConfigureWindow();
+        UpdateSubtasksToggleVisual();
+        ViewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(MainViewModel.AreAllVisibleSubtasksExpanded)
+                or nameof(MainViewModel.HasVisibleSubtasks))
+            {
+                UpdateSubtasksToggleVisual();
+            }
+        };
         BuildTagDots();
         BuildSmartViewChips();
         UpdateFilterVisuals();
@@ -98,6 +110,8 @@ public sealed partial class MainWindow : Window
 
         // XAML 的 LostFocus 在窗口整体失活时不会触发，这里补一次全局失焦提交。
         Activated += MainWindow_Activated;
+
+        HookNetworkRecovery();
 
         _reminder = new ReminderService(repository, notifier, Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread())
         {
@@ -137,6 +151,70 @@ public sealed partial class MainWindow : Window
         _reminder.LeadMinutes = _settings.Current.ReminderLeadMinutes;
         _reminder.Start();
         ScheduleUpdateCheck();
+        ScheduleCalendarRefresh();
+    }
+
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _calendarRefreshTimer;
+
+    /// <summary>
+    /// 按设置里的间隔后台刷新日历。间隔为 0 时只手动刷新。
+    /// 定时器常驻，改设置只要重新调度即可，不必重启。
+    /// </summary>
+    private void ScheduleCalendarRefresh()
+    {
+        _calendarRefreshTimer ??= _dispatcher.CreateTimer();
+        _calendarRefreshTimer.Stop();
+
+        var configured = _settings.Current.CalendarRefreshMinutes;
+        if (configured <= 0 || !_calendarSync.IsConfigured)
+        {
+            return;
+        }
+
+        // 连续失败时指数退避，避免断网期间空转；恢复后自动回到用户设定的间隔。
+        var minutes = _calendarSync.SuggestedRefreshMinutes(configured);
+        _calendarRefreshTimer.Interval = TimeSpan.FromMinutes(Math.Max(1, minutes));
+        _calendarRefreshTimer.Tick -= CalendarRefreshTimer_Tick;
+        _calendarRefreshTimer.Tick += CalendarRefreshTimer_Tick;
+        _calendarRefreshTimer.Start();
+
+        // 启动时先拉一次，别让用户等到第一个间隔才有数据。
+        _ = _dispatcher.TryEnqueue(async () =>
+        {
+            try
+            {
+                var today = DateTime.Today;
+                await _calendarSync.SyncAsync(today.AddMonths(-1), today.AddMonths(2));
+            }
+            catch
+            {
+                // 首轮失败静默，等定时器重试
+            }
+        });
+    }
+
+    private async void CalendarRefreshTimer_Tick(
+        Microsoft.UI.Dispatching.DispatcherQueueTimer sender,
+        object args)
+    {
+        if (!_calendarSync.IsConfigured)
+        {
+            return;
+        }
+
+        // 后台定时拉取：不依赖日历窗口存在，窗口没开也照常同步到本地缓存。
+        var today = DateTime.Today;
+        try
+        {
+            await _calendarSync.SyncAsync(today.AddMonths(-1), today.AddMonths(2));
+        }
+        catch
+        {
+            // 后台同步失败不影响使用，下一次 tick 再试。
+        }
+
+        // 每次结束后按最新结果重排下次间隔（成功回到设定值，失败退避）。
+        ScheduleCalendarRefresh();
     }
 
     public void ShowFromTray()
@@ -157,6 +235,53 @@ public sealed partial class MainWindow : Window
         ExpandDock();
         Activate();
         NativeMethods.SetForegroundWindow(_hwnd);
+        KeepCalendarBehind();
+    }
+
+    /// <summary>网络恢复时补一次同步：离线期间排队的增删改不必等下一个定时点。</summary>
+    private void HookNetworkRecovery()
+    {
+        try
+        {
+            Windows.Networking.Connectivity.NetworkInformation.NetworkStatusChanged += _ =>
+            {
+                var profile = Windows.Networking.Connectivity.NetworkInformation.GetInternetConnectionProfile();
+                if (profile is null || profile.GetNetworkConnectivityLevel() !=
+                    Windows.Networking.Connectivity.NetworkConnectivityLevel.InternetAccess)
+                {
+                    return;
+                }
+
+                _dispatcher.TryEnqueue(async () =>
+                {
+                    if (!_calendarSync.IsConfigured)
+                    {
+                        return;
+                    }
+
+                    var today = DateTime.Today;
+                    await _calendarSync.SyncAsync(today.AddMonths(-1), today.AddMonths(2));
+                });
+            };
+        }
+        catch
+        {
+            // 拿不到网络状态不影响其它功能
+        }
+    }
+
+    /// <summary>从托盘唤出待办时，日历即使开着也不应跑到前面：只把它压回待办下方。</summary>
+    private void KeepCalendarBehind()
+    {
+        if (_calendarHostWindow is null ||
+            !NativeMethods.IsWindowVisible(_calendarHostWindow.Hwnd))
+        {
+            return;
+        }
+
+        NativeMethods.SetWindowPos(
+            _calendarHostWindow.Hwnd, _hwnd, 0, 0, 0, 0,
+            NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE);
     }
 
     public void ShowBalloon(string title, string text) => _tray?.ShowBalloon(title, text);
@@ -182,7 +307,8 @@ public sealed partial class MainWindow : Window
         }
 
         Root.RequestedTheme = Appearance.ToElementTheme((ThemeMode)_settings.Current.ThemeMode);
-        ThemePalette.Apply(Appearance.IsDark((ThemeMode)_settings.Current.ThemeMode), _settings.Current.WindowOpacity);
+        ThemePalette.Apply(Appearance.IsDark((ThemeMode)_settings.Current.ThemeMode), _settings.Current.WindowOpacity,
+            (Appearance.TintMode)Math.Clamp(_settings.Current.WindowTintMode, 0, 3));
         ApplyAcrylicMaterial();
 
         var exStyle = NativeMethods.GetWindowLongPtr(_hwnd, NativeMethods.GWL_EXSTYLE).ToInt64();
@@ -221,7 +347,8 @@ public sealed partial class MainWindow : Window
         };
 
         _acrylic = new DesktopAcrylicController { Kind = DesktopAcrylicKind.Base };
-        WindowAcrylic.ApplyTint(_acrylic, Appearance.TintForOpacity(_settings.Current.WindowOpacity), dark);
+        WindowAcrylic.ApplyTint(_acrylic, Appearance.TintForOpacity(_settings.Current.WindowOpacity), dark,
+            (Appearance.TintMode)Math.Clamp(_settings.Current.WindowTintMode, 0, 3));
         _acrylic.AddSystemBackdropTarget(
             ((object)this).As<Microsoft.UI.Composition.ICompositionSupportsSystemBackdrop>());
         _acrylic.SetSystemBackdropConfiguration(_backdropConfig);
@@ -232,12 +359,14 @@ public sealed partial class MainWindow : Window
     {
         Root.RequestedTheme = Appearance.ToElementTheme((ThemeMode)_settings.Current.ThemeMode);
         var dark = Appearance.IsDark((ThemeMode)_settings.Current.ThemeMode);
-        ThemePalette.Apply(dark, _settings.Current.WindowOpacity);
+        ThemePalette.Apply(dark, _settings.Current.WindowOpacity,
+            (Appearance.TintMode)Math.Clamp(_settings.Current.WindowTintMode, 0, 3));
         ApplyDwmTheme(dark);
 
         if (_acrylic is not null)
         {
-            WindowAcrylic.ApplyTint(_acrylic, Appearance.TintForOpacity(_settings.Current.WindowOpacity), dark);
+            WindowAcrylic.ApplyTint(_acrylic, Appearance.TintForOpacity(_settings.Current.WindowOpacity), dark,
+                (Appearance.TintMode)Math.Clamp(_settings.Current.WindowTintMode, 0, 3));
             if (_backdropConfig is not null)
             {
                 _backdropConfig.Theme = dark
@@ -251,6 +380,10 @@ public sealed partial class MainWindow : Window
         _settingsWindow?.RefreshTheme();
         _calendarHostWindow?.RefreshTheme();
     }
+
+    /// <summary>当前底色方案，转给弹窗磨砂等处用。</summary>
+    private Appearance.TintMode CurrentTintMode() =>
+        (Appearance.TintMode)Math.Clamp(_settings.Current.WindowTintMode, 0, 3);
 
     private void ApplyDwmTheme(bool dark)
     {
@@ -432,29 +565,12 @@ public sealed partial class MainWindow : Window
                 _calendarHostWindow = new Views.CalendarHostWindow(
                     ViewModel,
                     _settings,
+                    _calendarSync,
                     _hwnd,
                     item => _ = EditItemAsync(item, _calendarHostWindow?.WindowInfo),
                     (item, date) => ViewModel.Reschedule(item, date),
                     date => _ = AddTaskAtAsync(date, _calendarHostWindow?.WindowInfo),
-                    () => SetCalendarExpanded(false),
-                    null,
-                    () =>
-                    {
-                        SavePosition();
-                        SyncDockedRects();
-                    });
-                _calendarHostWindow.DockPointerEntered += (_, _) =>
-                {
-                    CancelDockRetract();
-                    ScheduleDockExpand();
-                };
-                _calendarHostWindow.DockPointerExited += (_, _) =>
-                {
-                    CancelDockExpand();
-                    ScheduleDockRetract();
-                };
-                _calendarHostWindow.DockPointerPressed += (_, _) => ExpandDock();
-                _calendarHostWindow.DockDragReleased += (_, _) => TryDockToEdge();
+                    () => SetCalendarExpanded(false));
             }
 
             _calendarAnimating = true;
@@ -465,7 +581,7 @@ public sealed partial class MainWindow : Window
             {
                 _calendarAnimating = false;
                 SyncDockedRects();
-            }, keepTopmost: _dockEdge != EdgeDock.None);
+            });
             return;
         }
 
@@ -504,7 +620,8 @@ public sealed partial class MainWindow : Window
             _settings,
             OnSettingsChanged,
             ExportDataAsync,
-            ImportDataAsync);
+            ImportDataAsync,
+            _calendarSync);
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         _settingsWindow.ShowOver(_appWindow);
         TopmostDialogIfDocked(_settingsWindow);
@@ -581,6 +698,7 @@ public sealed partial class MainWindow : Window
         RefreshTagButtonLabels();
         _reminder.LeadMinutes = _settings.Current.ReminderLeadMinutes;
         BuildSmartViewChips();
+        ScheduleCalendarRefresh();
 
         // 关掉自动隐藏时把可能已经变淡的窗口拉回来。
         if (!_settings.Current.AutoHide)
@@ -780,24 +898,8 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        // 两个窗口互不捆绑：拖动待办窗口不再带动日历窗口。
         _attachedFollowers.Clear();
-        var scale = NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
-        void TryTrackFollower(IntPtr subHwnd)
-        {
-            if (subHwnd != IntPtr.Zero &&
-                NativeMethods.IsWindowVisible(subHwnd) &&
-                NativeMethods.GetWindowRect(subHwnd, out var subRect) &&
-                WindowSnap.IsAttachedTo(subRect, _dragStartRect, scale))
-            {
-                _attachedFollowers.Add((subHwnd, subRect.Left - _dragStartRect.Left, subRect.Top - _dragStartRect.Top));
-            }
-        }
-
-        if (_calendarHostWindow is not null)
-        {
-            TryTrackFollower(_calendarHostWindow.Hwnd);
-        }
-
         _dragging = ((UIElement)sender).CapturePointer(e.Pointer);
         e.Handled = true;
     }

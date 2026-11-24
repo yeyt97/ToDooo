@@ -22,11 +22,13 @@ namespace ToDooo.Views;
 /// </summary>
 public sealed partial class TodoEditorDialog : Window
 {
-    private const int LogicalWidth = 420;
+    private const int LogicalWidth = 440;
 
     // 截止时间收起/展开是两种高度，窗口跟着长，别留一大片空白。
     private const int CollapsedHeight = 576;
     private const int ExpandedHeight = 666;
+    private const int MinLogicalWidth = 360;
+    private const int MinLogicalHeight = 420;
     private const string SubtaskDragKey = "ToDoooEditorSubtask";
 
     // 让后续逻辑排在关窗之后的下一轮消息里跑，别卡在关窗过程中重入 UI。
@@ -75,7 +77,8 @@ public sealed partial class TodoEditorDialog : Window
             Theme = dark ? SystemBackdropTheme.Dark : SystemBackdropTheme.Light,
         };
         _acrylic = WindowAcrylic.Apply(
-            this, Appearance.TintForOpacity(settings.Current.WindowOpacity), dark, _backdropConfig);
+            this, Appearance.TintForOpacity(settings.Current.WindowOpacity), dark, _backdropConfig,
+            (Appearance.TintMode)Math.Clamp(settings.Current.WindowTintMode, 0, 3));
         var darkFlag = dark ? 1 : 0;
         NativeMethods.DwmSetWindowAttribute(
             _hwnd, NativeMethods.DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkFlag, sizeof(int));
@@ -98,6 +101,11 @@ public sealed partial class TodoEditorDialog : Window
         BuildTagButtons();
         UpdateTagVisuals();
         RenderSubtasks();
+
+        // 截止区可能初始是收起的，TimePicker 模板要到展开那帧才实例化，
+        // 单靠 Loaded 解除最小宽度会漏掉，这里挂持续监听直到真正布局完成。
+        TimePickerSizing.EnsureReleased(DueTime);
+
         ApplyDueVisibility();
         _ready = true;
 
@@ -206,7 +214,70 @@ public sealed partial class TodoEditorDialog : Window
 
         ExtendsContentIntoTitleBar = false;
         HeaderBar.Padding = new Thickness(18, 0, 10, 0);
+
+        _edgeResize = new WindowEdgeResize(Root, _hwnd,
+            () => (int)Math.Round(MinLogicalWidth * (NativeMethods.GetDpiForWindow(_hwnd) / 96.0)),
+            () => (int)Math.Round(MinLogicalHeight * (NativeMethods.GetDpiForWindow(_hwnd) / 96.0)));
+        _edgeResize.Resized += SaveUserSize;
     }
+
+    private WindowEdgeResize _edgeResize = null!;
+
+    /// <summary>用户拖过窗口尺寸后记住，下次打开沿用（按逻辑像素存，换 DPI 也不漂）。</summary>
+    private void SaveUserSize()
+    {
+        var size = _appWindow.Size;
+        if (size.Width <= 0 || size.Height <= 0)
+        {
+            return;
+        }
+
+        var scale = NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
+        if (scale <= 0)
+        {
+            return;
+        }
+
+        _settings.Current.TodoEditorWidth = (int)Math.Round(size.Width / scale);
+        _settings.Current.TodoEditorHeight = (int)Math.Round(size.Height / scale);
+        _settings.Save();
+    }
+
+    private void Root_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        // 边缘优先给缩放；不在边缘上才轮到标题栏拖动（由 HeaderBar 自己的处理接手）。
+        _edgeResize?.TryBegin(e);
+
+        // 点到输入控件以外的空白处时让输入框失焦。
+        // WinUI 默认不会因为点了不可聚焦的元素就移走焦点，光标会一直留在原输入框里。
+        if (e.OriginalSource is DependencyObject source &&
+            FindAncestor<TextBox>(source) is null &&
+            FindAncestor<PasswordBox>(source) is null)
+        {
+            Root.Focus(FocusState.Pointer);
+        }
+    }
+
+    private static T? FindAncestor<T>(DependencyObject? node) where T : DependencyObject
+    {
+        while (node is not null)
+        {
+            if (node is T match)
+            {
+                return match;
+            }
+
+            node = VisualTreeHelper.GetParent(node);
+        }
+
+        return null;
+    }
+
+    private void Root_PointerMoved(object sender, PointerRoutedEventArgs e) =>
+        _edgeResize?.TryMove(e);
+
+    private void Root_PointerReleased(object sender, PointerRoutedEventArgs e) =>
+        _edgeResize?.TryEnd(e);
 
     private bool _dragging;
     private NativeMethods.POINT _dragStartCursor;
@@ -214,7 +285,8 @@ public sealed partial class TodoEditorDialog : Window
 
     private void HeaderBar_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
-        if (!e.GetCurrentPoint((UIElement)sender).Properties.IsLeftButtonPressed ||
+        if (_edgeResize is { IsResizing: true } ||
+            !e.GetCurrentPoint((UIElement)sender).Properties.IsLeftButtonPressed ||
             !NativeMethods.GetCursorPos(out _dragStartCursor) ||
             !NativeMethods.GetWindowRect(_hwnd, out _dragStartRect))
         {
@@ -368,6 +440,9 @@ public sealed partial class TodoEditorDialog : Window
         DispatcherQueue.TryEnqueue(Close);
     }
 
+    private void NativeTimePicker_Loaded(object sender, RoutedEventArgs e) =>
+        TimePickerSizing.ReleaseMinWidth(sender, e);
+
     private void DueToggle_Toggled(object sender, RoutedEventArgs e)
     {
         if (_ready)
@@ -378,7 +453,8 @@ public sealed partial class TodoEditorDialog : Window
         ApplyDueVisibility();
     }
 
-    // 打开才显示日期/时间，同时把窗口高度换成展开态，收起时不留空白。
+    // 截止区开合只改内容显隐，不改窗口尺寸：窗口高度一变整块内容会上下跳。
+    // 打开后的高度多出来一截，交给内容区的滚动条消化。
     private void ApplyDueVisibility()
     {
         var on = DueToggle.IsOn;
@@ -391,17 +467,25 @@ public sealed partial class TodoEditorDialog : Window
             DueDate.Date = DateTimeOffset.Now.Date;
         }
 
-        var scale = NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
-        _appWindow.Resize(new SizeInt32(
-            (int)Math.Round(LogicalWidth * scale),
-            (int)Math.Round((on ? ExpandedHeight : CollapsedHeight) * scale)));
+        // 截止区刚由隐藏变可见时，TimePicker 模板这一帧才实例化，
+        // Loaded 已错过，展开后补一次解除最小宽度，否则分钟会被裁掉。
+        if (on)
+        {
+            DispatcherQueue.TryEnqueue(() => TimePickerSizing.ReleaseMinWidth(DueTime));
+        }
     }
 
     private void ApplyLogicalSize(double scale)
     {
+        // 优先用用户上次拖到的尺寸；没拖过就用默认高度（截止已开时取展开态，免得一打开就要滚）。
+        var settings = _settings.Current;
+        var width = settings.TodoEditorWidth > 0 ? settings.TodoEditorWidth : LogicalWidth;
+        var height = settings.TodoEditorHeight > 0
+            ? settings.TodoEditorHeight
+            : DueToggle.IsOn ? ExpandedHeight : CollapsedHeight;
         _appWindow.Resize(new SizeInt32(
-            (int)Math.Round(LogicalWidth * scale),
-            (int)Math.Round((DueToggle.IsOn ? ExpandedHeight : CollapsedHeight) * scale)));
+            (int)Math.Round(width * scale),
+            (int)Math.Round(Math.Max(height, MinLogicalHeight) * scale)));
     }
 
     private static TimeSpan RoundToFiveMinutes(TimeSpan value)
@@ -528,6 +612,24 @@ public sealed partial class TodoEditorDialog : Window
         {
             _clearTagButton.Visibility = _tagIndex >= 0 ? Visibility.Visible : Visibility.Collapsed;
         }
+
+        // 左侧竖条跟随标签色；没选标签时用中性灰。
+        ColorStripe.Background = new SolidColorBrush(TagBrushColor(_tagIndex));
+    }
+
+    private static Color TagBrushColor(int index)
+    {
+        if (index >= 0 && index < MainViewModel.TagColors.Length)
+        {
+            var hex = MainViewModel.TagColors[index];
+            return Color.FromArgb(0xFF,
+                Convert.ToByte(hex.Substring(1, 2), 16),
+                Convert.ToByte(hex.Substring(3, 2), 16),
+                Convert.ToByte(hex.Substring(5, 2), 16));
+        }
+
+        return (Application.Current.Resources["TextMutedBrush"] as SolidColorBrush)?.Color
+               ?? Color.FromArgb(0xFF, 0x8A, 0x8A, 0x92);
     }
 
     private void SubtaskInput_KeyDown(object sender, KeyRoutedEventArgs e)

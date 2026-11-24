@@ -44,6 +44,7 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <Grid
                         x:Name="DragRegion"
@@ -73,8 +74,17 @@
                         </StackPanel>
                     </Grid>
                     <Button
-                        x:Name="CalendarButton"
+                        x:Name="ToggleSubtasksIconButton"
                         Grid.Column="2"
+                        AutomationProperties.Name="{x:Bind ViewModel.SubtasksToggleText, Mode=OneWay}"
+                        IsEnabled="{x:Bind ViewModel.HasVisibleSubtasks, Mode=OneWay}"
+                        Style="{StaticResource FlatIconButtonStyle}"
+                        Click="ToggleAllSubtasks_Click">
+                        <FontIcon Glyph="&#xE8FD;" FontSize="14" />
+                    </Button>
+                    <Button
+                        x:Name="CalendarButton"
+                        Grid.Column="3"
                         AutomationProperties.Name="日历"
                         Style="{StaticResource FlatIconButtonStyle}"
                         Click="CalendarButton_Click">
@@ -82,7 +92,7 @@
                     </Button>
                     <Button
                         x:Name="SearchButton"
-                        Grid.Column="3"
+                        Grid.Column="4"
                         AutomationProperties.Name="搜索"
                         Style="{StaticResource FlatIconButtonStyle}"
                         Click="SearchButton_Click">
@@ -90,7 +100,7 @@
                     </Button>
                     <Button
                         x:Name="SettingsButton"
-                        Grid.Column="4"
+                        Grid.Column="5"
                         AutomationProperties.Name="设置"
                         Style="{StaticResource FlatIconButtonStyle}"
                         Click="SettingsButton_Click">
@@ -412,12 +422,20 @@
                                                 Orientation="Horizontal"
                                                 Spacing="6"
                                                 Visibility="{x:Bind helpers:Bind.Visible(DueText), Mode=OneWay}">
-                                                <FontIcon
-                                                    Glyph="&#xE787;"
-                                                    FontSize="10"
-                                                    VerticalAlignment="Center"
-                                                    Foreground="{x:Bind helpers:Bind.DueBrush(IsOverdue), Mode=OneWay}" />
+                                                <!--  图标槽固定宽度：截止行与备注行共用同一尺寸，图标和文字左缘才能对齐  -->
+                                                <Grid
+                                                    Width="12"
+                                                    Height="12"
+                                                    VerticalAlignment="Center">
+                                                    <FontIcon
+                                                        HorizontalAlignment="Center"
+                                                        VerticalAlignment="Center"
+                                                        FontSize="10"
+                                                        Glyph="&#xE823;"
+                                                        Foreground="{x:Bind helpers:Bind.DueBrush(IsOverdue), Mode=OneWay}" />
+                                                </Grid>
                                                 <TextBlock
+                                                    VerticalAlignment="Center"
                                                     Text="{x:Bind DueText, Mode=OneWay}"
                                                     FontSize="11"
                                                     TextTrimming="CharacterEllipsis"
@@ -425,14 +443,21 @@
                                             </StackPanel>
                                             <StackPanel
                                                 Orientation="Horizontal"
-                                                Spacing="5"
+                                                Spacing="6"
                                                 Visibility="{x:Bind helpers:Bind.Visible(Note), Mode=OneWay}">
-                                                <FontIcon
-                                                    Glyph="&#xE70B;"
-                                                    FontSize="9"
-                                                    VerticalAlignment="Center"
-                                                    Foreground="{ThemeResource TextMutedBrush}" />
+                                                <Grid
+                                                    Width="12"
+                                                    Height="12"
+                                                    VerticalAlignment="Center">
+                                                    <FontIcon
+                                                        HorizontalAlignment="Center"
+                                                        VerticalAlignment="Center"
+                                                        FontSize="10"
+                                                        Glyph="&#xE70B;"
+                                                        Foreground="{ThemeResource TextMutedBrush}" />
+                                                </Grid>
                                                 <TextBlock
+                                                    VerticalAlignment="Center"
                                                     Text="{x:Bind Note, Mode=OneWay}"
                                                     FontSize="11"
                                                     MaxLines="1"
@@ -691,14 +716,6 @@
 
                 <!--  底栏：展开子任务 / 顺延逾期 / 清除已完成  -->
                 <Grid Grid.Row="6" Padding="14,2,10,10">
-                    <Button
-                        x:Name="ToggleSubtasksButton"
-                        AutomationProperties.Name="{x:Bind ViewModel.SubtasksToggleText, Mode=OneWay}"
-                        HorizontalAlignment="Left"
-                        Click="ToggleAllSubtasks_Click"
-                        Content="{x:Bind ViewModel.SubtasksToggleText, Mode=OneWay}"
-                        IsEnabled="{x:Bind ViewModel.HasVisibleSubtasks, Mode=OneWay}"
-                        Style="{StaticResource LinkButtonStyle}" />
                     <Button
                         x:Name="PostponeOverdueButton"
                         AutomationProperties.Name="全部顺延到今天"

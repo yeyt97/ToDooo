@@ -3,35 +3,76 @@
     x:Class="ToDooo.Views.SettingsWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:ToDooo.Controls"
     Title="设置">
 
-    <Grid
+    <controls:CursorGrid
         x:Name="Root"
         Background="Transparent"
         KeyboardAcceleratorPlacementMode="Hidden">
-        <Grid.Resources>
+        <controls:CursorGrid.Resources>
             <Style x:Key="LabelText" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="13" />
-                <Setter Property="Foreground" Value="{ThemeResource TextSecondaryBrush}" />
+                <Setter Property="FontSize" Value="13.5" />
+                <Setter Property="Foreground" Value="{ThemeResource TextPrimaryBrush}" />
                 <Setter Property="VerticalAlignment" Value="Center" />
             </Style>
             <Style x:Key="HintText" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="11" />
+                <Setter Property="FontSize" Value="11.5" />
                 <Setter Property="Foreground" Value="{ThemeResource TextMutedBrush}" />
                 <Setter Property="TextWrapping" Value="Wrap" />
             </Style>
-        </Grid.Resources>
+            <Style x:Key="SectionTitle" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="24" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Foreground" Value="{ThemeResource TextPrimaryBrush}" />
+            </Style>
+
+            <!--  每个设置项一张大卡片，参照 Twinkle Tray 的行式布局  -->
+            <Style x:Key="SettingCard" TargetType="Border">
+                <Setter Property="Margin" Value="0,0,0,10" />
+                <Setter Property="Padding" Value="18,14,18,14" />
+                <Setter Property="Background" Value="{ThemeResource ItemCardBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource ItemCardStrokeBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="10" />
+            </Style>
+
+            <!--  侧栏导航项：底色/文字色由代码按选中状态直接设置，模板只留容器  -->
+            <Style x:Key="NavItemStyle" TargetType="RadioButton">
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="MinHeight" Value="42" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="RadioButton">
+                            <Border
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="8">
+                                <ContentPresenter
+                                    Padding="10,0"
+                                    HorizontalContentAlignment="Stretch"
+                                    VerticalContentAlignment="Center" />
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+        </controls:CursorGrid.Resources>
 
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Grid.KeyboardAccelerators>
+        <controls:CursorGrid.KeyboardAccelerators>
             <KeyboardAccelerator Key="Escape" Invoked="CancelAccelerator_Invoked" />
-        </Grid.KeyboardAccelerators>
+        </controls:CursorGrid.KeyboardAccelerators>
 
+        <!--  标题栏（可拖动）  -->
         <Grid
             x:Name="HeaderBar"
             Height="44"
@@ -43,10 +84,10 @@
             PointerReleased="HeaderBar_PointerReleased">
             <TextBlock
                 VerticalAlignment="Center"
-                FontSize="14"
+                FontSize="13"
                 FontWeight="SemiBold"
-                Foreground="{ThemeResource TextPrimaryBrush}"
-                Text="设置" />
+                Foreground="{ThemeResource TextSecondaryBrush}"
+                Text="ToDooo 设置" />
             <Button
                 HorizontalAlignment="Right"
                 VerticalAlignment="Center"
@@ -57,256 +98,672 @@
             </Button>
         </Grid>
 
-        <ScrollViewer
-            Grid.Row="1"
-            Padding="18,2,18,6"
-            VerticalScrollBarVisibility="Auto">
-            <StackPanel Spacing="12">
+        <Grid Grid.Row="1" Padding="0,0,0,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="NavColumn" Width="196" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
 
-                <!--  外观  -->
-                <Border
-                    Padding="14,10,14,12"
-                    Background="{ThemeResource ItemCardBrush}"
-                    BorderBrush="{ThemeResource ItemCardStrokeBrush}"
-                    BorderThickness="1"
-                    CornerRadius="8">
-                    <StackPanel Spacing="10">
-                        <Grid ColumnSpacing="12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Style="{StaticResource LabelText}" Text="主题" />
-                            <ComboBox
-                                x:Name="ThemeBox"
-                                Grid.Column="1"
-                                Width="150"
-                                SelectionChanged="ThemeBox_SelectionChanged">
-                                <ComboBoxItem Content="跟随系统" />
-                                <ComboBoxItem Content="深色" />
-                                <ComboBoxItem Content="浅色" />
-                            </ComboBox>
-                        </Grid>
-
-                        <Grid ColumnSpacing="12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Style="{StaticResource LabelText}" Text="透明度" />
-                            <TextBlock
-                                x:Name="OpacityValue"
-                                Grid.Column="1"
-                                MinWidth="36"
-                                Style="{StaticResource LabelText}"
-                                TextAlignment="Right" />
-                        </Grid>
-                        <Slider
-                            x:Name="OpacitySlider"
-                            MinWidth="0"
-                            Maximum="0.9"
-                            Minimum="0"
-                            StepFrequency="0.05"
-                            ValueChanged="OpacitySlider_ValueChanged" />
-                    </StackPanel>
-                </Border>
-
-                <!--  行为  -->
-                <Border
-                    Padding="14,10,14,12"
-                    Background="{ThemeResource ItemCardBrush}"
-                    BorderBrush="{ThemeResource ItemCardStrokeBrush}"
-                    BorderThickness="1"
-                    CornerRadius="8">
-                    <StackPanel Spacing="10">
-                        <Grid ColumnSpacing="12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Style="{StaticResource LabelText}" Text="默认标签" />
-                            <ComboBox
-                                x:Name="DefaultTabBox"
-                                Grid.Column="1"
-                                Width="150"
-                                AutomationProperties.Name="默认标签"
-                                SelectionChanged="DefaultTabBox_SelectionChanged">
-                                <ComboBoxItem Content="全部" />
-                                <ComboBoxItem Content="进行中" />
-                                <ComboBoxItem Content="重要" />
-                                <ComboBoxItem Content="已完成" />
-                            </ComboBox>
-                        </Grid>
-                        <Grid ColumnSpacing="12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Style="{StaticResource LabelText}" Text="开机自启" />
-                            <ToggleSwitch
-                                x:Name="StartupToggle"
-                                Grid.Column="1"
-                                MinWidth="0"
-                                OffContent=""
-                                OnContent=""
-                                Toggled="StartupToggle_Toggled" />
-                        </Grid>
-                        <Grid ColumnSpacing="12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Style="{StaticResource LabelText}" Text="自动隐藏" />
-                            <ToggleSwitch
-                                x:Name="AutoHideToggle"
-                                Grid.Column="1"
-                                MinWidth="0"
-                                AutomationProperties.Name="自动隐藏"
-                                OffContent=""
-                                OnContent=""
-                                Toggled="AutoHideToggle_Toggled" />
-                        </Grid>
-                        <Grid ColumnSpacing="12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Style="{StaticResource LabelText}" Text="提前提醒" />
-                            <ComboBox
-                                x:Name="LeadBox"
-                                Grid.Column="1"
-                                Width="150"
-                                SelectionChanged="LeadBox_SelectionChanged">
-                                <ComboBoxItem Content="准时提醒" />
-                                <ComboBoxItem Content="提前 5 分钟" />
-                                <ComboBoxItem Content="提前 15 分钟" />
-                                <ComboBoxItem Content="提前 30 分钟" />
-                                <ComboBoxItem Content="提前 1 小时" />
-                            </ComboBox>
-                        </Grid>
-                        <Grid ColumnSpacing="12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Style="{StaticResource LabelText}" Text="全局呼出" />
-                            <ComboBox
-                                x:Name="HotkeyBox"
-                                Grid.Column="1"
-                                Width="150"
-                                AutomationProperties.Name="全局呼出快捷键"
-                                SelectionChanged="HotkeyBox_SelectionChanged">
-                                <ComboBoxItem Content="关闭" />
-                                <ComboBoxItem Content="Ctrl + Alt + T" />
-                                <ComboBoxItem Content="Ctrl + Shift + T" />
-                                <ComboBoxItem Content="Alt + Q" />
-                            </ComboBox>
-                        </Grid>
-                        <Grid ColumnSpacing="12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Style="{StaticResource LabelText}" Text="快速记一条" />
-                            <ComboBox
-                                x:Name="QuickAddHotkeyBox"
-                                Grid.Column="1"
-                                Width="150"
-                                AutomationProperties.Name="快速记一条快捷键"
-                                SelectionChanged="QuickAddHotkeyBox_SelectionChanged">
-                                <ComboBoxItem Content="关闭" />
-                                <ComboBoxItem Content="Ctrl + Alt + N" />
-                                <ComboBoxItem Content="Ctrl + Shift + N" />
-                                <ComboBoxItem Content="Alt + N" />
-                            </ComboBox>
-                        </Grid>
-                    </StackPanel>
-                </Border>
-
-                <!--  智能视图  -->
-                <Border
-                    Padding="14,10,14,12"
-                    Background="{ThemeResource ItemCardBrush}"
-                    BorderBrush="{ThemeResource ItemCardStrokeBrush}"
-                    BorderThickness="1"
-                    CornerRadius="8">
-                    <StackPanel Spacing="8">
-                        <TextBlock Style="{StaticResource LabelText}" Text="智能视图" />
-                        <TextBlock Style="{StaticResource HintText}" Text="勾选要在主窗口显示的视图，用箭头调整显示顺序。" />
-                        <StackPanel x:Name="SmartViewList" Spacing="2" />
-                    </StackPanel>
-                </Border>
-
-                <!--  颜色标签  -->
-                <Border
-                    Padding="14,10,14,12"
-                    Background="{ThemeResource ItemCardBrush}"
-                    BorderBrush="{ThemeResource ItemCardStrokeBrush}"
-                    BorderThickness="1"
-                    CornerRadius="8">
-                    <StackPanel Spacing="8">
-                        <TextBlock Style="{StaticResource LabelText}" Text="颜色标签" />
-                        <TextBlock Style="{StaticResource HintText}" Text="为 8 种颜色设置简短分类名（留空则显示默认编号）。" />
-                        <Grid x:Name="TagNamesGrid" RowSpacing="6" ColumnSpacing="10" />
-                    </StackPanel>
-                </Border>
-
-                <!--  数据  -->
-                <Border
-                    Padding="14,10,14,12"
-                    Background="{ThemeResource ItemCardBrush}"
-                    BorderBrush="{ThemeResource ItemCardStrokeBrush}"
-                    BorderThickness="1"
-                    CornerRadius="8">
-                    <StackPanel Spacing="8">
-                        <Button
-                            x:Name="ExportButton"
-                            HorizontalAlignment="Stretch"
-                            HorizontalContentAlignment="Left"
-                            Click="ExportButton_Click"
-                            Content="导出数据（JSON）…" />
-                        <Button
-                            x:Name="ImportButton"
-                            HorizontalAlignment="Stretch"
-                            HorizontalContentAlignment="Left"
-                            Click="ImportButton_Click"
-                            Content="导入数据（JSON）…" />
-                        <Button
-                            x:Name="OpenFolderButton"
-                            HorizontalAlignment="Stretch"
-                            HorizontalContentAlignment="Left"
-                            Click="OpenFolderButton_Click"
-                            Content="打开数据文件夹" />
-                        <Button
-                            x:Name="CheckUpdateButton"
-                            HorizontalAlignment="Stretch"
-                            HorizontalContentAlignment="Left"
-                            AutomationProperties.Name="检查更新"
-                            Click="CheckUpdateButton_Click"
-                            Content="检查更新…" />
+            <!--  侧栏导航  -->
+            <StackPanel
+                x:Name="NavPanel"
+                Margin="12,4,8,0"
+                Spacing="4">
+                <RadioButton
+                    x:Name="NavGeneral"
+                    Checked="Nav_Checked"
+                    GroupName="SettingsNav"
+                    IsChecked="True"
+                    Style="{StaticResource NavItemStyle}"
+                    Tag="general">
+                    <Grid x:Name="NavGeneralGrid" ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition x:Name="NavGeneralBarColumn" Width="4" />
+                            <ColumnDefinition x:Name="NavGeneralIconColumn" Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Border
+                            x:Name="NavGeneralBar"
+                            Width="4"
+                            Height="18"
+                            VerticalAlignment="Center"
+                            Background="{ThemeResource AccentBrush}"
+                            CornerRadius="2"
+                            Opacity="0" />
+                        <FontIcon
+                            x:Name="NavGeneralIcon"
+                            Grid.Column="1"
+                            FontSize="15"
+                            Glyph="&#xE713;" />
                         <TextBlock
-                            x:Name="UpdateStatusText"
-                            Style="{StaticResource HintText}"
-                            TextWrapping="Wrap" />
-                    </StackPanel>
-                </Border>
+                            x:Name="NavGeneralText"
+                            Grid.Column="2"
+                            VerticalAlignment="Center"
+                            FontSize="13.5"
+                            Text="通用" />
+                    </Grid>
+                </RadioButton>
+                <RadioButton
+                    x:Name="NavReminders"
+                    Checked="Nav_Checked"
+                    GroupName="SettingsNav"
+                    Style="{StaticResource NavItemStyle}"
+                    Tag="reminders">
+                    <Grid x:Name="NavRemindersGrid" ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition x:Name="NavRemindersBarColumn" Width="4" />
+                            <ColumnDefinition x:Name="NavRemindersIconColumn" Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Border
+                            x:Name="NavRemindersBar"
+                            Width="4"
+                            Height="18"
+                            VerticalAlignment="Center"
+                            Background="{ThemeResource AccentBrush}"
+                            CornerRadius="2"
+                            Opacity="0" />
+                        <FontIcon
+                            x:Name="NavRemindersIcon"
+                            Grid.Column="1"
+                            FontSize="15"
+                            Glyph="&#xE7C1;" />
+                        <TextBlock
+                            x:Name="NavRemindersText"
+                            Grid.Column="2"
+                            VerticalAlignment="Center"
+                            FontSize="13.5"
+                            Text="提醒事项" />
+                    </Grid>
+                </RadioButton>
+                <RadioButton
+                    x:Name="NavCalendar"
+                    Checked="Nav_Checked"
+                    GroupName="SettingsNav"
+                    Style="{StaticResource NavItemStyle}"
+                    Tag="calendar">
+                    <Grid x:Name="NavCalendarGrid" ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition x:Name="NavCalendarBarColumn" Width="4" />
+                            <ColumnDefinition x:Name="NavCalendarIconColumn" Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Border
+                            x:Name="NavCalendarBar"
+                            Width="4"
+                            Height="18"
+                            VerticalAlignment="Center"
+                            Background="{ThemeResource AccentBrush}"
+                            CornerRadius="2"
+                            Opacity="0" />
+                        <FontIcon
+                            x:Name="NavCalendarIcon"
+                            Grid.Column="1"
+                            FontSize="15"
+                            Glyph="&#xE787;" />
+                        <TextBlock
+                            x:Name="NavCalendarText"
+                            Grid.Column="2"
+                            VerticalAlignment="Center"
+                            FontSize="13.5"
+                            Text="日历" />
+                    </Grid>
+                </RadioButton>
+            </StackPanel>
+
+            <!--  内容区  -->
+            <Grid Grid.Column="1" Margin="8,0,22,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
 
                 <TextBlock
-                    x:Name="AboutText"
-                    Margin="2,0,2,0"
-                    Style="{StaticResource HintText}" />
-            </StackPanel>
-        </ScrollViewer>
+                    x:Name="SectionTitle"
+                    Margin="2,2,0,14"
+                    Style="{StaticResource SectionTitle}"
+                    Text="通用" />
 
-        <Grid
-            Grid.Row="2"
-            Padding="18,10,18,16">
-            <Button
-                MinWidth="88"
-                HorizontalAlignment="Right"
-                Click="DoneButton_Click"
-                Content="完成"
-                Style="{StaticResource AccentButtonStyle}" />
+                <!--  通用  -->
+                <ScrollViewer
+                    x:Name="GeneralPage"
+                    Grid.Row="1"
+                    VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="0,0,12,0">
+                        <!--  主题  -->
+                        <Border Style="{StaticResource SettingCard}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Spacing="3">
+                                    <TextBlock Style="{StaticResource LabelText}" Text="主题" />
+                                    <TextBlock Style="{StaticResource HintText}" Text="跟随系统或固定深浅色。" />
+                                </StackPanel>
+                                <ComboBox
+                                    x:Name="ThemeBox"
+                                    Grid.Column="1"
+                                    Width="170"
+                                    VerticalAlignment="Center"
+                                    SelectionChanged="ThemeBox_SelectionChanged">
+                                    <ComboBoxItem Content="跟随系统" />
+                                    <ComboBoxItem Content="深色" />
+                                    <ComboBoxItem Content="浅色" />
+                                </ComboBox>
+                            </Grid>
+                        </Border>
+
+                        <!--  透明度  -->
+                        <Border Style="{StaticResource SettingCard}">
+                            <StackPanel Spacing="8">
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Style="{StaticResource LabelText}" Text="透明度" />
+                                    <TextBlock
+                                        x:Name="OpacityValue"
+                                        Grid.Column="1"
+                                        MinWidth="40"
+                                        VerticalAlignment="Center"
+                                        FontSize="12.5"
+                                        Foreground="{ThemeResource TextSecondaryBrush}"
+                                        TextAlignment="Right" />
+                                </Grid>
+                                <Slider
+                                    x:Name="OpacitySlider"
+                                    MinWidth="0"
+                                    Maximum="0.9"
+                                    Minimum="0"
+                                    StepFrequency="0.05"
+                                    ValueChanged="OpacitySlider_ValueChanged" />
+                            </StackPanel>
+                        </Border>
+
+                        <!--  底色  -->
+                        <Border Style="{StaticResource SettingCard}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Spacing="3">
+                                    <TextBlock Style="{StaticResource LabelText}" Text="底色" />
+                                    <TextBlock Style="{StaticResource HintText}" Text="磨砂背景的着色，深浅色下各有对应。" />
+                                </StackPanel>
+                                <ComboBox
+                                    x:Name="TintBox"
+                                    Grid.Column="1"
+                                    Width="170"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.Name="窗口底色"
+                                    SelectionChanged="TintBox_SelectionChanged">
+                                    <ComboBoxItem Content="跟随主题" />
+                                    <ComboBoxItem Content="深灰" />
+                                    <ComboBoxItem Content="藏青" />
+                                    <ComboBoxItem Content="暖褐" />
+                                </ComboBox>
+                            </Grid>
+                        </Border>
+
+                        <!--  开机自启  -->
+                        <Border Style="{StaticResource SettingCard}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Style="{StaticResource LabelText}" Text="开机自启" />
+                                <ToggleSwitch
+                                    x:Name="StartupToggle"
+                                    Grid.Column="1"
+                                    MinWidth="0"
+                                    VerticalAlignment="Center"
+                                    OffContent="关闭"
+                                    OnContent="启用"
+                                    Toggled="StartupToggle_Toggled" />
+                            </Grid>
+                        </Border>
+
+                        <!--  自动隐藏  -->
+                        <Border Style="{StaticResource SettingCard}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Spacing="3">
+                                    <TextBlock Style="{StaticResource LabelText}" Text="自动隐藏" />
+                                    <TextBlock Style="{StaticResource HintText}" Text="鼠标离开窗口时自动变淡，移回恢复。" />
+                                </StackPanel>
+                                <ToggleSwitch
+                                    x:Name="AutoHideToggle"
+                                    Grid.Column="1"
+                                    MinWidth="0"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.Name="自动隐藏"
+                                    OffContent="关闭"
+                                    OnContent="启用"
+                                    Toggled="AutoHideToggle_Toggled" />
+                            </Grid>
+                        </Border>
+
+                        <!--  全局呼出  -->
+                        <Border Style="{StaticResource SettingCard}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Spacing="3">
+                                    <TextBlock Style="{StaticResource LabelText}" Text="全局呼出" />
+                                    <TextBlock Style="{StaticResource HintText}" Text="任意界面按快捷键唤出待办窗口。" />
+                                </StackPanel>
+                                <ComboBox
+                                    x:Name="HotkeyBox"
+                                    Grid.Column="1"
+                                    Width="170"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.Name="全局呼出快捷键"
+                                    SelectionChanged="HotkeyBox_SelectionChanged">
+                                    <ComboBoxItem Content="关闭" />
+                                    <ComboBoxItem Content="Ctrl + Alt + T" />
+                                    <ComboBoxItem Content="Ctrl + Shift + T" />
+                                    <ComboBoxItem Content="Alt + Q" />
+                                </ComboBox>
+                            </Grid>
+                        </Border>
+
+                        <!--  快速记一条  -->
+                        <Border Style="{StaticResource SettingCard}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Spacing="3">
+                                    <TextBlock Style="{StaticResource LabelText}" Text="快速记一条" />
+                                    <TextBlock Style="{StaticResource HintText}" Text="直接弹出输入框，敲完即存。" />
+                                </StackPanel>
+                                <ComboBox
+                                    x:Name="QuickAddHotkeyBox"
+                                    Grid.Column="1"
+                                    Width="170"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.Name="快速记一条快捷键"
+                                    SelectionChanged="QuickAddHotkeyBox_SelectionChanged">
+                                    <ComboBoxItem Content="关闭" />
+                                    <ComboBoxItem Content="Ctrl + Alt + N" />
+                                    <ComboBoxItem Content="Ctrl + Shift + N" />
+                                    <ComboBoxItem Content="Alt + N" />
+                                </ComboBox>
+                            </Grid>
+                        </Border>
+
+                        <!--  数据  -->
+                        <Border Style="{StaticResource SettingCard}">
+                            <StackPanel Spacing="10">
+                                <TextBlock Style="{StaticResource LabelText}" Text="数据" />
+                                <Button
+                                    x:Name="ExportButton"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Left"
+                                    Click="ExportButton_Click"
+                                    Content="导出数据（JSON）…" />
+                                <Button
+                                    x:Name="ImportButton"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Left"
+                                    Click="ImportButton_Click"
+                                    Content="导入数据（JSON）…" />
+                                <Button
+                                    x:Name="OpenFolderButton"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Left"
+                                    Click="OpenFolderButton_Click"
+                                    Content="打开数据文件夹" />
+                                <Button
+                                    x:Name="CheckUpdateButton"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Left"
+                                    AutomationProperties.Name="检查更新"
+                                    Click="CheckUpdateButton_Click"
+                                    Content="检查更新…" />
+                                <TextBlock
+                                    x:Name="UpdateStatusText"
+                                    Style="{StaticResource HintText}"
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock
+                            x:Name="AboutText"
+                            Margin="2,4,2,8"
+                            Style="{StaticResource HintText}" />
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!--  提醒事项  -->
+                <ScrollViewer
+                    x:Name="RemindersPage"
+                    Grid.Row="1"
+                    Visibility="Collapsed"
+                    VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="0,0,12,0">
+                        <Border Style="{StaticResource SettingCard}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Spacing="3">
+                                    <TextBlock Style="{StaticResource LabelText}" Text="默认标签" />
+                                    <TextBlock Style="{StaticResource HintText}" Text="启动后主窗口默认停在哪一栏。" />
+                                </StackPanel>
+                                <ComboBox
+                                    x:Name="DefaultTabBox"
+                                    Grid.Column="1"
+                                    Width="170"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.Name="默认标签"
+                                    SelectionChanged="DefaultTabBox_SelectionChanged">
+                                    <ComboBoxItem Content="全部" />
+                                    <ComboBoxItem Content="进行中" />
+                                    <ComboBoxItem Content="重要" />
+                                    <ComboBoxItem Content="已完成" />
+                                </ComboBox>
+                            </Grid>
+                        </Border>
+
+                        <Border Style="{StaticResource SettingCard}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Spacing="3">
+                                    <TextBlock Style="{StaticResource LabelText}" Text="提前提醒" />
+                                    <TextBlock Style="{StaticResource HintText}" Text="到点前多久弹出系统通知。" />
+                                </StackPanel>
+                                <ComboBox
+                                    x:Name="LeadBox"
+                                    Grid.Column="1"
+                                    Width="170"
+                                    VerticalAlignment="Center"
+                                    SelectionChanged="LeadBox_SelectionChanged">
+                                    <ComboBoxItem Content="准时提醒" />
+                                    <ComboBoxItem Content="提前 5 分钟" />
+                                    <ComboBoxItem Content="提前 15 分钟" />
+                                    <ComboBoxItem Content="提前 30 分钟" />
+                                    <ComboBoxItem Content="提前 1 小时" />
+                                </ComboBox>
+                            </Grid>
+                        </Border>
+
+                        <!--  智能视图  -->
+                        <Border Style="{StaticResource SettingCard}">
+                            <StackPanel Spacing="6">
+                                <TextBlock Style="{StaticResource LabelText}" Text="智能视图" />
+                                <TextBlock Style="{StaticResource HintText}" Text="勾选要在主窗口显示的视图，用箭头调整显示顺序。" />
+                                <StackPanel x:Name="SmartViewList" Spacing="0" Margin="0,4,0,0" />
+                            </StackPanel>
+                        </Border>
+
+                        <!--  颜色标签  -->
+                        <Border Style="{StaticResource SettingCard}">
+                            <StackPanel Spacing="6">
+                                <TextBlock Style="{StaticResource LabelText}" Text="颜色标签" />
+                                <TextBlock Style="{StaticResource HintText}" Text="为 8 种颜色设置简短分类名（留空则显示默认编号）。" />
+                                <Grid
+                                    x:Name="TagNamesGrid"
+                                    Margin="0,4,0,0"
+                                    RowSpacing="8"
+                                    ColumnSpacing="12" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!--  日历  -->
+                <ScrollViewer
+                    x:Name="CalendarPage"
+                    Grid.Row="1"
+                    Visibility="Collapsed"
+                    VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="0,0,12,0">
+                        <!--  连接状态：一眼看出连没连上、用的哪个账号  -->
+                        <Border x:Name="CalendarCard" Style="{StaticResource SettingCard}">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Ellipse
+                                    x:Name="CalendarStatusDot"
+                                    Width="9"
+                                    Height="9"
+                                    VerticalAlignment="Center"
+                                    Fill="{ThemeResource TextMutedBrush}" />
+                                <StackPanel Grid.Column="1" Spacing="2">
+                                    <TextBlock
+                                        x:Name="CalendarHeadlineText"
+                                        Style="{StaticResource LabelText}"
+                                        Text="iCloud 日历尚未连接" />
+                                    <TextBlock
+                                        x:Name="CalendarStatusText"
+                                        Style="{StaticResource HintText}" />
+                                </StackPanel>
+                                <Button
+                                    x:Name="CalendarClearButton"
+                                    Grid.Column="2"
+                                    VerticalAlignment="Center"
+                                    Click="CalendarClear_Click"
+                                    Content="断开" />
+                            </Grid>
+                        </Border>
+
+                        <!--  未连接时显示教程：应用专用密码是什么、去哪拿  -->
+                        <StackPanel x:Name="CalendarSetupPanel" Spacing="0">
+                            <Border Style="{StaticResource SettingCard}">
+                                <StackPanel Spacing="10">
+                                    <Grid ColumnSpacing="10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border
+                                            Width="22"
+                                            Height="22"
+                                            CornerRadius="11"
+                                            Background="{ThemeResource AccentBrush}">
+                                            <TextBlock
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                FontSize="12"
+                                                FontWeight="SemiBold"
+                                                Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                                Text="1" />
+                                        </Border>
+                                        <TextBlock
+                                            Grid.Column="1"
+                                            VerticalAlignment="Center"
+                                            Style="{StaticResource LabelText}"
+                                            Text="生成应用专用密码" />
+                                    </Grid>
+                                    <TextBlock Style="{StaticResource HintText}" Text="iCloud 不接受 Apple 账户的登录密码，第三方应用要用单独生成的「应用专用密码」。下面三步大约两分钟。" />
+                                    <TextBlock Style="{StaticResource HintText}" Text="用浏览器打开 account.apple.com 并登录 Apple 账户。" />
+                                    <Button
+                                        HorizontalAlignment="Left"
+                                        Click="OpenAppleAccount_Click"
+                                        Content="打开 account.apple.com" />
+                                    <TextBlock Style="{StaticResource HintText}" Text="登录后进入「登录和安全」，选择「App 专用密码」。" />
+                                    <TextBlock Style="{StaticResource HintText}" Text="点「生成 App 专用密码」，名称随便填（例如 ToDooo），会得到一串 xxxx-xxxx-xxxx-xxxx。" />
+                                    <Grid ColumnSpacing="6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <FontIcon
+                                            FontSize="12"
+                                            VerticalAlignment="Top"
+                                            Margin="0,2,0,0"
+                                            Foreground="{ThemeResource TextMutedBrush}"
+                                            Glyph="&#xE7BA;" />
+                                        <TextBlock
+                                            Grid.Column="1"
+                                            Style="{StaticResource HintText}"
+                                            Text="这串密码只显示一次，先复制下来。如果看不到「App 专用密码」，是账户没开双重认证：在同一个「登录和安全」页面里先打开它。" />
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                        </StackPanel>
+
+                        <!--  账号表单：未连接时是教程第 2 步，已连接时用来改账号或换密码  -->
+                        <Border Style="{StaticResource SettingCard}">
+                            <StackPanel Spacing="10">
+                                <Grid x:Name="CalendarFormStepHeader" ColumnSpacing="10" Visibility="Collapsed">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border
+                                        Width="22"
+                                        Height="22"
+                                        CornerRadius="11"
+                                        Background="{ThemeResource AccentBrush}">
+                                        <TextBlock
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            FontSize="12"
+                                            FontWeight="SemiBold"
+                                            Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                            Text="2" />
+                                    </Border>
+                                    <TextBlock
+                                        Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        Style="{StaticResource LabelText}"
+                                        Text="填入账号和密码" />
+                                </Grid>
+                                <TextBlock
+                                    x:Name="CalendarFormTitle"
+                                    Style="{StaticResource LabelText}"
+                                    Text="账号" />
+                                <TextBox
+                                    x:Name="AppleIdBox"
+                                    PlaceholderText="Apple ID（邮箱）"
+                                    AutomationProperties.Name="Apple ID" />
+                                <PasswordBox
+                                    x:Name="AppPasswordBox"
+                                    PlaceholderText="应用专用密码"
+                                    AutomationProperties.Name="应用专用密码" />
+                                <Grid ColumnSpacing="8">
+                                    <Button
+                                        x:Name="CalendarSaveButton"
+                                        HorizontalAlignment="Stretch"
+                                        Click="CalendarSave_Click"
+                                        Content="保存并连接" />
+                                </Grid>
+                                <TextBlock
+                                    x:Name="CalendarPasswordHint"
+                                    Style="{StaticResource HintText}"
+                                    Text="修改 Apple 账户主密码后，应用专用密码会全部失效，需要重新生成一个填在这里。" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource SettingCard}">
+                            <StackPanel Spacing="10">
+                                <!--  教程模式下这张卡就是第 3 步：显示编号徽标，连接后换回普通标题  -->
+                                <Grid x:Name="CalendarSourcesStepHeader" ColumnSpacing="10" Visibility="Collapsed">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border
+                                        Width="22"
+                                        Height="22"
+                                        CornerRadius="11"
+                                        Background="{ThemeResource AccentBrush}">
+                                        <TextBlock
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            FontSize="12"
+                                            FontWeight="SemiBold"
+                                            Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                            Text="3" />
+                                    </Border>
+                                    <TextBlock
+                                        Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        Style="{StaticResource LabelText}"
+                                        Text="选择要显示的日历" />
+                                </Grid>
+                                <TextBlock
+                                    x:Name="CalendarSourcesTitle"
+                                    Style="{StaticResource LabelText}"
+                                    Text="显示的日历" />
+                                <TextBlock Style="{StaticResource HintText}" Text="勾选后才会出现在日历窗口里。连接成功后这里会列出你 iCloud 里的所有日历。" />
+                                <StackPanel
+                                    x:Name="CalendarSourceList"
+                                    Spacing="0" />
+                            </StackPanel>
+                        </Border>
+
+                        <!--  同步：自动刷新、上次同步、手动刷新合在一张卡片  -->
+                        <Border Style="{StaticResource SettingCard}">
+                            <StackPanel Spacing="12">
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="3">
+                                        <TextBlock Style="{StaticResource LabelText}" Text="自动刷新" />
+                                        <TextBlock Style="{StaticResource HintText}" Text="打开日历时总会同步一次。" />
+                                    </StackPanel>
+                                    <ComboBox
+                                        x:Name="CalendarRefreshBox"
+                                        Grid.Column="1"
+                                        Width="150"
+                                        VerticalAlignment="Center"
+                                        SelectionChanged="CalendarRefreshBox_SelectionChanged">
+                                        <ComboBoxItem Content="只手动刷新" />
+                                        <ComboBoxItem Content="每 5 分钟" />
+                                        <ComboBoxItem Content="每 15 分钟" />
+                                        <ComboBoxItem Content="每 30 分钟" />
+                                        <ComboBoxItem Content="每 60 分钟" />
+                                    </ComboBox>
+                                </Grid>
+                                <Border Height="1" Background="{ThemeResource DividerBrush}" />
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="3">
+                                        <TextBlock Style="{StaticResource LabelText}" Text="上次同步" />
+                                        <TextBlock
+                                            x:Name="SyncStatusText"
+                                            Style="{StaticResource HintText}"
+                                            Text="尚未同步" />
+                                    </StackPanel>
+                                    <Button
+                                        x:Name="SyncNowButton"
+                                        Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        AutomationProperties.Name="立即同步日历"
+                                        Click="CalendarSyncNow_Click"
+                                        Content="立即同步" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
         </Grid>
-    </Grid>
+    </controls:CursorGrid>
 </Window>

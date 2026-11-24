@@ -364,16 +364,8 @@ public sealed partial class MainWindow : Window
         }
 
         _dockRect = ClampRectToWorkArea(rect);
+        // 两个窗口互不捆绑：主窗停靠后不再驱动日历窗口。
         _dockCalAttached = false;
-        if (_calendarExpanded &&
-            _calendarHostWindow is not null &&
-            NativeMethods.IsWindowVisible(_calendarHostWindow.Hwnd) &&
-            NativeMethods.GetWindowRect(_calendarHostWindow.Hwnd, out var calRect) &&
-            WindowSnap.IsAttachedTo(calRect, _dockRect, NativeMethods.GetDpiForWindow(_hwnd) / 96.0))
-        {
-            _dockCalAttached = true;
-            _dockCalRect = ClampRectToWorkArea(calRect);
-        }
     }
 
     private void DockToEdge(EdgeDock edge, NativeMethods.RECT rect)
@@ -658,7 +650,7 @@ public sealed partial class MainWindow : Window
                     _hwnd, NativeMethods.HWND_TOPMOST, x, y, _animWidth, _animHeight,
                     NativeMethods.SWP_NOACTIVATE);
                 NativeMethods.SetWindowPos(
-                    _calendarHostWindow!.Hwnd, NativeMethods.HWND_TOPMOST,
+                    _calendarHostWindow!.Hwnd, NativeMethods.HWND_NOTOPMOST,
                     _dockCalAnimLeft, calY, _dockCalAnimWidth, _dockCalAnimHeight,
                     NativeMethods.SWP_NOACTIVATE);
             }

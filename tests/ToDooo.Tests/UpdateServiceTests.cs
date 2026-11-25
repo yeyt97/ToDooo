@@ -23,6 +23,42 @@ public sealed class UpdateServiceTests
     }
 
     [Fact]
+    public void ParseFeed_ReadsLatestReleaseTagAndUrl()
+    {
+        const string xml = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <feed xmlns="http://www.w3.org/2005/Atom">
+              <title>Release notes from ToDooo</title>
+              <entry>
+                <id>tag:github.com,2008:Repository/1466414667/v1.8.0</id>
+                <updated>2026-11-25T01:23:20Z</updated>
+                <link rel="alternate" type="text/html" href="https://github.com/yeyt97/ToDooo/releases/tag/v1.8.0"/>
+                <title>ToDooo v1.8.0</title>
+              </entry>
+              <entry>
+                <id>tag:github.com,2008:Repository/1466414667/v1.7.0</id>
+                <link rel="alternate" type="text/html" href="https://github.com/yeyt97/ToDooo/releases/tag/v1.7.0"/>
+                <title>ToDooo v1.7.0</title>
+              </entry>
+            </feed>
+            """;
+
+        var parsed = UpdateService.ParseFeed(xml);
+
+        Assert.NotNull(parsed);
+        Assert.Equal("v1.8.0", parsed!.Value.Tag);
+        Assert.Equal("https://github.com/yeyt97/ToDooo/releases/tag/v1.8.0", parsed.Value.Url);
+        Assert.True(UpdateService.IsNewer(parsed.Value.Tag, Current));
+    }
+
+    [Fact]
+    public void ParseFeed_ReturnsNullOnEmptyOrBrokenFeed()
+    {
+        Assert.Null(UpdateService.ParseFeed("<feed xmlns=\"http://www.w3.org/2005/Atom\"></feed>"));
+        Assert.Null(UpdateService.ParseFeed("not xml at all"));
+    }
+
+    [Fact]
     public void IsNewer_HandlesCurrentWithFourParts()
     {
         Assert.False(UpdateService.IsNewer("v1.4.0", new Version(1, 4, 0, 0)));

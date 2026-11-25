@@ -227,6 +227,10 @@ public sealed partial class MainWindow : Window
 
     public void ShowFromTray()
     {
+        // 远程桌面连接、拔掉外接屏之后，窗口可能留在已经消失的那块屏的坐标上：
+        // 显示是“显示”了，但人看不见，点托盘也像没反应。唤出前先把窗口拉回可见区域。
+        EnsureOnVisibleDisplay();
+
         if (!NativeMethods.IsWindowVisible(_hwnd))
         {
             WindowCloak.ShowCloaked(_hwnd, Root, _dispatcher, () =>
@@ -244,6 +248,57 @@ public sealed partial class MainWindow : Window
         Activate();
         NativeMethods.SetForegroundWindow(_hwnd);
         KeepCalendarBehind();
+    }
+
+    /// <summary>
+    /// 窗口若已经落在所有显示器之外（或几乎没有可见部分），挪回主屏并居中。
+    /// 判断依据是工作区交集面积：远程连接断开、副屏拔掉都属于这种情况。
+    /// </summary>
+    private void EnsureOnVisibleDisplay()
+    {
+        if (_hwnd == IntPtr.Zero || !NativeMethods.GetWindowRect(_hwnd, out var rect))
+        {
+            return;
+        }
+
+        if (IsRectVisibleOnAnyDisplay(rect))
+        {
+            return;
+        }
+
+        var width = rect.Right - rect.Left;
+        var height = rect.Bottom - rect.Top;
+        var area = DisplayArea.GetFromWindowId(_appWindow.Id, DisplayAreaFallback.Primary).WorkArea;
+        var x = area.X + Math.Max(0, (area.Width - width) / 2);
+        var y = area.Y + Math.Max(0, (area.Height - height) / 2);
+
+        NativeMethods.SetWindowPos(
+            _hwnd, IntPtr.Zero, x, y, width, height,
+            NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
+
+        // 位置变了，保存的坐标也要跟上，避免下次启动又回到屏幕外。
+        _settings.Current.WindowX = x;
+        _settings.Current.WindowY = y;
+        _settings.Save();
+    }
+
+    /// <summary>
+    /// 窗口和虚拟桌面至少要有 120×120 的重叠，才算「看得见」。
+    /// 这里用 GetSystemMetrics 而不是 DisplayArea.FindAll：后者在非打包环境下枚举会抛
+    /// InvalidCastException（见 CalendarHostWindow.IsPointOnAnyDisplay 的说明），
+    /// 快捷键唤出会直接闪退。
+    /// </summary>
+    private static bool IsRectVisibleOnAnyDisplay(NativeMethods.RECT rect)
+    {
+        const int minVisible = 120;
+        var left = NativeMethods.GetSystemMetrics(NativeMethods.SM_XVIRTUALSCREEN);
+        var top = NativeMethods.GetSystemMetrics(NativeMethods.SM_YVIRTUALSCREEN);
+        var right = left + NativeMethods.GetSystemMetrics(NativeMethods.SM_CXVIRTUALSCREEN);
+        var bottom = top + NativeMethods.GetSystemMetrics(NativeMethods.SM_CYVIRTUALSCREEN);
+
+        var overlapX = Math.Min(rect.Right, right) - Math.Max(rect.Left, left);
+        var overlapY = Math.Min(rect.Bottom, bottom) - Math.Max(rect.Top, top);
+        return overlapX >= minVisible && overlapY >= minVisible;
     }
 
     /// <summary>网络恢复时补一次同步：离线期间排队的增删改不必等下一个定时点。</summary>
@@ -874,6 +929,12 @@ public sealed partial class MainWindow : Window
                 _dispatcher.TryEnqueue(OnDpiChanged);
                 break;
             }
+
+            case NativeMethods.WM_DISPLAYCHANGE:
+                // 显示器增减（远程桌面接管/断开、插拔外接屏）后，窗口可能落在已消失的屏上。
+                // 等系统排完布局再判断一次，不在任何屏幕上就拉回主屏。
+                _dispatcher.TryEnqueue(EnsureOnVisibleDisplay);
+                break;
 
             case NativeMethods.WM_SETTINGCHANGE:
                 // 系统深/浅色切换时刷新；固定深/浅色的设置不受影响。

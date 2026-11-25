@@ -269,6 +269,7 @@
                     <Grid Background="Transparent">
                         <ContentPresenter
                             x:Name="PlaceholderTextContentPresenter"
+                            Content="{TemplateBinding PlaceholderText}"
                             VerticalAlignment="Center"
                             IsHitTestVisible="False" />
                         <ScrollViewer

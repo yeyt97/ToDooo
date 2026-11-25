@@ -62,21 +62,102 @@ public static class Appearance
         Slate = 2,
         /// <summary>暖褐，偏暖。</summary>
         Umber = 3,
+        /// <summary>森绿。</summary>
+        Moss = 4,
+        /// <summary>绛紫。</summary>
+        Plum = 5,
+        /// <summary>雾蓝。</summary>
+        Mist = 6,
+        /// <summary>砂岩（浅暖）。</summary>
+        Sand = 7,
+        /// <summary>墨黑（最深）。</summary>
+        Ink = 8,
     }
+
+    /// <summary>底色方案的中文名，与枚举顺序一致。</summary>
+    public static readonly string[] TintNames =
+    {
+        "跟随主题", "深灰", "藏青", "暖褐", "森绿", "绛紫", "雾蓝", "砂岩", "墨黑",
+    };
+
+    /// <summary>底色方案数量上限，设置越界时按它收敛。</summary>
+    public const int TintCount = 9;
+
+    /// <summary>
+    /// 底色方案的实际色值。深色一套、浅色一套，两套都保证彼此可分辨：
+    /// 深色不压到全黑，浅色不冲到全白，才能看出「藏青 / 森绿 / 绛紫」的差别。
+    /// </summary>
+    /// <summary>
+    /// 解析 #RRGGBB 形式的自定义底色，换算成深/浅两套实际色值。
+    /// 用户只选一个颜色：深色窗口下压暗到不刺眼，浅色窗口下提亮到不脏。
+    /// 解析失败返回 null，调用方退回预设方案。
+    /// </summary>
+    public static (Color Tint, Color Fallback)? CustomTintColors(string? hex, bool dark)
+    {
+        if (string.IsNullOrWhiteSpace(hex))
+        {
+            return null;
+        }
+
+        var text = hex.Trim().TrimStart('#');
+        if (text.Length != 6 ||
+            !byte.TryParse(text[..2], System.Globalization.NumberStyles.HexNumber, null, out var r) ||
+            !byte.TryParse(text[2..4], System.Globalization.NumberStyles.HexNumber, null, out var g) ||
+            !byte.TryParse(text[4..], System.Globalization.NumberStyles.HexNumber, null, out var b))
+        {
+            return null;
+        }
+
+        // 深色：保留色相但压到 28%~55% 亮度；浅色：把颜色提亮成柔和的淡色调。
+        var tint = dark
+            ? Scale(new Color { A = 255, R = r, G = g, B = b }, 0.42)
+            : BlendWithWhite(new Color { A = 255, R = r, G = g, B = b }, 0.62);
+        var fallback = dark
+            ? Scale(tint, 0.78)
+            : BlendWithWhite(tint, 0.45);
+        return (tint, fallback);
+    }
+
+    private static Color Scale(Color color, double factor) => Color.FromArgb(
+        255,
+        (byte)Math.Clamp(Math.Round(color.R * factor), 0, 255),
+        (byte)Math.Clamp(Math.Round(color.G * factor), 0, 255),
+        (byte)Math.Clamp(Math.Round(color.B * factor), 0, 255));
+
+    private static Color BlendWithWhite(Color color, double whiteRatio) => Color.FromArgb(
+        255,
+        (byte)Math.Clamp(Math.Round(color.R * (1 - whiteRatio) + 255 * whiteRatio), 0, 255),
+        (byte)Math.Clamp(Math.Round(color.G * (1 - whiteRatio) + 255 * whiteRatio), 0, 255),
+        (byte)Math.Clamp(Math.Round(color.B * (1 - whiteRatio) + 255 * whiteRatio), 0, 255));
 
     public static (Color Tint, Color Fallback) TintColors(TintMode mode, bool dark) => mode switch
     {
         TintMode.Graphite => dark
-            ? (Color.FromArgb(255, 0x14, 0x16, 0x1A), Color.FromArgb(255, 0x0E, 0x10, 0x13))
-            : (Color.FromArgb(255, 0xE9, 0xE9, 0xEC), Color.FromArgb(255, 0xF2, 0xF2, 0xF5)),
+            ? (Color.FromArgb(255, 0x28, 0x2A, 0x30), Color.FromArgb(255, 0x1C, 0x1E, 0x23))
+            : (Color.FromArgb(255, 0xDD, 0xDE, 0xE2), Color.FromArgb(255, 0xE8, 0xE9, 0xED)),
         TintMode.Slate => dark
-            ? (Color.FromArgb(255, 0x1B, 0x22, 0x30), Color.FromArgb(255, 0x13, 0x19, 0x24))
-            : (Color.FromArgb(255, 0xE6, 0xEB, 0xF4), Color.FromArgb(255, 0xF0, 0xF3, 0xF9)),
+            ? (Color.FromArgb(255, 0x1E, 0x2E, 0x4A), Color.FromArgb(255, 0x14, 0x21, 0x36))
+            : (Color.FromArgb(255, 0xD3, 0xDE, 0xF0), Color.FromArgb(255, 0xE2, 0xEA, 0xF7)),
         TintMode.Umber => dark
-            ? (Color.FromArgb(255, 0x2B, 0x24, 0x1E), Color.FromArgb(255, 0x1F, 0x1A, 0x15))
-            : (Color.FromArgb(255, 0xF1, 0xEB, 0xE3), Color.FromArgb(255, 0xF7, 0xF3, 0xED)),
+            ? (Color.FromArgb(255, 0x3D, 0x30, 0x26), Color.FromArgb(255, 0x2C, 0x22, 0x1B))
+            : (Color.FromArgb(255, 0xE6, 0xD9, 0xCB), Color.FromArgb(255, 0xF2, 0xE9, 0xDE)),
+        TintMode.Moss => dark
+            ? (Color.FromArgb(255, 0x1F, 0x3A, 0x2A), Color.FromArgb(255, 0x16, 0x2A, 0x1E))
+            : (Color.FromArgb(255, 0xD2, 0xE5, 0xD7), Color.FromArgb(255, 0xE1, 0xEF, 0xE4)),
+        TintMode.Plum => dark
+            ? (Color.FromArgb(255, 0x36, 0x24, 0x40), Color.FromArgb(255, 0x27, 0x1A, 0x2E))
+            : (Color.FromArgb(255, 0xE3, 0xD4, 0xEA), Color.FromArgb(255, 0xEE, 0xE4, 0xF3)),
+        TintMode.Mist => dark
+            ? (Color.FromArgb(255, 0x1F, 0x33, 0x3D), Color.FromArgb(255, 0x16, 0x25, 0x2D))
+            : (Color.FromArgb(255, 0xD3, 0xE2, 0xE8), Color.FromArgb(255, 0xE1, 0xEC, 0xF1)),
+        TintMode.Sand => dark
+            ? (Color.FromArgb(255, 0x3E, 0x36, 0x27), Color.FromArgb(255, 0x2D, 0x27, 0x1C))
+            : (Color.FromArgb(255, 0xE8, 0xDF, 0xC8), Color.FromArgb(255, 0xF3, 0xEC, 0xDB)),
+        TintMode.Ink => dark
+            ? (Color.FromArgb(255, 0x12, 0x13, 0x17), Color.FromArgb(255, 0x0A, 0x0B, 0x0E))
+            : (Color.FromArgb(255, 0xC9, 0xCB, 0xD2), Color.FromArgb(255, 0xD8, 0xDA, 0xE0)),
         _ => dark
             ? (Color.FromArgb(255, 0x2A, 0x30, 0x38), Color.FromArgb(255, 0x20, 0x25, 0x2C))
-            : (Color.FromArgb(255, 0xF2, 0xF2, 0xF7), Color.FromArgb(255, 0xF6, 0xF6, 0xF9)),
+            : (Color.FromArgb(255, 0xE4, 0xE6, 0xEC), Color.FromArgb(255, 0xEE, 0xF0, 0xF5)),
     };
 }

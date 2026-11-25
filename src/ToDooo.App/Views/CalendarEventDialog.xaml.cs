@@ -244,7 +244,7 @@ public sealed partial class CalendarEventDialog : Window
         };
         _acrylic = WindowAcrylic.Apply(
             this, Appearance.TintForOpacity(_settings.Current.WindowOpacity), dark, _backdropConfig,
-            (Appearance.TintMode)Math.Clamp(_settings.Current.WindowTintMode, 0, 3));
+            (Appearance.TintMode)Math.Clamp(_settings.Current.WindowTintMode, 0, Appearance.TintCount - 1), _settings.Current.CustomTintColor);
     }
 
     private void ApplyLogicalSize(double scale)

@@ -28,9 +28,11 @@ public sealed class AppSettings
 
     public int? WindowY { get; set; }
 
-    public int WindowWidth { get; set; } = 440;
+    /// <summary>窗口宽度（物理像素）。0 表示从未保存过，启动时按默认逻辑尺寸换算。</summary>
+    public int WindowWidth { get; set; }
 
-    public int WindowHeight { get; set; } = 716;
+    /// <summary>窗口高度（物理像素）。0 表示从未保存过，启动时按默认逻辑尺寸换算。</summary>
+    public int WindowHeight { get; set; }
 
     /// <summary>待办编辑窗上次被用户拖到的尺寸（逻辑像素）；为 0 则用默认尺寸。</summary>
     public int TodoEditorWidth { get; set; }
@@ -69,6 +71,21 @@ public sealed class AppSettings
 
     /// <summary>鼠标离开窗口时自动变淡、移回恢复。</summary>
     public bool AutoHide { get; set; }
+
+    /// <summary>鼠标离开多少秒后变淡；0 = 立即变淡。</summary>
+    public int AutoHideDelaySeconds { get; set; }
+
+    /// <summary>
+    /// 自定义底色（调色盘选的颜色），空串表示用预设方案。
+    /// 存 #RRGGBB，深色窗口下会自动压暗、浅色下提亮。
+    /// </summary>
+    public string CustomTintColor { get; set; } = string.Empty;
+
+    /// <summary>智能视图总开关：关闭后主窗口不显示这一栏，设置里也不展开选项。</summary>
+    public bool SmartViewEnabled { get; set; } = true;
+
+    /// <summary>颜色标签总开关：关闭后主窗口和编辑窗都不显示标签圆点/色条。</summary>
+    public bool ColorTagsEnabled { get; set; } = true;
 
     /// <summary>全局呼出快捷键：0=关闭，1=Ctrl+Alt+T，2=Ctrl+Shift+T，3=Alt+Q。</summary>
     public int GlobalHotkeyMode { get; set; } = 1;

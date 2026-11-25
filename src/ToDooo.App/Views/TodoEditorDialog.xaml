@@ -43,6 +43,45 @@
                 <Setter Property="Margin" Value="16,0" />
             </Style>
 
+            <!--
+                多行备注：背景纯净无边框。
+                不能直接套 AddTextBoxStyle —— 那个模板把占位文字垂直居中，
+                而多行正文和光标是从顶部起排的，两者不在一条线上，看着就像光标位置不对。
+            -->
+            <Style x:Key="NoteTextBoxStyle" TargetType="TextBox">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="MinHeight" Value="0" />
+                <Setter Property="Padding" Value="0,1,8,1" />
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="Foreground" Value="{ThemeResource TextPrimaryBrush}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="TextBox">
+                            <Grid Background="Transparent">
+                                <ContentPresenter
+                                    x:Name="PlaceholderTextContentPresenter"
+                                    Margin="{TemplateBinding Padding}"
+                                    VerticalAlignment="Top"
+                                    IsHitTestVisible="False" />
+                                <ScrollViewer
+                                    x:Name="ContentElement"
+                                    Padding="{TemplateBinding Padding}"
+                                    HorizontalAlignment="Stretch"
+                                    VerticalAlignment="Stretch"
+                                    HorizontalScrollMode="Disabled"
+                                    HorizontalScrollBarVisibility="Disabled"
+                                    VerticalScrollMode="Auto"
+                                    VerticalScrollBarVisibility="Auto"
+                                    IsTabStop="False"
+                                    ZoomMode="Disabled" />
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
             <!--  标签色点：可聚焦按钮，选中态靠亮描边 + 淡底色  -->
             <Style x:Key="TagRingButton" TargetType="Button">
                 <Setter Property="Width" Value="26" />
@@ -192,10 +231,13 @@
                                     Toggled="DueToggle_Toggled" />
                             </Grid>
 
-                            <!--  日期与时间：首列留空，宽度与上面的「截止」标签列相同，控件才能和开关列对齐  -->
+                            <!--
+                                日期与时间：首列留空，与上面「截止」「重复」标签同宽，
+                                让日期框左边缘和标题、重复下拉对齐；日期定宽，时间占剩余。
+                            -->
                             <Grid
                                 x:Name="DueSection"
-                                ColumnSpacing="10"
+                                ColumnSpacing="8"
                                 Visibility="Collapsed">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="40" />
@@ -207,6 +249,7 @@
                                     Grid.Column="1"
                                     MinWidth="0"
                                     Width="132"
+                                    HorizontalAlignment="Left"
                                     AutomationProperties.Name="截止日期"
                                     CornerRadius="6"
                                     PlaceholderText="选择日期" />
@@ -265,7 +308,8 @@
                                 OffContent=""
                                 OnContent="" />
                         </Grid>
-                        <Grid ColumnSpacing="12">
+                        <!--  颜色标签总开关关闭时整行不显示  -->
+                        <Grid x:Name="TagRow" ColumnSpacing="12">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
@@ -290,26 +334,25 @@
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
+                        <!--  标签字号 13、备注正文 12，行高不同；用微调边距让两者首行齐平  -->
                         <TextBlock
                             Width="40"
                             VerticalAlignment="Top"
-                            Margin="0,7,0,0"
+                            Margin="0,-1,0,0"
                             Style="{StaticResource LabelText}"
                             Text="备注" />
                         <TextBox
                             x:Name="NoteBox"
                             Grid.Column="1"
-                            MinHeight="54"
-                            MaxHeight="88"
-                            MaxLength="1000"
-                            Padding="10,6"
+                            MinHeight="44"
+                            MaxHeight="96"
                             AcceptsReturn="True"
                             AutomationProperties.Name="备注"
-                            FontSize="12"
-                            CornerRadius="6"
+                            Style="{StaticResource NoteTextBoxStyle}"
+                            VerticalContentAlignment="Top"
+                            MaxLength="1000"
                             PlaceholderText="备注"
-                            TextWrapping="Wrap"
-                            ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                            TextWrapping="Wrap" />
                     </Grid>
                 </Border>
 
@@ -318,38 +361,25 @@
                     <StackPanel Spacing="8">
                         <Grid>
                             <TextBlock Style="{StaticResource LabelText}" Text="进度" />
-                            <TextBlock
-                                x:Name="SubtaskCountText"
+                            <StackPanel
                                 HorizontalAlignment="Right"
-                                Style="{StaticResource LabelText}"
-                                Text="0/0" />
+                                Orientation="Horizontal"
+                                Spacing="6">
+                                <TextBlock
+                                    x:Name="SubtaskCountText"
+                                    VerticalAlignment="Center"
+                                    Style="{StaticResource LabelText}"
+                                    Text="0/0" />
+                                <Button
+                                    AutomationProperties.Name="添加子任务"
+                                    Click="AddSubtask_Click"
+                                    Style="{StaticResource FlatIconButtonStyle}">
+                                    <FontIcon Glyph="&#xE710;" FontSize="12" />
+                                </Button>
+                            </StackPanel>
                         </Grid>
 
                         <StackPanel x:Name="SubtaskPanel" Spacing="2" />
-
-                        <Grid ColumnSpacing="8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBox
-                                x:Name="SubtaskInput"
-                                MinHeight="34"
-                                Padding="8,4"
-                                AutomationProperties.Name="新子任务"
-                                CornerRadius="6"
-                                KeyDown="SubtaskInput_KeyDown"
-                                PlaceholderText="添加子任务，回车确认" />
-                            <Button
-                                Grid.Column="1"
-                                Width="36"
-                                Height="34"
-                                AutomationProperties.Name="添加子任务"
-                                Click="AddSubtask_Click"
-                                CornerRadius="6">
-                                <FontIcon Glyph="&#xE710;" FontSize="12" />
-                            </Button>
-                        </Grid>
                     </StackPanel>
                 </Border>
             </StackPanel>

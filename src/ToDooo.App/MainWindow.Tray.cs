@@ -89,40 +89,28 @@ public sealed partial class MainWindow : Window
         };
         showItem.Click += (_, _) => ShowFromTray();
 
-        var addItem = new MenuFlyoutItem
-        {
-            Text = "添加待办",
-            Icon = new FontIcon { Glyph = "\uE710" },
-        };
-        addItem.Click += (_, _) =>
-        {
-            ShowFromTray();
-            _ = AddDetailedAsync();
-        };
-
         var calendarItem = new MenuFlyoutItem
         {
-            Text = "日历",
+            Text = "显示日历",
             Icon = new FontIcon { Glyph = "\uE787" },
         };
         calendarItem.Click += (_, _) => CalendarButton_Click(this, new RoutedEventArgs());
 
         var settingsItem = new MenuFlyoutItem
         {
-            Text = "设置…",
+            Text = "设置",
             Icon = new FontIcon { Glyph = "\uE713" },
         };
         settingsItem.Click += (_, _) => SettingsButton_Click(this, new RoutedEventArgs());
 
         var exitItem = new MenuFlyoutItem
         {
-            Text = "退出 ToDooo",
+            Text = "退出",
             Icon = new FontIcon { Glyph = "\uE7E8" },
         };
         exitItem.Click += (_, _) => ExitApp();
 
         flyout.Items.Add(showItem);
-        flyout.Items.Add(addItem);
         flyout.Items.Add(calendarItem);
         flyout.Items.Add(settingsItem);
         flyout.Items.Add(new MenuFlyoutSeparator());
@@ -146,11 +134,10 @@ public sealed partial class MainWindow : Window
 
         var menu = NativeMethods.CreatePopupMenu();
         NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 1, "显示待办");
-        NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 2, "添加待办");
-        NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 3, "日历");
-        NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 4, "设置…");
+        NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 2, "显示日历");
+        NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 3, "设置");
         NativeMethods.AppendMenuW(menu, NativeMethods.MF_SEPARATOR, 0, null);
-        NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 5, "退出 ToDooo");
+        NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 4, "退出");
 
         var command = NativeMethods.TrackPopupMenuEx(
             menu,
@@ -166,16 +153,12 @@ public sealed partial class MainWindow : Window
                 ShowFromTray();
                 break;
             case 2:
-                ShowFromTray();
-                _ = AddDetailedAsync();
-                break;
-            case 3:
                 CalendarButton_Click(this, new RoutedEventArgs());
                 break;
-            case 4:
+            case 3:
                 SettingsButton_Click(this, new RoutedEventArgs());
                 break;
-            case 5:
+            case 4:
                 ExitApp();
                 break;
         }

@@ -22,7 +22,8 @@ namespace ToDooo.Views;
 /// </summary>
 public sealed partial class TodoEditorDialog : Window
 {
-    private const int LogicalWidth = 440;
+    // 默认宽度 360：和用户日常拖到的宽度一致，一打开就是熟悉的大小。
+    private const int LogicalWidth = 360;
 
     // 截止时间收起/展开是两种高度，窗口跟着长，别留一大片空白。
     private const int CollapsedHeight = 576;
@@ -78,7 +79,7 @@ public sealed partial class TodoEditorDialog : Window
         };
         _acrylic = WindowAcrylic.Apply(
             this, Appearance.TintForOpacity(settings.Current.WindowOpacity), dark, _backdropConfig,
-            (Appearance.TintMode)Math.Clamp(settings.Current.WindowTintMode, 0, 3));
+            (Appearance.TintMode)Math.Clamp(settings.Current.WindowTintMode, 0, Appearance.TintCount - 1), _settings.Current.CustomTintColor);
         var darkFlag = dark ? 1 : 0;
         NativeMethods.DwmSetWindowAttribute(
             _hwnd, NativeMethods.DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkFlag, sizeof(int));
@@ -426,10 +427,10 @@ public sealed partial class TodoEditorDialog : Window
             DueToggle.IsOn = true;
         }
 
-        // 保存时把还没确认的子任务输入一起带上。
+        // 保存时把还没写内容的空行丢掉，不落一条空子任务。
         if (saved)
         {
-            AppendPendingSubtask();
+            _subtaskDrafts.RemoveAll(draft => string.IsNullOrWhiteSpace(draft.Title));
         }
 
         // 先隐藏再关：WinUI 关窗瞬间合成目标会先变黑一帧（点取消肉眼可见「闪一下」），
@@ -479,7 +480,9 @@ public sealed partial class TodoEditorDialog : Window
     {
         // 优先用用户上次拖到的尺寸；没拖过就用默认高度（截止已开时取展开态，免得一打开就要滚）。
         var settings = _settings.Current;
-        var width = settings.TodoEditorWidth > 0 ? settings.TodoEditorWidth : LogicalWidth;
+        var width = settings.TodoEditorWidth > 0
+            ? Math.Max(settings.TodoEditorWidth, MinLogicalWidth)
+            : LogicalWidth;
         var height = settings.TodoEditorHeight > 0
             ? settings.TodoEditorHeight
             : DueToggle.IsOn ? ExpandedHeight : CollapsedHeight;
@@ -596,6 +599,16 @@ public sealed partial class TodoEditorDialog : Window
 
     private void UpdateTagVisuals()
     {
+        // 颜色标签总开关关闭：整行连配色竖条一起按“未选标签”处理。
+        if (!_settings.Current.ColorTagsEnabled)
+        {
+            TagRow.Visibility = Visibility.Collapsed;
+            ColorStripe.Background = new SolidColorBrush(TagBrushColor(-1));
+            return;
+        }
+
+        TagRow.Visibility = Visibility.Visible;
+
         var selectedBrush = (Brush)Application.Current.Resources["SegmentSelectedBrush"];
         var transparent = (Brush)Application.Current.Resources["TransparentBrush"];
         for (var i = 0; i < _tagButtons.Count; i++)
@@ -632,47 +645,32 @@ public sealed partial class TodoEditorDialog : Window
                ?? Color.FromArgb(0xFF, 0x8A, 0x8A, 0x92);
     }
 
-    private void SubtaskInput_KeyDown(object sender, KeyRoutedEventArgs e)
+    private void AddSubtask_Click(object sender, RoutedEventArgs e)
     {
-        if (e.Key == Windows.System.VirtualKey.Enter)
-        {
-            e.Handled = true;
-            CommitSubtaskInput();
-        }
+        // 直接加一条空行，前面的拖动柄和圆圈一起出来，接着就能填。
+        _subtaskDrafts.Add(new SubtaskDraft(_nextDraftId--, string.Empty, false));
+        RenderSubtasks();
+
+        // 把焦点落到刚加的那一行，直接就能打字。
+        FocusDraftTitle(_subtaskDrafts.Count - 1);
     }
 
-    private void AddSubtask_Click(object sender, RoutedEventArgs e) => CommitSubtaskInput();
+    // 新建草稿的临时 Id 用负数，和库里自增的正 Id 区分开。
+    private long _nextDraftId = -1;
 
-    private void CommitSubtaskInput()
+    private void FocusDraftTitle(int index)
     {
-        if (!AppendPendingSubtask())
+        if (index < 0 || index >= SubtaskPanel.Children.Count)
         {
             return;
         }
 
-        RenderSubtasks();
-        SubtaskInput.Focus(FocusState.Programmatic);
-    }
-
-    // 输入框里敲了内容但没点“添加”就保存时，也把它当作一条子任务，避免白打。
-    private bool AppendPendingSubtask()
-    {
-        var title = SubtaskInput.Text.Trim();
-        if (title.Length == 0)
+        if (SubtaskPanel.Children[index] is Grid row &&
+            row.Children.OfType<TextBox>().FirstOrDefault() is { } box)
         {
-            return false;
+            box.Focus(FocusState.Programmatic);
+            box.SelectAll();
         }
-
-        DateTime? dueAt = null;
-        if (NaturalDateParser.TryParse(title, DateTime.Now, out var parsedDue, out var cleaned))
-        {
-            title = cleaned;
-            dueAt = parsedDue;
-        }
-
-        _subtaskDrafts.Add(new SubtaskDraft(0, title, false, dueAt));
-        SubtaskInput.Text = string.Empty;
-        return true;
     }
 
     private void RenderSubtasks()
@@ -683,10 +681,13 @@ public sealed partial class TodoEditorDialog : Window
         {
             var index = i;
             var draft = _subtaskDrafts[i];
+            // 空行是刚点「+」生成的占位：内容还没写之前，勾选和拖动都不该生效。
+            var blank = string.IsNullOrWhiteSpace(draft.Title);
 
             var check = new CheckBox
             {
                 IsChecked = draft.Done,
+                IsEnabled = !blank,
                 Style = (Style)Application.Current.Resources["TodoCompletionCheckBoxStyle"],
                 Margin = new Thickness(0),
                 VerticalAlignment = VerticalAlignment.Center,
@@ -705,10 +706,26 @@ public sealed partial class TodoEditorDialog : Window
                 Padding = new Thickness(4, 0, 4, 0),
                 VerticalContentAlignment = VerticalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
+                PlaceholderText = "子任务",
             };
             title.TextChanged += (_, _) =>
             {
                 _subtaskDrafts[index] = _subtaskDrafts[index] with { Title = title.Text };
+
+                // 输入内容后圈圈才可点；清空又退回不可点。直接改属性，不重渲染，免得丢焦点。
+                check.IsEnabled = !string.IsNullOrWhiteSpace(title.Text);
+            };
+            // 标题被清空后离焦：这条没有内容了，直接删掉，别留一行空壳。
+            title.LostFocus += (_, _) =>
+            {
+                if (index >= _subtaskDrafts.Count ||
+                    !string.IsNullOrWhiteSpace(_subtaskDrafts[index].Title))
+                {
+                    return;
+                }
+
+                _subtaskDrafts.RemoveAt(index);
+                RenderSubtasks();
             };
             if (draft.Done)
             {
@@ -784,7 +801,8 @@ public sealed partial class TodoEditorDialog : Window
                 Height = 26,
                 Background = new SolidColorBrush(Colors.Transparent),
                 VerticalAlignment = VerticalAlignment.Center,
-                CanDrag = true,
+                CanDrag = !blank,
+                Opacity = blank ? 0.25 : 1,
                 Child = new FontIcon
                 {
                     Glyph = "\uE784",
@@ -802,6 +820,14 @@ public sealed partial class TodoEditorDialog : Window
                 args.Data.RequestedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
             };
             grip.DropCompleted += (_, _) => _draggedSubtaskIndex = -1;
+
+            // 空行不能拖；一旦写了内容就放开拖动。
+            title.TextChanged += (_, _) =>
+            {
+                var empty = string.IsNullOrWhiteSpace(title.Text);
+                grip.CanDrag = !empty;
+                grip.Opacity = empty ? 0.25 : 1;
+            };
 
             var row = new Grid
             {

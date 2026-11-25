@@ -68,6 +68,7 @@ public sealed partial class MainWindow : Window
     // 鼠标离开窗口时淡出，移回恢复；设置里没开就保持原样。
     private void Root_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
+        CancelAutoHideFade();
         AnimateRootOpacity(1);
         UpdateResizeCursor(e.GetCurrentPoint(Root).Position);
         CancelDockRetract();
@@ -76,10 +77,61 @@ public sealed partial class MainWindow : Window
 
     private void Root_PointerExited(object sender, PointerRoutedEventArgs e)
     {
-        AnimateRootOpacity(_settings.Current.AutoHide && _dockEdge == EdgeDock.None ? 0.25 : 1);
+        // 自动隐藏支持延迟：0 秒就是立刻变淡，N 秒则等 N 秒后再淡；期间移回就取消。
+        if (_settings.Current.AutoHide && _dockEdge == EdgeDock.None)
+        {
+            var delay = Math.Clamp(_settings.Current.AutoHideDelaySeconds, 0, 600);
+            if (delay == 0)
+            {
+                AnimateRootOpacity(0.25);
+            }
+            else
+            {
+                ScheduleAutoHideFade(TimeSpan.FromSeconds(delay));
+            }
+        }
+        else
+        {
+            CancelAutoHideFade();
+            AnimateRootOpacity(1);
+        }
+
         Root.SetCursor(null);
         CancelDockExpand();
         ScheduleDockRetract();
+    }
+
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _autoHideTimer;
+
+    /// <summary>延迟变淡：到点才降透明度，鼠标回到窗口时由 CancelAutoHideFade 取消。</summary>
+    private void ScheduleAutoHideFade(TimeSpan delay)
+    {
+        CancelAutoHideFade();
+        _autoHideTimer = _dispatcher.CreateTimer();
+        _autoHideTimer.Interval = delay;
+        _autoHideTimer.IsRepeating = false;
+        _autoHideTimer.Tick += (timer, _) =>
+        {
+            timer.Stop();
+            _autoHideTimer = null;
+            // 鼠标回到窗口时 PointerEntered 会 cancel 这个计时器，能走到这里说明已经离开满 N 秒。
+            if (_settings.Current.AutoHide)
+            {
+                AnimateRootOpacity(0.25);
+            }
+        };
+        _autoHideTimer.Start();
+    }
+
+    private void CancelAutoHideFade()
+    {
+        if (_autoHideTimer is null)
+        {
+            return;
+        }
+
+        _autoHideTimer.Stop();
+        _autoHideTimer = null;
     }
 
     // 无边框窗口的内容层拿不到系统边缘命中，这里自己按位置判断贴边并手动缩放。
@@ -98,7 +150,8 @@ public sealed partial class MainWindow : Window
 
         if (_subtaskAddBox is { } addBox &&
             !IsInsideTagged(source, "SubtaskAddBox") &&
-            !IsInsideTagged(source, "SubtaskAddCheck"))
+            !IsInsideTagged(source, "SubtaskAddCheck") &&
+            !_composerMenuOpen)
         {
             CommitSubtaskAdd(addBox, keepOpen: false);
         }

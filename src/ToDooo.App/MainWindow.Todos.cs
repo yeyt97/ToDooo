@@ -43,7 +43,6 @@ public sealed partial class MainWindow : Window
         AddTaskButton.IsEnabled = false;
         AddTextBox.Focus(FocusState.Programmatic);
     }
-
     private void CloseAddBar()
     {
         // 收起时 TextBox 会失焦，别把残留文字当草稿提交。
@@ -107,8 +106,24 @@ public sealed partial class MainWindow : Window
     // 窗口失活（切到别的程序、点桌面）时 TextBox 不会触发 LostFocus，得靠这里补。
     private void MainWindow_Activated(object sender, WindowActivatedEventArgs e)
     {
-        if (e.WindowActivationState == WindowActivationState.Deactivated)
+        if (e.WindowActivationState != WindowActivationState.Deactivated)
         {
+            return;
+        }
+
+        // 右键菜单是独立窗口：弹出时主窗口先失活、菜单随后才 Opening。
+        // 隔一拍再看，菜单确实开着就说明用户只是要粘贴，不是要离开。
+        var timer = _dispatcher.CreateTimer();
+        timer.Interval = TimeSpan.FromMilliseconds(180);
+        timer.IsRepeating = false;
+        timer.Tick += (t, _) =>
+        {
+            t.Stop();
+            if (_composerMenuOpen)
+            {
+                return;
+            }
+
             if (!_suppressAddCommit &&
                 AddBar.Visibility == Visibility.Visible &&
                 string.IsNullOrWhiteSpace(AddTextBox.Text))
@@ -121,7 +136,8 @@ public sealed partial class MainWindow : Window
             }
 
             CommitSubtaskAddDraft();
-        }
+        };
+        timer.Start();
     }
 
     // 离焦即提交：点列表、点窗口别处、切走窗口，敲了一半的草稿都不会再悄悄丢掉。
@@ -136,6 +152,58 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        // 右键菜单是延迟挂上来的浮层，失焦先于它发生；隔一小段再判定。
+        ScheduleComposerFocusCheck(
+            () => IsWithinOrSelf(FocusManager.GetFocusedElement(Root.XamlRoot) as DependencyObject, AddBar),
+            HandleAddBarFocusExit,
+            () =>
+            {
+                if (AddBar.Visibility == Visibility.Visible)
+                {
+                    AddTextBox.Focus(FocusState.Programmatic);
+                }
+            });
+    }
+
+    /// <summary>
+    /// 失焦后隔一拍再判定：右键菜单（会抢焦点）比失焦晚到，直接判会误收起。
+    /// 判定时若菜单正开着，就登记回调，等菜单关闭事件触发时再执行（把焦点还给输入框）。
+    /// </summary>
+    private void ScheduleComposerFocusCheck(Func<bool> stillInside, Action leftForReal, Action menuDismissed)
+    {
+        var timer = _dispatcher.CreateTimer();
+        timer.Interval = TimeSpan.FromMilliseconds(200);
+        timer.IsRepeating = false;
+        timer.Tick += (t, _) =>
+        {
+            t.Stop();
+            if (_composerMenuOpen)
+            {
+                _pendingMenuDismissed = menuDismissed;
+                return;
+            }
+
+            if (!stillInside())
+            {
+                leftForReal();
+            }
+        };
+        timer.Start();
+    }
+
+    private void HandleAddBarFocusExit()
+    {
+        if (AddBar.Visibility != Visibility.Visible)
+        {
+            return;
+        }
+
+        var focused = FocusManager.GetFocusedElement(Root.XamlRoot) as DependencyObject;
+        if (focused is not null && (IsWithin(focused, AddBar) || ReferenceEquals(focused, AddTextBox)))
+        {
+            return;
+        }
+
         // 空内容离焦：直接收起，不占位置。
         if (string.IsNullOrWhiteSpace(AddTextBox.Text))
         {
@@ -145,6 +213,45 @@ public sealed partial class MainWindow : Window
 
         CommitAddDraft();
     }
+
+    /// <summary>
+    /// 给输入框的右键菜单挂开合事件。控件默认就带一个 TextCommandBarFlyout，
+    /// 直接复用它（换新实例会丢掉选区等内置行为）。
+    /// </summary>
+    private void AttachComposerMenu(TextBox box)
+    {
+        var flyout = box.ContextFlyout as TextCommandBarFlyout;
+        if (flyout is null)
+        {
+            flyout = new TextCommandBarFlyout();
+            box.ContextFlyout = flyout;
+        }
+
+        if (!_hookedFlyouts.Add(flyout))
+        {
+            return;
+        }
+
+        flyout.Opening += (_, _) =>
+        {
+            _composerMenuOpen = true;
+            _pendingMenuDismissed = null;
+        };
+        flyout.Closed += (_, _) =>
+        {
+            _composerMenuOpen = false;
+            var pending = _pendingMenuDismissed;
+            _pendingMenuDismissed = null;
+            pending?.Invoke();
+        };
+    }
+
+    private readonly HashSet<TextCommandBarFlyout> _hookedFlyouts = new();
+    private bool _composerMenuOpen;
+    private Action? _pendingMenuDismissed;
+
+    private static bool IsWithinOrSelf(DependencyObject? node, DependencyObject ancestor) =>
+        node is not null && (ReferenceEquals(node, ancestor) || IsWithin(node, ancestor));
 
     // 回车和离焦共用的一套提交逻辑；返回是否真的加了一条。
     private bool CommitAddDraft()
@@ -1282,15 +1389,29 @@ public sealed partial class MainWindow : Window
         if (sender is TextBox box)
         {
             _subtaskAddBox = box;
+            AttachComposerMenu(box);
         }
     }
 
     private void SubtaskAddBox_LostFocus(object sender, RoutedEventArgs e)
     {
-        if (sender is TextBox box)
+        if (sender is not TextBox box)
         {
-            CommitSubtaskAdd(box, keepOpen: false);
+            return;
         }
+
+        // 右键菜单弹出时焦点会被抢走，菜单关掉后还回来；隔一拍再判定，
+        // 菜单还开着就等它关闭，期间不提交、不收起。
+        ScheduleComposerFocusCheck(
+            () => IsWithinOrSelf(FocusManager.GetFocusedElement(Root.XamlRoot) as DependencyObject, box),
+            () => CommitSubtaskAdd(box, keepOpen: false),
+            () =>
+            {
+                if (box.IsLoaded && box.DataContext is TodoItem { SubtaskAddActive: true })
+                {
+                    box.Focus(FocusState.Programmatic);
+                }
+            });
     }
 
     private void SubtaskAddCheck_Click(object sender, RoutedEventArgs e)

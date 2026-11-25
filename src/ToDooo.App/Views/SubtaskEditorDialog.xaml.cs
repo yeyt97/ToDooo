@@ -54,7 +54,7 @@ public sealed partial class SubtaskEditorDialog : Window
         };
         _acrylic = WindowAcrylic.Apply(
             this, Appearance.TintForOpacity(settings.Current.WindowOpacity), dark, _backdropConfig,
-            (Appearance.TintMode)Math.Clamp(settings.Current.WindowTintMode, 0, 3));
+            (Appearance.TintMode)Math.Clamp(settings.Current.WindowTintMode, 0, Appearance.TintCount - 1), settings.Current.CustomTintColor);
         var darkFlag = dark ? 1 : 0;
         NativeMethods.DwmSetWindowAttribute(
             _hwnd, NativeMethods.DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkFlag, sizeof(int));

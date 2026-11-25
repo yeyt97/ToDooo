@@ -106,7 +106,6 @@ public partial class TodoItem : ObservableObject
     public bool HasNote => !string.IsNullOrWhiteSpace(Note);
 
     public bool HasSubtasks => Subtasks.Count > 0;
-
     public int SubtaskDoneCount => Subtasks.Count(item => item.IsDone);
 
     public string SubtaskProgressText => $"{SubtaskDoneCount}/{Subtasks.Count}";

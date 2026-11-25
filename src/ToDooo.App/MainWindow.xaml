@@ -243,24 +243,44 @@
                     </Grid>
                 </Grid>
 
-                <!--  智能视图 + 颜色筛选，最右是“新建”入口  -->
-                <Grid Grid.Row="3" Margin="14,0,14,8" ColumnSpacing="4">
+                <!--
+                    智能视图 / 完成时间筛选在第一行，颜色筛选与「新建」在第二行。
+                    「+」必须和颜色圆点同一行，否则两行布局时它会居中到中间，和圆点错开。
+                -->
+                <Grid
+                    Grid.Row="3"
+                    Margin="14,0,14,8"
+                    ColumnSpacing="4"
+                    RowSpacing="6">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <StackPanel Spacing="6" VerticalAlignment="Center">
-                        <StackPanel
-                            x:Name="SmartViewPanel"
-                            Orientation="Horizontal"
-                            Spacing="6" />
-                        <StackPanel
-                            x:Name="TagPanel"
-                            Orientation="Horizontal"
-                            Spacing="2" />
-                    </StackPanel>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel
+                        x:Name="SmartViewPanel"
+                        Grid.ColumnSpan="2"
+                        Orientation="Horizontal"
+                        Spacing="6" />
+                    <StackPanel
+                        x:Name="DoneRangePanel"
+                        Grid.ColumnSpan="2"
+                        Orientation="Horizontal"
+                        Spacing="6"
+                        Visibility="Collapsed" />
+
+                    <StackPanel
+                        x:Name="TagPanel"
+                        Grid.Row="1"
+                        Orientation="Horizontal"
+                        Spacing="2" />
                     <Button
                         x:Name="AddTaskButton"
+                        Grid.Row="1"
                         Grid.Column="1"
                         AutomationProperties.Name="新建待办"
                         Style="{StaticResource FlatIconButtonStyle}"
@@ -613,7 +633,8 @@
                                             </ItemsControl>
 
                                             <Grid
-                                                Margin="0,3,0,0"
+                                                MinHeight="22"
+                                                Margin="0,1"
                                                 ColumnSpacing="4"
                                                 Visibility="{x:Bind helpers:Bind.VisibleWhen(SubtaskAddActive), Mode=OneWay}">
                                                 <Grid.ColumnDefinitions>
@@ -621,16 +642,19 @@
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
-                                                <FontIcon
-                                                    VerticalAlignment="Center"
-                                                    FontSize="10"
-                                                    Foreground="{ThemeResource TextMutedBrush}"
-                                                    Glyph="&#xE710;" />
+                                                <!--  前面的圈和已生效子任务一致，但草稿还不能勾选  -->
+                                                <CheckBox
+                                                    AutomationProperties.Name="子任务完成"
+                                                    IsChecked="False"
+                                                    IsEnabled="False"
+                                                    IsTabStop="False"
+                                                    Style="{StaticResource TodoCompletionCheckBoxStyle}"
+                                                    VerticalAlignment="Center" />
                                                 <TextBox
                                                     Grid.Column="1"
-                                                    Height="26"
-                                                    Padding="4,0"
-                                                    Margin="0,0,2,0"
+                                                    MinHeight="22"
+                                                    Padding="0"
+                                                    VerticalContentAlignment="Center"
                                                     FontSize="12"
                                                     Tag="SubtaskAddBox"
                                                     GotFocus="SubtaskAddBox_GotFocus"
@@ -644,8 +668,8 @@
                                                     Grid.Column="2"
                                                     AutomationProperties.Name="保存子任务"
                                                     Tag="SubtaskAddCheck"
-                                                    Width="20"
-                                                    Height="20"
+                                                    Width="28"
+                                                    Height="28"
                                                     MinWidth="0"
                                                     MinHeight="0"
                                                     Padding="0"
@@ -654,7 +678,7 @@
                                                     Click="SubtaskAddCheck_Click">
                                                     <FontIcon
                                                         Glyph="&#xE73E;"
-                                                        FontSize="9"
+                                                        FontSize="14"
                                                         Foreground="{ThemeResource AccentBrush}" />
                                                 </Button>
                                             </Grid>

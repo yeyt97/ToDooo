@@ -13,6 +13,16 @@ public enum TodoFilter
     Done,
 }
 
+/// <summary>「已完成」视图里按完成时间筛选。</summary>
+public enum DoneRange
+{
+    All = 0,
+    Today = 1,
+    Yesterday = 2,
+    ThisWeek = 3,
+    ThisMonth = 4,
+}
+
 public sealed partial class MainViewModel : ObservableObject
 {
     // DeskBox-style color markers: red / orange / yellow / green / blue / purple / pink / teal
@@ -37,6 +47,13 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private int selectedSmartView = -1;
 
+    /// <summary>「已完成」视图的完成时间范围；只在 Filter = Done 时生效。</summary>
+    [ObservableProperty]
+    private int selectedDoneRange;
+
+    /// <summary>智能视图只在未完成类视图里有意义，「已完成」里一律不应用。</summary>
+    public bool IsDoneView => Filter == TodoFilter.Done;
+
     public MainViewModel(TodoRepository repository)
     {
         _repository = repository;
@@ -49,7 +66,23 @@ public sealed partial class MainViewModel : ObservableObject
 
     public IReadOnlyList<TodoItem> AllItems => _all;
 
-    public TodoFilter Filter { get; private set; } = TodoFilter.All;
+    public TodoFilter Filter
+    {
+        get => _filter;
+        private set
+        {
+            if (_filter == value)
+            {
+                return;
+            }
+
+            _filter = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsDoneView));
+        }
+    }
+
+    private TodoFilter _filter = TodoFilter.All;
 
     public int SelectedTag { get; private set; } = -1;
 
@@ -90,6 +123,12 @@ public sealed partial class MainViewModel : ObservableObject
         NotifyDataChanged();
     }
 
+    /// <summary>让列表整体重建一次，用于卡片外部样式（如颜色标签开关）变化后重新求值绑定。</summary>
+    public void RefreshCardVisuals()
+    {
+        ApplyFilter();
+    }
+
     public void NotifySubtaskExpansionChanged()
     {
         OnPropertyChanged(nameof(HasVisibleSubtasks));
@@ -117,6 +156,8 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>详细新建：标题之外还可带截止时间、重复、重要与标签。</summary>
     partial void OnSelectedSmartViewChanged(int value) => ApplyFilter();
+
+    partial void OnSelectedDoneRangeChanged(int value) => ApplyFilter();
 
     public void ToggleSmartView(SmartView view)
     {
@@ -796,7 +837,24 @@ public sealed partial class MainViewModel : ObservableObject
     public void SetFilter(TodoFilter filter)
     {
         Filter = Filter == filter && filter != TodoFilter.All ? TodoFilter.All : filter;
+
+        // 离开「已完成」时清掉时间范围，回来是全新的列表；进「已完成」也不沿用智能视图。
+        if (Filter != TodoFilter.Done)
+        {
+            SelectedDoneRange = 0;
+        }
+        else if (SelectedSmartView != -1)
+        {
+            SelectedSmartView = -1;
+        }
+
         ApplyFilter();
+    }
+
+    public void SetDoneRange(DoneRange range)
+    {
+        // 再点一次当前范围即取消，回到「全部」。
+        SelectedDoneRange = SelectedDoneRange == (int)range ? 0 : (int)range;
     }
 
     /// <summary>点颜色只选中，不再点掉；取消筛选走末尾的“清除颜色”按钮（传 -1）。</summary>
@@ -1015,7 +1073,8 @@ public sealed partial class MainViewModel : ObservableObject
             return false;
         }
 
-        if (SelectedSmartView >= 0 && !MatchesSmartView(item))
+        // 智能视图只在未完成类视图里生效；「已完成」里不参与筛选。
+        if (Filter != TodoFilter.Done && SelectedSmartView >= 0 && !MatchesSmartView(item))
         {
             return false;
         }
@@ -1024,7 +1083,36 @@ public sealed partial class MainViewModel : ObservableObject
         {
             TodoFilter.Active => !item.IsDone,
             TodoFilter.Important => item.IsImportant && !item.IsDone,
-            TodoFilter.Done => item.IsDone,
+            TodoFilter.Done => item.IsDone && MatchesDoneRange(item),
+            _ => true,
+        };
+    }
+
+    /// <summary>「已完成」按完成时间筛选；没有完成时间的旧数据在「全部」里照样显示。</summary>
+    private bool MatchesDoneRange(TodoItem item)
+    {
+        var range = (DoneRange)SelectedDoneRange;
+        if (range == DoneRange.All)
+        {
+            return true;
+        }
+
+        if (item.CompletedAt is not { } completed)
+        {
+            return false;
+        }
+
+        var now = Clock();
+        var today = now.Date;
+        var completedDate = completed.Date;
+        return range switch
+        {
+            DoneRange.Today => completedDate == today,
+            DoneRange.Yesterday => completedDate == today.AddDays(-1),
+            DoneRange.ThisWeek => completedDate >= WeekStart(today)
+                && completedDate < WeekStart(today).AddDays(7),
+            DoneRange.ThisMonth => completedDate.Year == today.Year
+                && completedDate.Month == today.Month,
             _ => true,
         };
     }

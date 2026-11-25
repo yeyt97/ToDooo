@@ -136,6 +136,24 @@ public sealed class CalendarSyncService
     }
 
     /// <summary>
+    /// 合并向导专用：把一条本地 ICS 作为<b>新增</b>上传到云端集合，绝不覆盖已有资源。
+    /// 资源名由调用方给（本地集合路径带 local: 前缀，不能直接当远端文件名）。
+    /// </summary>
+    public async Task UploadLocalMasterAsync(string targetCalendarHref, string resourceName,
+        string ics, CancellationToken token = default)
+    {
+        if (!IsConfigured)
+        {
+            throw new CalDavException("尚未配置日历账号，无法上传。");
+        }
+
+        using var client = new CalDavClient(AppleId, Password);
+        await client.ConnectAsync(token).ConfigureAwait(false);
+        await client.CreateEventAsync(targetCalendarHref, resourceName, ics, token)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// 同步 [from, to) 窗口：刷新集合列表与可见性之外的元数据，逐集合整体替换缓存事件。
     /// 并发调用会被串行化，界面反复触发刷新也不会互相踩。
     /// </summary>
@@ -611,6 +629,12 @@ public sealed class CalendarSyncService
 
         EventsChanged?.Invoke(this, EventArgs.Empty);
 
+        // 本地日历（local: 前缀）只存本机，不进云端队列——它没有对应的服务器集合。
+        if (CalendarRepository.IsLocalHref(calendarHref))
+        {
+            return created;
+        }
+
         // 没配账号（离线也能新建）：本地已生效，进队列等配上账号再推。
         if (!IsConfigured)
         {
@@ -655,11 +679,15 @@ public sealed class CalendarSyncService
             return;
         }
 
-        // 没配账号（离线也能编辑）：本地已生效，改动排进队列等配上账号再推。
-        if (!IsConfigured)
+        // 本地日历或没配账号：改动只在本地生效。本地集合没有云端对应，不进队列。
+        if (!IsConfigured || CalendarRepository.IsLocalHref(existing.CalendarHref))
         {
-            _repository.AddPending(existing.ResourceHref, "update", existing.CalendarHref,
-                existing.ETag ?? string.Empty, localPayload);
+            if (!CalendarRepository.IsLocalHref(existing.CalendarHref))
+            {
+                _repository.AddPending(existing.ResourceHref, "update", existing.CalendarHref,
+                    existing.ETag ?? string.Empty, localPayload);
+            }
+
             return;
         }
 
@@ -774,6 +802,13 @@ public sealed class CalendarSyncService
             _repository.RemovePending(existing.ResourceHref);
             _repository.AddPending(newHref, "create", targetCalendarHref, string.Empty, ics);
             ScheduleDeferredPush();
+            return moved;
+        }
+
+        // 两边都是本地集合：纯本地搬家，没什么要推的。
+        if (CalendarRepository.IsLocalHref(targetCalendarHref) &&
+            CalendarRepository.IsLocalHref(existing.CalendarHref))
+        {
             return moved;
         }
 
@@ -999,9 +1034,14 @@ public sealed class CalendarSyncService
             EventsChanged?.Invoke(this, EventArgs.Empty);
         }
 
-        // 没配账号（离线也能改）：本地已生效，队列里放一份，等配上账号再推。
-        if (!IsConfigured)
+        // 本地日历或没配账号：本地已生效。本地集合没有云端对应，不进队列。
+        if (!IsConfigured || CalendarRepository.IsLocalHref(occurrence.CalendarHref))
         {
+            if (CalendarRepository.IsLocalHref(occurrence.CalendarHref))
+            {
+                return;
+            }
+
             var queued = _repository.GetMasterIcs(occurrence.ResourceHref);
             if (!string.IsNullOrWhiteSpace(queued))
             {
@@ -1054,9 +1094,14 @@ public sealed class CalendarSyncService
 
         EventsChanged?.Invoke(this, EventArgs.Empty);
 
-        // 没配账号（离线也能删）：本地已排除这一天，队列里放更新后的母事件。
-        if (!IsConfigured)
+        // 本地日历或没配账号：本地已排除这一天。本地集合不进队列。
+        if (!IsConfigured || CalendarRepository.IsLocalHref(occurrence.CalendarHref))
         {
+            if (CalendarRepository.IsLocalHref(occurrence.CalendarHref))
+            {
+                return;
+            }
+
             var queued = _repository.GetMasterIcs(occurrence.ResourceHref);
             if (!string.IsNullOrWhiteSpace(queued))
             {
@@ -1098,6 +1143,12 @@ public sealed class CalendarSyncService
         _repository.RemoveMaster(calendarEvent.ResourceHref);
         _repository.RemoveEventsByResource(calendarEvent.ResourceHref);
         EventsChanged?.Invoke(this, EventArgs.Empty);
+
+        // 本地日历：删本地就够了，云端没有对应资源。
+        if (CalendarRepository.IsLocalHref(calendarEvent.CalendarHref))
+        {
+            return;
+        }
 
         // 没配账号（离线也能删）：本地已删，排一条补删等配上账号再执行。
         if (!IsConfigured)

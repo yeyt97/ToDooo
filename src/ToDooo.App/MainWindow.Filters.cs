@@ -211,6 +211,15 @@ public sealed partial class MainWindow : Window
 
     private void UpdateTagVisuals()
     {
+        // 总开关关掉时整行不显示（新建入口 + 都还在，靠它留出高度差）。
+        if (!_settings.Current.ColorTagsEnabled)
+        {
+            TagPanel.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        TagPanel.Visibility = Visibility.Visible;
+
         // 选中只显示圆点里的对勾，不加灰底。
         var transparent = (Brush)Application.Current.Resources["TransparentBrush"];
         for (var i = 0; i < _tagButtons.Count; i++)
@@ -229,6 +238,15 @@ public sealed partial class MainWindow : Window
     {
         SmartViewPanel.Children.Clear();
         _smartViewButtons.Clear();
+
+        // 总开关关掉时整栏不显示，也不必再建按钮。
+        if (!_settings.Current.SmartViewEnabled)
+        {
+            SmartViewPanel.Visibility = Visibility.Collapsed;
+            UpdateSmartViewVisuals();
+            UpdateFilterRowVisibility();
+            return;
+        }
 
         foreach (var setting in _settings.Current.SmartViews)
         {
@@ -255,6 +273,76 @@ public sealed partial class MainWindow : Window
             ? Visibility.Visible
             : Visibility.Collapsed;
         UpdateSmartViewVisuals();
+        UpdateFilterRowVisibility();
+    }
+
+    private readonly List<Button> _doneRangeButtons = new();
+
+    private static readonly (DoneRange Range, string Title)[] DoneRanges =
+    {
+        (DoneRange.All, "全部"),
+        (DoneRange.Today, "今天"),
+        (DoneRange.Yesterday, "昨天"),
+        (DoneRange.ThisWeek, "本周"),
+        (DoneRange.ThisMonth, "本月"),
+    };
+
+    /// <summary>「已完成」里的完成时间筛选，样式和智能视图 chip 一致。</summary>
+    private void BuildDoneRangeChips()
+    {
+        DoneRangePanel.Children.Clear();
+        _doneRangeButtons.Clear();
+
+        foreach (var (range, title) in DoneRanges)
+        {
+            var button = new Button
+            {
+                Content = title,
+                Tag = range,
+                Style = (Style)Application.Current.Resources["SmartChipStyle"],
+            };
+            button.Click += DoneRange_Click;
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, $"完成时间 {title}");
+            _doneRangeButtons.Add(button);
+            DoneRangePanel.Children.Add(button);
+        }
+
+        UpdateDoneRangeVisuals();
+    }
+
+    private void DoneRange_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: DoneRange range })
+        {
+            ViewModel.SetDoneRange(range);
+            UpdateDoneRangeVisuals();
+        }
+    }
+
+    private void UpdateDoneRangeVisuals()
+    {
+        foreach (var button in _doneRangeButtons)
+        {
+            var active = button.Tag is DoneRange range && (int)range == ViewModel.SelectedDoneRange;
+            button.Background = active
+                ? PaletteBrush("SegmentSelectedBrush")
+                : PaletteBrush("TransparentBrush");
+            button.Foreground = active
+                ? PaletteBrush("TextPrimaryBrush")
+                : PaletteBrush("TextMutedBrush");
+        }
+    }
+
+    /// <summary>
+    /// 智能视图与完成时间筛选共用同一行位置：未完成视图显示智能视图，
+    /// 「已完成」显示时间筛选，两者互斥，不会把下面的颜色圆点挤歪。
+    /// </summary>
+    private void UpdateFilterRowVisibility()
+    {
+        var done = ViewModel.Filter == TodoFilter.Done;
+        var smartVisible = !done && _smartViewButtons.Count > 0;
+        SmartViewPanel.Visibility = smartVisible ? Visibility.Visible : Visibility.Collapsed;
+        DoneRangePanel.Visibility = done ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void SmartView_Click(object sender, RoutedEventArgs e)
@@ -307,8 +395,10 @@ public sealed partial class MainWindow : Window
                 ? Visibility.Visible
                 : Visibility.Collapsed;
 
-        // 切换分段筛选时，智能视图的选中态也要跟着刷。
+        // 切换分段筛选时，智能视图与完成时间筛选的选中态、可见性都要跟着刷。
         UpdateSmartViewVisuals();
+        UpdateFilterRowVisibility();
+        UpdateDoneRangeVisuals();
     }
 
     private void PostponeOverdue_Click(object sender, RoutedEventArgs e)

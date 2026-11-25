@@ -111,9 +111,10 @@ public static class ThemePalette
     }
 
     public static AcrylicBrush CreateDialogAcrylicBrush(
-        bool dark, Appearance.TintMode tintMode = Appearance.TintMode.Auto)
+        bool dark, Appearance.TintMode tintMode = Appearance.TintMode.Auto, string? customTintHex = null)
     {
-        var (tint, fallback) = Appearance.TintColors(tintMode, dark);
+        var (tint, fallback) = Appearance.CustomTintColors(customTintHex, dark)
+            ?? Appearance.TintColors(tintMode, dark);
         return new AcrylicBrush
         {
             TintColor = tint,
@@ -123,7 +124,7 @@ public static class ThemePalette
     }
 
     public static void Apply(bool dark, double opacity,
-        Appearance.TintMode tintMode = Appearance.TintMode.Auto)
+        Appearance.TintMode tintMode = Appearance.TintMode.Auto, string? customTintHex = null)
     {
         var resources = Application.Current.Resources;
         foreach (var (key, color) in dark ? DarkSolid : LightSolid)
@@ -138,18 +139,50 @@ public static class ThemePalette
         var factor = opacity >= 0.4
             ? 0.1 + 0.9 * Math.Clamp((opacity - 0.4) / 0.6, 0.0, 1.0)
             : 0.1 * Math.Clamp((opacity - 0.1) / 0.3, 0.0, 1.0);
-        var card = dark ? DarkCard : LightCard;
+
+        // 这层铺满整个窗口，必须跟着用户选的底色走。
+        // 以前写死成灰蓝（#2E343D），不管选什么底色都被它冲成一片灰。
+        var card = CardGradientFor(tintMode, dark, customTintHex);
         SetGradient(resources, "CardBrush", card, factor);
         SetGradient(resources, "CardStrokeBrush", dark ? DarkCardStroke : LightCardStroke, 1.0);
         // 弹框用独立磨砂刷：太透会看不清，这里不跟随窗口透明度一起减淡。
         if (resources["DialogAcrylicBrush"] is AcrylicBrush dialogAcrylic)
         {
-            var (dialogTint, dialogFallback) = Appearance.TintColors(tintMode, dark);
+            var (dialogTint, dialogFallback) = Appearance.CustomTintColors(customTintHex, dark)
+                ?? Appearance.TintColors(tintMode, dark);
             dialogAcrylic.TintColor = dialogTint;
             dialogAcrylic.FallbackColor = dialogFallback;
             dialogAcrylic.TintOpacity = dark ? 0.75 : 0.85;
         }
     }
+
+    /// <summary>
+    /// 窗口整层底色的三档渐变：由所选的底色方案推导，深浅各一套。
+    /// 之前写死成灰蓝，任何底色都会被冲成一片灰。
+    /// </summary>
+    private static Color[] CardGradientFor(Appearance.TintMode tintMode, bool dark, string? customTintHex)
+    {
+        var (tint, _) = Appearance.CustomTintColors(customTintHex, dark)
+            ?? Appearance.TintColors(tintMode, dark);
+        // 深色：以底色为基准，上下浮动一点做出层次；浅色：以底色为基准略微提亮。
+        var (a, b, c) = dark
+            ? (Shift(tint, 6), Shift(tint, -2), Shift(tint, 2))
+            : (Shift(tint, 2), Shift(tint, 0), Shift(tint, -3));
+        var alpha = dark ? (byte)0x5E : (byte)0x66;
+        return new[]
+        {
+            Color.FromArgb(alpha, a.R, a.G, a.B),
+            Color.FromArgb(alpha, b.R, b.G, b.B),
+            Color.FromArgb(alpha, c.R, c.G, c.B),
+        };
+    }
+
+    /// <summary>整体提亮/压暗若干级，用来在同一色相里做出渐变层次。</summary>
+    private static Color Shift(Color color, int delta) => Color.FromArgb(
+        255,
+        (byte)Math.Clamp(color.R + delta, 0, 255),
+        (byte)Math.Clamp(color.G + delta, 0, 255),
+        (byte)Math.Clamp(color.B + delta, 0, 255));
 
     private static void SetGradient(ResourceDictionary resources, string key, Color[] colors, double factor)
     {

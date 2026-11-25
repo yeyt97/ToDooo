@@ -44,11 +44,18 @@ public static class Bind
         condition ? Visibility.Visible : Visibility.Collapsed;
 
 
+    /// <summary>颜色标签总开关。关掉后卡片上不再画色条；由主窗口在设置变化时同步。</summary>
+    public static bool ColorTagsVisible { get; set; } = true;
+
     public static Brush TagBrush(int tagIndex) =>
-        tagIndex >= 0 && tagIndex < TagBrushes.Length ? TagBrushes[tagIndex] : TransparentBrush;
+        ColorTagsVisible && tagIndex >= 0 && tagIndex < TagBrushes.Length
+            ? TagBrushes[tagIndex]
+            : TransparentBrush;
 
     public static Visibility HasTag(int tagIndex) =>
-        tagIndex >= 0 && tagIndex < TagBrushes.Length ? Visibility.Visible : Visibility.Collapsed;
+        ColorTagsVisible && tagIndex >= 0 && tagIndex < TagBrushes.Length
+            ? Visibility.Visible
+            : Visibility.Collapsed;
 
     public static Brush CheckFill(bool done) => done ? Palette("NeutralCheckFillBrush") : TransparentBrush;
 

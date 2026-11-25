@@ -81,6 +81,63 @@ public sealed class TodoViewModelTests : IDisposable
     }
 
     [Fact]
+    public void DoneRange_FiltersByCompletedAt()
+    {
+        var now = _viewModel.Clock();
+        var today = now.Date;
+
+        var doneToday = new TodoItem { Title = "今天完成", IsDone = true, CompletedAt = now };
+        var doneYesterday = new TodoItem { Title = "昨天完成", IsDone = true, CompletedAt = today.AddDays(-1).AddHours(10) };
+        var doneOld = new TodoItem { Title = "上个月完成", IsDone = true, CompletedAt = today.AddDays(-40) };
+        _viewModel.AddItem(doneToday);
+        _viewModel.AddItem(doneYesterday);
+        _viewModel.AddItem(doneOld);
+
+        _viewModel.SetFilter(TodoFilter.Done);
+        Assert.Equal(3, _viewModel.Items.Count);
+
+        _viewModel.SetDoneRange(DoneRange.Today);
+        Assert.Single(_viewModel.Items);
+        Assert.Equal("今天完成", _viewModel.Items[0].Title);
+
+        _viewModel.SetDoneRange(DoneRange.Yesterday);
+        Assert.Single(_viewModel.Items);
+        Assert.Equal("昨天完成", _viewModel.Items[0].Title);
+
+        _viewModel.SetDoneRange(DoneRange.All);
+        Assert.Equal(3, _viewModel.Items.Count);
+    }
+
+    [Fact]
+    public void DoneRange_IgnoresSmartView()
+    {
+        var now = _viewModel.Clock();
+        var item = new TodoItem { Title = "完成但今天到期", IsDone = true, CompletedAt = now, DueAt = now };
+        _viewModel.AddItem(item);
+
+        // 先选智能视图「今天」，再切到已完成：智能视图不应再影响结果。
+        _viewModel.ToggleSmartView(SmartView.Today);
+        _viewModel.SetFilter(TodoFilter.Done);
+
+        Assert.Equal(-1, _viewModel.SelectedSmartView);
+        Assert.Single(_viewModel.Items);
+    }
+
+    [Fact]
+    public void DoneRange_ResetsWhenLeavingDoneView()
+    {
+        var now = _viewModel.Clock();
+        _viewModel.AddItem(new TodoItem { Title = "今天完成", IsDone = true, CompletedAt = now });
+
+        _viewModel.SetFilter(TodoFilter.Done);
+        _viewModel.SetDoneRange(DoneRange.Today);
+        Assert.Equal((int)DoneRange.Today, _viewModel.SelectedDoneRange);
+
+        _viewModel.SetFilter(TodoFilter.All);
+        Assert.Equal(0, _viewModel.SelectedDoneRange);
+    }
+
+    [Fact]
     public void CompletingRecurring_CreatesNextOccurrence()
     {
         var item = new TodoItem

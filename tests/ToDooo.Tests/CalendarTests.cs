@@ -910,6 +910,324 @@ public class CalendarRepositoryTests
         }
     }
 
+    [Fact]
+    public void LocalSource_IsCreatedAndDeletable()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"cal-{Guid.NewGuid():N}.db");
+        try
+        {
+            var repo = new CalendarRepository(path);
+            repo.Initialize();
+
+            var href = repo.AddLocalSource("个人", "#4D8FE3");
+
+            Assert.True(CalendarRepository.IsLocalHref(href));
+            var sources = repo.GetSources();
+            Assert.Single(sources);
+            Assert.Equal("个人", sources[0].DisplayName);
+            Assert.True(sources[0].IsVisible);
+
+            repo.RenameSource(href, "私人");
+            Assert.Equal("私人", repo.GetSources()[0].DisplayName);
+
+            repo.DeleteSource(href);
+            Assert.Empty(repo.GetSources());
+        }
+        finally
+        {
+            TryDelete(path);
+        }
+    }
+
+    [Fact]
+    public void LocalSource_SurvivesCloudMerge()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"cal-{Guid.NewGuid():N}.db");
+        try
+        {
+            var repo = new CalendarRepository(path);
+            repo.Initialize();
+            var localHref = repo.AddLocalSource("本地", "#4D8FE3");
+
+            // 模拟一次云端同步：只合并服务器上发现的集合。
+            repo.MergeSources(new[] { new CalendarSource { Href = "/c/", DisplayName = "云端", Color = "#FF0000FF" } });
+
+            var sources = repo.GetSources();
+            Assert.Equal(2, sources.Count);
+            Assert.Contains(sources, s => s.Href == localHref && s.DisplayName == "本地");
+            Assert.Contains(sources, s => s.Href == "/c/");
+        }
+        finally
+        {
+            TryDelete(path);
+        }
+    }
+
+    [Fact]
+    public void DeleteSource_RemovesItsEventsOnly()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"cal-{Guid.NewGuid():N}.db");
+        try
+        {
+            var repo = new CalendarRepository(path);
+            repo.Initialize();
+            var localHref = repo.AddLocalSource("本地", "#4D8FE3");
+            repo.MergeSources(new[] { new CalendarSource { Href = "/c/", DisplayName = "云端", Color = "#FF0000FF" } });
+
+            repo.UpsertMaster(new RawCalendarItem
+            {
+                CalendarHref = localHref,
+                ResourceHref = localHref + "/a.ics",
+                ETag = "",
+                Ics = IcsFor("a", "本地日程"),
+            });
+            repo.UpsertMaster(new RawCalendarItem
+            {
+                CalendarHref = "/c/",
+                ResourceHref = "/c/b.ics",
+                ETag = "",
+                Ics = IcsFor("b", "云端日程"),
+            });
+
+            repo.DeleteSource(localHref);
+
+            var masters = repo.GetVisibleMasters();
+            Assert.Single(masters);
+            Assert.Equal("/c/", masters[0].CalendarHref);
+        }
+        finally
+        {
+            TryDelete(path);
+        }
+    }
+
+    [Fact]
+    public async Task Merge_CloudWinsOnSameUid()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"cal-{Guid.NewGuid():N}.db");
+        try
+        {
+            var (repo, settings, sync) = Create(path);
+            var localHref = repo.AddLocalSource("本地", "#4D8FE3");
+
+            // 云端已有 UID=dup 的同一日程
+            repo.UpsertMaster(new RawCalendarItem
+            {
+                CalendarHref = "/c/",
+                ResourceHref = "/c/dup.ics",
+                ETag = "",
+                Ics = IcsFor("dup", "云端版本"),
+            });
+            // 本地也有一条同 UID
+            repo.UpsertMaster(new RawCalendarItem
+            {
+                CalendarHref = localHref,
+                ResourceHref = localHref + "/dup.ics",
+                ETag = "",
+                Ics = IcsFor("dup", "本地版本"),
+            });
+
+            var merge = new CalendarMergeService(repo, sync);
+            var choices = merge.BuildChoices();
+            Assert.Single(choices);
+            choices[0].Action = MergeAction.MergeInto;
+            choices[0].TargetHref = "/c/";
+
+            var outcome = await merge.ApplyAsync(choices);
+
+            // 同 UID 走云端版本，不计入上传，本地副本随后被清掉。
+            Assert.Equal(0, outcome.UploadedCount);
+            Assert.Equal(1, outcome.CloudWonCount);
+            Assert.DoesNotContain(repo.GetSources(), s => s.Href == localHref);
+        }
+        finally
+        {
+            TryDelete(path);
+        }
+    }
+
+    [Fact]
+    public async Task Merge_UploadFailureKeepsLocalCalendar()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"cal-{Guid.NewGuid():N}.db");
+        try
+        {
+            var (repo, _, sync) = Create(path);
+            var localHref = repo.AddLocalSource("别丢", "#4D8FE3");
+            repo.UpsertMaster(new RawCalendarItem
+            {
+                CalendarHref = localHref,
+                ResourceHref = localHref + "/f.ics",
+                ETag = "",
+                Ics = IcsFor("f", "传不上去的"),
+            });
+
+            var merge = new CalendarMergeService(repo, sync);
+            var choices = merge.BuildChoices();
+            choices[0].Action = MergeAction.MergeInto;
+            choices[0].TargetHref = "/c/";
+
+            // 测试环境没有账号凭据，上传必然失败。
+            var outcome = await merge.ApplyAsync(choices);
+
+            Assert.Equal(1, outcome.FailedCount);
+            Assert.Equal(1, outcome.KeptCalendarCount);
+
+            // 关键：失败时本地日历和里面的日程都必须还在。
+            Assert.Contains(repo.GetSources(), s => s.Href == localHref);
+            Assert.Equal(1, repo.CountMastersForCalendar(localHref));
+        }
+        finally
+        {
+            TryDelete(path);
+        }
+    }
+
+    [Fact]
+    public void BackupIcs_ContainsAllEventsOfCalendar()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"cal-{Guid.NewGuid():N}.db");
+        try
+        {
+            var (repo, _, sync) = Create(path);
+            var localHref = repo.AddLocalSource("要备份的", "#4D8FE3");
+            repo.UpsertMaster(new RawCalendarItem
+            {
+                CalendarHref = localHref,
+                ResourceHref = localHref + "/b1.ics",
+                ETag = "",
+                Ics = IcsFor("b1", "备份第一条"),
+            });
+            repo.UpsertMaster(new RawCalendarItem
+            {
+                CalendarHref = localHref,
+                ResourceHref = localHref + "/b2.ics",
+                ETag = "",
+                Ics = IcsFor("b2", "备份第二条"),
+            });
+
+            var merge = new CalendarMergeService(repo, sync);
+            var ics = merge.BuildBackupIcs(localHref);
+
+            Assert.Contains("BEGIN:VCALENDAR", ics);
+            Assert.Contains("UID:b1", ics);
+            Assert.Contains("UID:b2", ics);
+            Assert.Contains("SUMMARY:备份第一条", ics);
+            Assert.Contains("SUMMARY:备份第二条", ics);
+            // 每个 VEVENT 只出现一次，不能因为重组而重复。
+            Assert.Equal(2, ics.Split("BEGIN:VEVENT").Length - 1);
+        }
+        finally
+        {
+            TryDelete(path);
+        }
+    }
+
+    [Fact]
+    public async Task Merge_DiscardRemovesLocalCalendar()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"cal-{Guid.NewGuid():N}.db");
+        try
+        {
+            var (repo, _, sync) = Create(path);
+            var localHref = repo.AddLocalSource("临时", "#4D8FE3");
+            repo.UpsertMaster(new RawCalendarItem
+            {
+                CalendarHref = localHref,
+                ResourceHref = localHref + "/x.ics",
+                ETag = "",
+                Ics = IcsFor("x", "要丢掉的"),
+            });
+
+            var merge = new CalendarMergeService(repo, sync);
+            var choices = merge.BuildChoices();
+            choices[0].Action = MergeAction.Discard;
+
+            var outcome = await merge.ApplyAsync(choices);
+
+            Assert.Equal(1, outcome.DiscardedCount);
+            Assert.DoesNotContain(repo.GetSources(), s => s.Href == localHref);
+        }
+        finally
+        {
+            TryDelete(path);
+        }
+    }
+
+    [Fact]
+    public async Task Merge_KeepLocalLeavesEverythingInPlace()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"cal-{Guid.NewGuid():N}.db");
+        try
+        {
+            var (repo, _, sync) = Create(path);
+            var localHref = repo.AddLocalSource("保留", "#4D8FE3");
+            repo.UpsertMaster(new RawCalendarItem
+            {
+                CalendarHref = localHref,
+                ResourceHref = localHref + "/k.ics",
+                ETag = "",
+                Ics = IcsFor("k", "留在本地"),
+            });
+
+            var merge = new CalendarMergeService(repo, sync);
+            var choices = merge.BuildChoices();
+            choices[0].Action = MergeAction.KeepLocal;
+
+            var outcome = await merge.ApplyAsync(choices);
+
+            Assert.Equal(1, outcome.KeptLocalCount);
+            Assert.Contains(repo.GetSources(), s => s.Href == localHref);
+            Assert.Equal(1, repo.CountMastersForCalendar(localHref));
+        }
+        finally
+        {
+            TryDelete(path);
+        }
+    }
+
+    [Fact]
+    public void Merge_HasLocalDataOnlyWhenLocalHasEvents()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"cal-{Guid.NewGuid():N}.db");
+        try
+        {
+            var (repo, _, sync) = Create(path);
+            var merge = new CalendarMergeService(repo, sync);
+
+            // 新建的空本地日历不需要裁决。
+            var localHref = repo.AddLocalSource("空的", "#4D8FE3");
+            Assert.False(merge.HasLocalDataToReconcile());
+
+            repo.UpsertMaster(new RawCalendarItem
+            {
+                CalendarHref = localHref,
+                ResourceHref = localHref + "/n.ics",
+                ETag = "",
+                Ics = IcsFor("n", "有内容了"),
+            });
+
+            Assert.True(merge.HasLocalDataToReconcile());
+        }
+        finally
+        {
+            TryDelete(path);
+        }
+    }
+
+    private static string IcsFor(string uid, string summary) => string.Join("\r\n", new[]
+    {
+        "BEGIN:VCALENDAR",
+        "BEGIN:VEVENT",
+        $"UID:{uid}",
+        "DTSTART:20261124T090000",
+        "DTEND:20261124T100000",
+        $"SUMMARY:{summary}",
+        "END:VEVENT",
+        "END:VCALENDAR",
+        string.Empty,
+    });
+
     private static void TryDelete(string path)
     {
         foreach (var suffix in new[] { "", "-wal", "-shm" })

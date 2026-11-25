@@ -356,12 +356,12 @@ public sealed partial class CalendarHostWindow : Window
             };
             _acrylic = WindowAcrylic.Apply(
                 this, Appearance.TintForOpacity(_settings.Current.WindowOpacity), dark, _backdropConfig,
-                (Appearance.TintMode)Math.Clamp(_settings.Current.WindowTintMode, 0, 3));
+                (Appearance.TintMode)Math.Clamp(_settings.Current.WindowTintMode, 0, Appearance.TintCount - 1), _settings.Current.CustomTintColor);
             return;
         }
 
         WindowAcrylic.ApplyTint(_acrylic, Appearance.TintForOpacity(_settings.Current.WindowOpacity), dark,
-            (Appearance.TintMode)Math.Clamp(_settings.Current.WindowTintMode, 0, 3));
+            (Appearance.TintMode)Math.Clamp(_settings.Current.WindowTintMode, 0, Appearance.TintCount - 1), _settings.Current.CustomTintColor);
         if (_backdropConfig is not null)
         {
             _backdropConfig.Theme = dark ? SystemBackdropTheme.Dark : SystemBackdropTheme.Light;

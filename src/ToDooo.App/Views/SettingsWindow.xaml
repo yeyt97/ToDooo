@@ -282,30 +282,18 @@
                             </StackPanel>
                         </Border>
 
-                        <!--  底色  -->
+                        <!--  底色：直接给色块预览，比只写颜色名直观  -->
                         <Border Style="{StaticResource SettingCard}">
-                            <Grid ColumnSpacing="16">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="10">
                                 <StackPanel Spacing="3">
                                     <TextBlock Style="{StaticResource LabelText}" Text="底色" />
-                                    <TextBlock Style="{StaticResource HintText}" Text="磨砂背景的着色，深浅色下各有对应。" />
+                                    <TextBlock Style="{StaticResource HintText}" Text="磨砂背景的着色，点色块直接切换；深浅色下各有对应。" />
                                 </StackPanel>
-                                <ComboBox
-                                    x:Name="TintBox"
-                                    Grid.Column="1"
-                                    Width="170"
-                                    VerticalAlignment="Center"
-                                    AutomationProperties.Name="窗口底色"
-                                    SelectionChanged="TintBox_SelectionChanged">
-                                    <ComboBoxItem Content="跟随主题" />
-                                    <ComboBoxItem Content="深灰" />
-                                    <ComboBoxItem Content="藏青" />
-                                    <ComboBoxItem Content="暖褐" />
-                                </ComboBox>
-                            </Grid>
+                                <StackPanel
+                                    x:Name="TintSwatchPanel"
+                                    Orientation="Horizontal"
+                                    Spacing="8" />
+                            </StackPanel>
                         </Border>
 
                         <!--  开机自启  -->
@@ -329,25 +317,52 @@
 
                         <!--  自动隐藏  -->
                         <Border Style="{StaticResource SettingCard}">
-                            <Grid ColumnSpacing="16">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Spacing="3">
-                                    <TextBlock Style="{StaticResource LabelText}" Text="自动隐藏" />
-                                    <TextBlock Style="{StaticResource HintText}" Text="鼠标离开窗口时自动变淡，移回恢复。" />
-                                </StackPanel>
-                                <ToggleSwitch
-                                    x:Name="AutoHideToggle"
-                                    Grid.Column="1"
-                                    MinWidth="0"
-                                    VerticalAlignment="Center"
-                                    AutomationProperties.Name="自动隐藏"
-                                    OffContent="关闭"
-                                    OnContent="启用"
-                                    Toggled="AutoHideToggle_Toggled" />
-                            </Grid>
+                            <StackPanel Spacing="8">
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="3">
+                                        <TextBlock Style="{StaticResource LabelText}" Text="自动隐藏" />
+                                        <TextBlock Style="{StaticResource HintText}" Text="鼠标离开窗口后自动变淡，移回恢复。" />
+                                    </StackPanel>
+                                    <ToggleSwitch
+                                        x:Name="AutoHideToggle"
+                                        Grid.Column="1"
+                                        MinWidth="0"
+                                        VerticalAlignment="Center"
+                                        AutomationProperties.Name="自动隐藏"
+                                        OffContent="关闭"
+                                        OnContent="启用"
+                                        Toggled="AutoHideToggle_Toggled" />
+                                </Grid>
+                                <!--  开关打开后才出现延迟设置  -->
+                                <Grid
+                                    x:Name="AutoHideDelayRow"
+                                    ColumnSpacing="12"
+                                    Visibility="Collapsed">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock
+                                        VerticalAlignment="Center"
+                                        Style="{StaticResource LabelText}"
+                                        Text="离开多少秒后隐藏（0 = 立即）" />
+                                    <NumberBox
+                                        x:Name="AutoHideDelayBox"
+                                        Grid.Column="1"
+                                        Width="120"
+                                        MinWidth="0"
+                                        Minimum="0"
+                                        Maximum="600"
+                                        SmallChange="1"
+                                        LargeChange="5"
+                                        SpinButtonPlacementMode="Compact"
+                                        ValueChanged="AutoHideDelayBox_ValueChanged" />
+                                </Grid>
+                            </StackPanel>
                         </Border>
 
                         <!--  全局呼出  -->
@@ -505,22 +520,68 @@
                         <!--  智能视图  -->
                         <Border Style="{StaticResource SettingCard}">
                             <StackPanel Spacing="6">
-                                <TextBlock Style="{StaticResource LabelText}" Text="智能视图" />
-                                <TextBlock Style="{StaticResource HintText}" Text="勾选要在主窗口显示的视图，用箭头调整显示顺序。" />
-                                <StackPanel x:Name="SmartViewList" Spacing="0" Margin="0,4,0,0" />
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="3">
+                                        <TextBlock Style="{StaticResource LabelText}" Text="智能视图" />
+                                        <TextBlock Style="{StaticResource HintText}" Text="在主窗口显示「今天 / 本周 / 逾期」等快捷视图；关闭后这一栏不显示。" />
+                                    </StackPanel>
+                                    <ToggleSwitch
+                                        x:Name="SmartViewToggle"
+                                        Grid.Column="1"
+                                        MinWidth="0"
+                                        AutomationProperties.Name="启用智能视图"
+                                        OffContent=""
+                                        OnContent=""
+                                        Toggled="SmartViewToggle_Toggled" />
+                                </Grid>
+                                <!--  开关打开后才出现下面的勾选与排序  -->
+                                <StackPanel
+                                    x:Name="SmartViewOptions"
+                                    Spacing="6"
+                                    Visibility="Collapsed">
+                                    <TextBlock Style="{StaticResource HintText}" Text="勾选要显示的视图，用箭头调整顺序。" />
+                                    <StackPanel x:Name="SmartViewList" Spacing="0" Margin="0,4,0,0" />
+                                </StackPanel>
                             </StackPanel>
                         </Border>
 
                         <!--  颜色标签  -->
                         <Border Style="{StaticResource SettingCard}">
                             <StackPanel Spacing="6">
-                                <TextBlock Style="{StaticResource LabelText}" Text="颜色标签" />
-                                <TextBlock Style="{StaticResource HintText}" Text="为 8 种颜色设置简短分类名（留空则显示默认编号）。" />
-                                <Grid
-                                    x:Name="TagNamesGrid"
-                                    Margin="0,4,0,0"
-                                    RowSpacing="8"
-                                    ColumnSpacing="12" />
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="3">
+                                        <TextBlock Style="{StaticResource LabelText}" Text="颜色标签" />
+                                        <TextBlock Style="{StaticResource HintText}" Text="在主窗口显示颜色筛选和卡片色条；关闭后不再显示。" />
+                                    </StackPanel>
+                                    <ToggleSwitch
+                                        x:Name="ColorTagToggle"
+                                        Grid.Column="1"
+                                        MinWidth="0"
+                                        AutomationProperties.Name="启用颜色标签"
+                                        OffContent=""
+                                        OnContent=""
+                                        Toggled="ColorTagToggle_Toggled" />
+                                </Grid>
+                                <!--  开关打开后才出现命名输入  -->
+                                <StackPanel
+                                    x:Name="ColorTagOptions"
+                                    Spacing="6"
+                                    Visibility="Collapsed">
+                                    <TextBlock Style="{StaticResource HintText}" Text="为 8 种颜色设置简短分类名（留空则显示默认编号）。" />
+                                    <Grid
+                                        x:Name="TagNamesGrid"
+                                        Margin="0,4,0,0"
+                                        RowSpacing="8"
+                                        ColumnSpacing="12" />
+                                </StackPanel>
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -553,6 +614,36 @@
                                     OnContent=""
                                     Toggled="CalendarSyncToggle_Toggled" />
                             </Grid>
+                        </Border>
+
+                        <!--  我的日历：离线也能管理（新建 / 改名 / 删除），同步开启后云端日历会并进来  -->
+                        <Border Style="{StaticResource SettingCard}">
+                            <StackPanel Spacing="8">
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="3">
+                                        <TextBlock Style="{StaticResource LabelText}" Text="我的日历" />
+                                        <TextBlock Style="{StaticResource HintText}" Text="本地日历只存在本机，不会被云端覆盖；勾选的会显示在日历窗口里。" />
+                                    </StackPanel>
+                                    <Button
+                                        x:Name="AddLocalCalendarButton"
+                                        Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        AutomationProperties.Name="新建本地日历"
+                                        Click="AddLocalCalendar_Click">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <FontIcon Glyph="&#xE710;" FontSize="11" />
+                                            <TextBlock Text="新建" FontSize="12" />
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
+                                <StackPanel
+                                    x:Name="CalendarSourceList"
+                                    Spacing="0" />
+                            </StackPanel>
                         </Border>
 
                         <!--  关闭同步时不显示任何配置项  -->
@@ -699,43 +790,6 @@
                             </StackPanel>
                         </Border>
 
-                        <Border Style="{StaticResource SettingCard}">
-                            <StackPanel Spacing="10">
-                                <!--  教程模式下这张卡就是第 3 步：显示编号徽标，连接后换回普通标题  -->
-                                <Grid x:Name="CalendarSourcesStepHeader" ColumnSpacing="10" Visibility="Collapsed">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Border
-                                        Width="22"
-                                        Height="22"
-                                        CornerRadius="11"
-                                        Background="{ThemeResource AccentBrush}">
-                                        <TextBlock
-                                            HorizontalAlignment="Center"
-                                            VerticalAlignment="Center"
-                                            FontSize="12"
-                                            FontWeight="SemiBold"
-                                            Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
-                                            Text="3" />
-                                    </Border>
-                                    <TextBlock
-                                        Grid.Column="1"
-                                        VerticalAlignment="Center"
-                                        Style="{StaticResource LabelText}"
-                                        Text="选择要显示的日历" />
-                                </Grid>
-                                <TextBlock
-                                    x:Name="CalendarSourcesTitle"
-                                    Style="{StaticResource LabelText}"
-                                    Text="显示的日历" />
-                                <TextBlock Style="{StaticResource HintText}" Text="勾选后才会出现在日历窗口里。连接成功后这里会列出你 iCloud 里的所有日历。" />
-                                <StackPanel
-                                    x:Name="CalendarSourceList"
-                                    Spacing="0" />
-                            </StackPanel>
-                        </Border>
 
                         <!--  同步：自动刷新、上次同步、手动刷新合在一张卡片  -->
                         <Border Style="{StaticResource SettingCard}">

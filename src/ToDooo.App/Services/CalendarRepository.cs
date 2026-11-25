@@ -180,6 +180,66 @@ public sealed class CalendarRepository
         command.ExecuteNonQuery();
     }
 
+    /// <summary>
+    /// 本程序自建的本地日历：href 带 local: 前缀，永远不会和服务器集合路径撞。
+    /// 本地日历只存本机，同步时云端也不会覆盖它。
+    /// </summary>
+    public const string LocalHrefPrefix = "local:";
+
+    public static bool IsLocalHref(string? href) =>
+        href is not null && href.StartsWith(LocalHrefPrefix, StringComparison.Ordinal);
+
+    /// <summary>新建一个本地日历集合，返回生成的 href。</summary>
+    public string AddLocalSource(string displayName, string color)
+    {
+        var href = LocalHrefPrefix + Guid.NewGuid().ToString("N");
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO calendar_sources (href, display_name, color, is_visible, sort_order)
+            VALUES ($href, $name, $color, 1,
+                    (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM calendar_sources))
+            """;
+        command.Parameters.AddWithValue("$href", href);
+        command.Parameters.AddWithValue("$name", displayName.Trim());
+        command.Parameters.AddWithValue("$color", color);
+        command.ExecuteNonQuery();
+        return href;
+    }
+
+    public void RenameSource(string href, string displayName)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE calendar_sources SET display_name = $name WHERE href = $href";
+        command.Parameters.AddWithValue("$name", displayName.Trim());
+        command.Parameters.AddWithValue("$href", href);
+        command.ExecuteNonQuery();
+    }
+
+    /// <summary>删除日历集合，连同它的事件、母事件和待补传项一并清掉。</summary>
+    public void DeleteSource(string href)
+    {
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction();
+
+        foreach (var sql in new[]
+        {
+            "DELETE FROM calendar_pending WHERE calendar_href = $href",
+            "DELETE FROM calendar_event_masters WHERE calendar_href = $href",
+            "DELETE FROM calendar_events WHERE calendar_href = $href",
+            "DELETE FROM calendar_sources WHERE href = $href",
+        })
+        {
+            using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = sql;
+            command.Parameters.AddWithValue("$href", href);
+            command.ExecuteNonQuery();
+        }
+
+        transaction.Commit();
+    }
     /// <summary>按资源路径删除缓存事件（一个 .ics 可能含母事件与多个实例，一起删）。</summary>
     public void RemoveEventsByResource(string resourceHref)
     {
@@ -623,6 +683,46 @@ public sealed class CalendarRepository
         command.CommandText = "SELECT raw_ics FROM calendar_event_masters WHERE resource_href = $res";
         command.Parameters.AddWithValue("$res", resourceHref);
         return command.ExecuteScalar() as string;
+    }
+
+    /// <summary>读取某个日历集合下的全部母事件（不区分是否可见）。合并向导用得到。</summary>
+    public List<RawCalendarItem> GetMastersForCalendar(string calendarHref)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT calendar_href, resource_href, etag, raw_ics
+            FROM calendar_event_masters
+            WHERE calendar_href = $href
+            ORDER BY resource_href
+            """;
+        command.Parameters.AddWithValue("$href", calendarHref);
+
+        var items = new List<RawCalendarItem>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            items.Add(new RawCalendarItem
+            {
+                CalendarHref = reader.GetString(0),
+                ResourceHref = reader.GetString(1),
+                ETag = reader.GetString(2),
+                Ics = reader.GetString(3),
+            });
+        }
+
+        return items;
+    }
+
+    /// <summary>某个日历集合下的母事件条数（合并向导里显示规模）。</summary>
+    public int CountMastersForCalendar(string calendarHref)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT COUNT(*) FROM calendar_event_masters WHERE calendar_href = $href";
+        command.Parameters.AddWithValue("$href", calendarHref);
+        return Convert.ToInt32(command.ExecuteScalar() ?? 0);
     }
 
     public void RemoveMaster(string resourceHref)

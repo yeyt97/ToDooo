@@ -311,14 +311,10 @@ public sealed partial class CalendarWindow : UserControl
             return;
         }
 
-        // 离线也能建：只要本地有日历集合就行，改动会排进待补传队列。
+        // 一个日历都没有时先建一个本地日历（默认可见），日程才有地方落。
         if (_calendarSync.Repository.GetSources().Count == 0)
         {
-            await ShowMessageAsync("还没有可用日历",
-                _calendarSync.IsConfigured
-                    ? "先同步一次拿到日历列表，才能新建日程。"
-                    : "先到设置里打开日历同步并连接 iCloud，拿到日历列表后就能新建日程。");
-            return;
+            _calendarSync.Repository.AddLocalSource("我的日历", "#4D8FE3");
         }
 
         var dialog = new CalendarEventDialog(_settings, _calendarSync, date);
@@ -423,7 +419,7 @@ public sealed partial class CalendarWindow : UserControl
     }
 
     private Appearance.TintMode CurrentTintMode() =>
-        (Appearance.TintMode)Math.Clamp(_settings?.Current.WindowTintMode ?? 0, 0, 3);
+        (Appearance.TintMode)Math.Clamp(_settings?.Current.WindowTintMode ?? 0, 0, Appearance.TintCount - 1);
 
     public void ApplyThemeOnly()
     {

@@ -28,6 +28,7 @@
     <Compile Include="..\..\src\ToDooo.App\Services\IcsCalendar.cs" Link="Linked\Services\IcsCalendar.cs" />
     <Compile Include="..\..\src\ToDooo.App\Services\RecurrenceExpander.cs" Link="Linked\Services\RecurrenceExpander.cs" />
     <Compile Include="..\..\src\ToDooo.App\Services\CalendarRepository.cs" Link="Linked\Services\CalendarRepository.cs" />
+    <Compile Include="..\..\src\ToDooo.App\Services\CalendarMergeService.cs" Link="Linked\Services\CalendarMergeService.cs" />
     <Compile Include="..\..\src\ToDooo.App\Services\CalendarSyncService.cs" Link="Linked\Services\CalendarSyncService.cs" />
     <Compile Include="..\..\src\ToDooo.App\Services\CalDavClient.cs" Link="Linked\Services\CalDavClient.cs" />
     <Compile Include="..\..\src\ToDooo.App\Services\SecretProtector.cs" Link="Linked\Services\SecretProtector.cs" />

@@ -13,6 +13,7 @@ using Microsoft.UI.Xaml.Markup;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using ToDooo.Interop;
+using ToDooo.Helpers;
 using ToDooo.Models;
 using ToDooo.Services;
 using ToDooo.ViewModels;
@@ -90,9 +91,13 @@ public sealed partial class MainWindow : Window
                 UpdateSubtasksToggleVisual();
             }
         };
+        // 颜色标签开关要在建卡片之前定好，否则首屏色条会按默认值画。
+        Bind.ColorTagsVisible = _settings.Current.ColorTagsEnabled;
         BuildTagDots();
         BuildSmartViewChips();
+        BuildDoneRangeChips();
         UpdateFilterVisuals();
+        UpdateTagVisuals();
 
         // 列表/滚动区会先把按下事件标记为已处理，贴边缩放要能看见这些被吞掉的事件。
         Root.AddHandler(
@@ -110,6 +115,9 @@ public sealed partial class MainWindow : Window
 
         // XAML 的 LostFocus 在窗口整体失活时不会触发，这里补一次全局失焦提交。
         Activated += MainWindow_Activated;
+
+        // 输入框的右键菜单是独立窗口，弹出时主窗口会失活；挂上开合事件才能区分「菜单」和「真离开」。
+        AttachComposerMenu(AddTextBox);
 
         HookNetworkRecovery();
 
@@ -308,7 +316,7 @@ public sealed partial class MainWindow : Window
 
         Root.RequestedTheme = Appearance.ToElementTheme((ThemeMode)_settings.Current.ThemeMode);
         ThemePalette.Apply(Appearance.IsDark((ThemeMode)_settings.Current.ThemeMode), _settings.Current.WindowOpacity,
-            (Appearance.TintMode)Math.Clamp(_settings.Current.WindowTintMode, 0, 3));
+            (Appearance.TintMode)Math.Clamp(_settings.Current.WindowTintMode, 0, Appearance.TintCount - 1), _settings.Current.CustomTintColor);
         ApplyAcrylicMaterial();
 
         var exStyle = NativeMethods.GetWindowLongPtr(_hwnd, NativeMethods.GWL_EXSTYLE).ToInt64();
@@ -348,7 +356,7 @@ public sealed partial class MainWindow : Window
 
         _acrylic = new DesktopAcrylicController { Kind = DesktopAcrylicKind.Base };
         WindowAcrylic.ApplyTint(_acrylic, Appearance.TintForOpacity(_settings.Current.WindowOpacity), dark,
-            (Appearance.TintMode)Math.Clamp(_settings.Current.WindowTintMode, 0, 3));
+            (Appearance.TintMode)Math.Clamp(_settings.Current.WindowTintMode, 0, Appearance.TintCount - 1), _settings.Current.CustomTintColor);
         _acrylic.AddSystemBackdropTarget(
             ((object)this).As<Microsoft.UI.Composition.ICompositionSupportsSystemBackdrop>());
         _acrylic.SetSystemBackdropConfiguration(_backdropConfig);
@@ -360,13 +368,13 @@ public sealed partial class MainWindow : Window
         Root.RequestedTheme = Appearance.ToElementTheme((ThemeMode)_settings.Current.ThemeMode);
         var dark = Appearance.IsDark((ThemeMode)_settings.Current.ThemeMode);
         ThemePalette.Apply(dark, _settings.Current.WindowOpacity,
-            (Appearance.TintMode)Math.Clamp(_settings.Current.WindowTintMode, 0, 3));
+            (Appearance.TintMode)Math.Clamp(_settings.Current.WindowTintMode, 0, Appearance.TintCount - 1), _settings.Current.CustomTintColor);
         ApplyDwmTheme(dark);
 
         if (_acrylic is not null)
         {
             WindowAcrylic.ApplyTint(_acrylic, Appearance.TintForOpacity(_settings.Current.WindowOpacity), dark,
-                (Appearance.TintMode)Math.Clamp(_settings.Current.WindowTintMode, 0, 3));
+                (Appearance.TintMode)Math.Clamp(_settings.Current.WindowTintMode, 0, Appearance.TintCount - 1), _settings.Current.CustomTintColor);
             if (_backdropConfig is not null)
             {
                 _backdropConfig.Theme = dark
@@ -383,7 +391,7 @@ public sealed partial class MainWindow : Window
 
     /// <summary>当前底色方案，转给弹窗磨砂等处用。</summary>
     private Appearance.TintMode CurrentTintMode() =>
-        (Appearance.TintMode)Math.Clamp(_settings.Current.WindowTintMode, 0, 3);
+        (Appearance.TintMode)Math.Clamp(_settings.Current.WindowTintMode, 0, Appearance.TintCount - 1);
 
     private void ApplyDwmTheme(bool dark)
     {
@@ -412,11 +420,20 @@ public sealed partial class MainWindow : Window
         _taskbarCreatedMessage = NativeMethods.RegisterWindowMessageW("TaskbarCreated");
     }
 
+    // 首次启动的默认尺寸（逻辑像素）；之后一律以保存的物理像素为准。
+    private const int DefaultLogicalWidth = 440;
+    private const int DefaultLogicalHeight = 716;
+
     private void PositionWindow()
     {
+        // 尺寸按物理像素存；从没保存过（0）时用默认逻辑尺寸乘当前 DPI 换算一次。
         var scale = NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
-        var width = (int)Math.Round(_settings.Current.WindowWidth * scale);
-        var height = (int)Math.Round(_settings.Current.WindowHeight * scale);
+        var width = _settings.Current.WindowWidth > 0
+            ? _settings.Current.WindowWidth
+            : (int)Math.Round(DefaultLogicalWidth * scale);
+        var height = _settings.Current.WindowHeight > 0
+            ? _settings.Current.WindowHeight
+            : (int)Math.Round(DefaultLogicalHeight * scale);
 
         var fallback = DisplayArea.GetFromWindowId(_appWindow.Id, DisplayAreaFallback.Primary).WorkArea;
         var x = _settings.Current.WindowX ?? fallback.X + fallback.Width - width - (int)(24 * scale);
@@ -431,16 +448,7 @@ public sealed partial class MainWindow : Window
             _hwnd, IntPtr.Zero, x, y, width, height,
             NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
 
-        // 落到目标显示器后 DPI 可能变了（两个屏缩放不同），用新 DPI 重算一次尺寸。
-        var landedScale = NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
-        if (Math.Abs(landedScale - scale) > 0.001)
-        {
-            NativeMethods.SetWindowPos(
-                _hwnd, IntPtr.Zero, 0, 0,
-                (int)Math.Round(_settings.Current.WindowWidth * landedScale),
-                (int)Math.Round(_settings.Current.WindowHeight * landedScale),
-                NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
-        }
+        // 尺寸是物理像素，落到另一块不同缩放的屏也保持像素大小，无需再按 DPI 重算。
 
         _positioned = true;
     }
@@ -471,13 +479,12 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var scale = NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
         _settings.Current.WindowY = rect.Top;
         _settings.Current.WindowX = rect.Left;
-        // 缩放后的尺寸也要持久化，PositionWindow() 会按 DPI 还原；否则重启又回到旧的固定大小。
-        // 设置项存的是逻辑像素，所以这里要把物理像素除回去。
-        _settings.Current.WindowWidth = Math.Max(320, (int)Math.Round((rect.Right - rect.Left) / scale));
-        _settings.Current.WindowHeight = Math.Max(360, (int)Math.Round((rect.Bottom - rect.Top) / scale));
+        // 尺寸按物理像素存：改系统缩放后窗口的像素大小不变，
+        // 若换算成逻辑像素再按新 DPI 还原，重启就会跟着缩放一起变大。
+        _settings.Current.WindowWidth = Math.Max(1, rect.Right - rect.Left);
+        _settings.Current.WindowHeight = Math.Max(1, rect.Bottom - rect.Top);
         _settings.Save();
     }
 
@@ -696,6 +703,12 @@ public sealed partial class MainWindow : Window
         ApplyAppearance();
         ApplyGlobalHotkey();
         RefreshTagButtonLabels();
+
+        // 颜色标签开关会影响卡片色条（x:Bind 读静态属性），需要让卡片重建一次才生效。
+        Bind.ColorTagsVisible = _settings.Current.ColorTagsEnabled;
+        UpdateTagVisuals();
+        ViewModel.RefreshCardVisuals();
+
         _reminder.LeadMinutes = _settings.Current.ReminderLeadMinutes;
         BuildSmartViewChips();
         ScheduleCalendarRefresh();
@@ -843,20 +856,24 @@ public sealed partial class MainWindow : Window
                 break;
 
             case NativeMethods.WM_DPICHANGED:
-                // 系统建议矩形 = 新 DPI 下保持同样的逻辑尺寸。启动定位、停靠、拖动、
-                // 贴边缩放期间位置各由自己的几何逻辑接管，这里只负责落尺寸和事后重算。
-                if (_positioned && _dockEdge == EdgeDock.None && !_dragging && _resizeHit == 0)
+            {
+                // 保持像素大小不变：系统建议矩形是按新 DPI 等比放大后的尺寸，
+                // 照单全收会让窗口在屏幕上明显变大。这里沿用原来的物理宽高，只把位置收回到屏幕内。
+                if (_positioned && _dockEdge == EdgeDock.None && !_dragging && _resizeHit == 0 &&
+                    NativeMethods.GetWindowRect(_hwnd, out var current))
                 {
                     var suggested = System.Runtime.InteropServices.Marshal
                         .PtrToStructure<NativeMethods.RECT>(lParam);
+                    var width = current.Right - current.Left;
+                    var height = current.Bottom - current.Top;
                     NativeMethods.SetWindowPos(
-                        _hwnd, IntPtr.Zero, suggested.Left, suggested.Top,
-                        suggested.Right - suggested.Left, suggested.Bottom - suggested.Top,
+                        _hwnd, IntPtr.Zero, suggested.Left, suggested.Top, width, height,
                         NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
                 }
 
                 _dispatcher.TryEnqueue(OnDpiChanged);
                 break;
+            }
 
             case NativeMethods.WM_SETTINGCHANGE:
                 // 系统深/浅色切换时刷新；固定深/浅色的设置不受影响。

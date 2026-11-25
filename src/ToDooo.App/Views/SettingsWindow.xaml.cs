@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -77,13 +78,23 @@ public sealed partial class SettingsWindow : Window
         var transparency = Math.Clamp(1.0 - settings.Current.WindowOpacity, 0.0, 0.9);
         OpacitySlider.Value = transparency;
         OpacityValue.Text = $"{Math.Round(transparency * 100)}%";
-        TintBox.SelectedIndex = Math.Clamp(settings.Current.WindowTintMode, 0, 3);
+        BuildTintSwatches();
         StartupToggle.IsOn = StartupService.IsEnabled;
         AutoHideToggle.IsOn = settings.Current.AutoHide;
+        AutoHideDelayBox.Value = Math.Clamp(settings.Current.AutoHideDelaySeconds, 0, 600);
+        AutoHideDelayRow.Visibility = settings.Current.AutoHide ? Visibility.Visible : Visibility.Collapsed;
+        SmartViewToggle.IsOn = settings.Current.SmartViewEnabled;
+        SmartViewOptions.Visibility = settings.Current.SmartViewEnabled
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         DefaultTabBox.SelectedIndex = Math.Clamp(settings.Current.DefaultTab, 0, 3);
         HotkeyBox.SelectedIndex = Math.Clamp(settings.Current.GlobalHotkeyMode, 0, 3);
         QuickAddHotkeyBox.SelectedIndex = Math.Clamp(settings.Current.QuickAddHotkeyMode, 0, 3);
         BuildSmartViewList();
+        ColorTagToggle.IsOn = settings.Current.ColorTagsEnabled;
+        ColorTagOptions.Visibility = settings.Current.ColorTagsEnabled
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         BuildTagNameEditors();
         LeadBox.SelectedIndex = Math.Max(0, Array.IndexOf(LeadOptions, settings.Current.ReminderLeadMinutes));
         LoadCalendarSettings();
@@ -136,9 +147,11 @@ public sealed partial class SettingsWindow : Window
 
         if (_appWindow.Presenter is OverlappedPresenter presenter)
         {
-            // 设置窗口要能改宽度：侧栏会随宽度在「图标+文字」和「只剩图标」之间切换。
+            // 窗口要能改宽度（侧栏会随宽度收缩），但缩放由下面自己处理边缘命中：
+            // 交给 presenter 的 IsResizable 会让系统在顶部留一条非客户区，
+            // 无边框窗口上就表现成一条黑条。
             presenter.SetBorderAndTitleBar(false, false);
-            presenter.IsResizable = true;
+            presenter.IsResizable = false;
             presenter.IsMaximizable = false;
             presenter.IsMinimizable = false;
             presenter.PreferredMinimumWidth = MinLogicalWidth;
@@ -496,12 +509,12 @@ public sealed partial class SettingsWindow : Window
             };
             _acrylic = WindowAcrylic.Apply(
                 this, Appearance.TintForOpacity(_settings.Current.WindowOpacity), dark, _backdropConfig,
-                (Appearance.TintMode)Math.Clamp(_settings.Current.WindowTintMode, 0, 3));
+                (Appearance.TintMode)Math.Clamp(_settings.Current.WindowTintMode, 0, Appearance.TintCount - 1), _settings.Current.CustomTintColor);
             return;
         }
 
         WindowAcrylic.ApplyTint(_acrylic, Appearance.TintForOpacity(_settings.Current.WindowOpacity), dark,
-            (Appearance.TintMode)Math.Clamp(_settings.Current.WindowTintMode, 0, 3));
+            (Appearance.TintMode)Math.Clamp(_settings.Current.WindowTintMode, 0, Appearance.TintCount - 1), _settings.Current.CustomTintColor);
         if (_backdropConfig is not null)
         {
             _backdropConfig.Theme = dark ? SystemBackdropTheme.Dark : SystemBackdropTheme.Light;
@@ -602,18 +615,196 @@ public sealed partial class SettingsWindow : Window
         _settings.Save();
         Root.RequestedTheme = Appearance.ToElementTheme((ThemeMode)ThemeBox.SelectedIndex);
         ApplyWindowMaterial();
+
+        // 深浅主题下底色是两个色值，切换后色块要重画才所见即所得。
+        BuildTintSwatches();
         _settingsChanged();
     }
 
-    private void TintBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private readonly List<Button> _tintSwatches = new();
+
+    /// <summary>
+    /// 底色用色块预览：每个方案画成一个半深半浅的圆片（左深右浅），
+    /// 这样不管当前是什么主题，九种底色的色相差别都一眼能分辨出来。
+    /// </summary>
+    private void BuildTintSwatches()
     {
-        if (!_ready)
+        TintSwatchPanel.Children.Clear();
+        _tintSwatches.Clear();
+        // 用了自定义色时，预设色块都不高亮。
+        var hasCustom = _settings.Current.CustomTintColor is { Length: > 0 };
+        var selected = hasCustom
+            ? -1
+            : Math.Clamp(_settings.Current.WindowTintMode, 0, Appearance.TintCount - 1);
+
+        for (var i = 0; i < Appearance.TintCount; i++)
+        {
+            var index = i;
+            var (darkTint, _) = Appearance.TintColors((Appearance.TintMode)i, dark: true);
+            var (lightTint, _) = Appearance.TintColors((Appearance.TintMode)i, dark: false);
+
+            // 上深下浅的双色圆片：一眼看出这个方案在两种主题下的样子。
+            var dot = new Grid
+            {
+                Width = 26,
+                Height = 26,
+                CornerRadius = new CornerRadius(13),
+                Clip = new RectangleGeometry { Rect = new Windows.Foundation.Rect(0, 0, 26, 26) },
+            };
+            dot.Children.Add(new Border
+            {
+                Background = new SolidColorBrush(Solid(darkTint)),
+                VerticalAlignment = VerticalAlignment.Top,
+                Height = 13,
+            });
+            dot.Children.Add(new Border
+            {
+                Background = new SolidColorBrush(Solid(lightTint)),
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Height = 13,
+            });
+            dot.Children.Add(new Border
+            {
+                CornerRadius = new CornerRadius(13),
+                BorderThickness = new Thickness(1),
+                BorderBrush = new SolidColorBrush(Color.FromArgb(0x40, 0x80, 0x80, 0x80)),
+            });
+
+            var button = new Button
+            {
+                Width = 38,
+                Height = 38,
+                MinWidth = 0,
+                MinHeight = 0,
+                Padding = new Thickness(0),
+                Background = index == selected
+                    ? (Brush)Application.Current.Resources["SegmentSelectedBrush"]
+                    : new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+                BorderThickness = new Thickness(0),
+                CornerRadius = new CornerRadius(19),
+                Content = dot,
+                Tag = index,
+            };
+            ToolTipService.SetToolTip(button, Appearance.TintNames[i]);
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+                button, $"底色 {Appearance.TintNames[i]}");
+            button.Click += TintSwatch_Click;
+
+            _tintSwatches.Add(button);
+            TintSwatchPanel.Children.Add(button);
+        }
+
+        // 最后一个是调色盘入口：彩色渐变圆片，点开自选颜色。
+        var customButton = new Button
+        {
+            Width = 38,
+            Height = 38,
+            MinWidth = 0,
+            MinHeight = 0,
+            Padding = new Thickness(0),
+            BorderThickness = new Thickness(0),
+            CornerRadius = new CornerRadius(19),
+            Background = _settings.Current.CustomTintColor is { Length: > 0 }
+                ? (Brush)Application.Current.Resources["SegmentSelectedBrush"]
+                : new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+            Content = new Border
+            {
+                Width = 26,
+                Height = 26,
+                CornerRadius = new CornerRadius(13),
+                BorderThickness = new Thickness(1),
+                BorderBrush = new SolidColorBrush(Color.FromArgb(0x40, 0x80, 0x80, 0x80)),
+                Background = new LinearGradientBrush
+                {
+                    StartPoint = new Windows.Foundation.Point(0, 0),
+                    EndPoint = new Windows.Foundation.Point(1, 1),
+                    GradientStops =
+                    {
+                        new GradientStop { Color = Microsoft.UI.Colors.Red, Offset = 0 },
+                        new GradientStop { Color = Microsoft.UI.Colors.Yellow, Offset = 0.28 },
+                        new GradientStop { Color = Microsoft.UI.Colors.Lime, Offset = 0.5 },
+                        new GradientStop { Color = Microsoft.UI.Colors.Cyan, Offset = 0.72 },
+                        new GradientStop { Color = Microsoft.UI.Colors.Blue, Offset = 1 },
+                    },
+                },
+            },
+        };
+        ToolTipService.SetToolTip(customButton, "自定义颜色");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(customButton, "底色 自定义颜色");
+        customButton.Click += async (_, _) => await PickCustomTintAsync();
+        TintSwatchPanel.Children.Add(customButton);
+    }
+
+    /// <summary>调色盘：选一个任意颜色作为底色，选完立刻生效。</summary>
+    private async Task PickCustomTintAsync()
+    {
+        var picker = new ColorPicker
+        {
+            IsAlphaEnabled = false,
+            IsColorChannelTextInputVisible = true,
+            IsHexInputVisible = true,
+            ColorSpectrumShape = ColorSpectrumShape.Box,
+        };
+
+        if (Appearance.CustomTintColors(_settings.Current.CustomTintColor, dark: true) is { } current)
+        {
+            picker.Color = current.Tint;
+        }
+
+        var dialog = new ContentDialog
+        {
+            Title = "自定义底色",
+            Content = picker,
+            PrimaryButtonText = "使用这个颜色",
+            SecondaryButtonText = "恢复预设",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = Root.XamlRoot,
+        };
+
+        var result = await dialog.ShowAsync();
+        if (result == ContentDialogResult.Primary)
+        {
+            var c = picker.Color;
+            _settings.Current.CustomTintColor = $"#{c.R:X2}{c.G:X2}{c.B:X2}";
+        }
+        else if (result == ContentDialogResult.Secondary)
+        {
+            _settings.Current.CustomTintColor = string.Empty;
+        }
+        else
         {
             return;
         }
 
-        _settings.Current.WindowTintMode = Math.Clamp(TintBox.SelectedIndex, 0, 3);
         _settings.Save();
+        BuildTintSwatches();
+        ApplyWindowMaterial();
+        _settingsChanged();
+    }
+
+    private static Color Solid(Windows.UI.Color color) =>
+        Color.FromArgb(255, color.R, color.G, color.B);
+
+    private void TintSwatch_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: int index })
+        {
+            return;
+        }
+
+        _settings.Current.WindowTintMode = Math.Clamp(index, 0, Appearance.TintCount - 1);
+        // 选预设就意味着放弃自定义色。
+        _settings.Current.CustomTintColor = string.Empty;
+        _settings.Save();
+
+        var accent = (Brush)Application.Current.Resources["SegmentSelectedBrush"];
+        var transparent = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        for (var i = 0; i < _tintSwatches.Count; i++)
+        {
+            _tintSwatches[i].Background = i == index ? accent : transparent;
+        }
+
         ApplyWindowMaterial();
         _settingsChanged();
     }
@@ -644,12 +835,43 @@ public sealed partial class SettingsWindow : Window
 
     private void AutoHideToggle_Toggled(object sender, RoutedEventArgs e)
     {
+        AutoHideDelayRow.Visibility = AutoHideToggle.IsOn ? Visibility.Visible : Visibility.Collapsed;
+
         if (!_ready)
         {
             return;
         }
 
         _settings.Current.AutoHide = AutoHideToggle.IsOn;
+        _settings.Save();
+        _settingsChanged();
+    }
+
+    private void AutoHideDelayBox_ValueChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
+    {
+        if (!_ready || double.IsNaN(args.NewValue))
+        {
+            return;
+        }
+
+        _settings.Current.AutoHideDelaySeconds =
+            Math.Clamp((int)Math.Round(args.NewValue), 0, 600);
+        _settings.Save();
+        _settingsChanged();
+    }
+
+    private void SmartViewToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        SmartViewOptions.Visibility = SmartViewToggle.IsOn
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        if (!_ready)
+        {
+            return;
+        }
+
+        _settings.Current.SmartViewEnabled = SmartViewToggle.IsOn;
         _settings.Save();
         _settingsChanged();
     }
@@ -764,6 +986,22 @@ public sealed partial class SettingsWindow : Window
                 views.Add(new SmartViewSetting { View = (int)view, Enabled = true });
             }
         }
+    }
+
+    private void ColorTagToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        ColorTagOptions.Visibility = ColorTagToggle.IsOn
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        if (!_ready)
+        {
+            return;
+        }
+
+        _settings.Current.ColorTagsEnabled = ColorTagToggle.IsOn;
+        _settings.Save();
+        _settingsChanged();
     }
 
     private void LeadBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -971,7 +1209,7 @@ public sealed partial class SettingsWindow : Window
     /// 同步总开关。关掉就切回纯离线：隐藏所有配置项，也不再发起任何网络请求；
     /// 本地已有的日历数据照常可以查看和编辑。
     /// </summary>
-    private void CalendarSyncToggle_Toggled(object sender, RoutedEventArgs e)
+    private async void CalendarSyncToggle_Toggled(object sender, RoutedEventArgs e)
     {
         if (!_calendarReady || _calendarSync is null)
         {
@@ -982,6 +1220,60 @@ public sealed partial class SettingsWindow : Window
         _settings.Save();
         UpdateCalendarStatus();
         _settingsChanged();
+
+        // 刚打开同步、本地又有待裁决的日程：先同步一次拿到云端全貌，再问用户怎么合并。
+        if (CalendarSyncToggle.IsOn)
+        {
+            await RunFirstMergeIfNeededAsync();
+        }
+    }
+
+    /// <summary>
+    /// 首次合并：先把云端同步下来，再让用户逐个本地日历决定「保留 / 合入云端 / 丢弃」。
+    /// 合并口径固定为云端优先，本地不会覆盖云端。
+    /// </summary>
+    private async Task RunFirstMergeIfNeededAsync()
+    {
+        if (_calendarSync is null || !_calendarSync.IsConfigured)
+        {
+            return;
+        }
+
+        var merge = new CalendarMergeService(_calendarSync.Repository, _calendarSync);
+        if (!merge.HasLocalDataToReconcile())
+        {
+            return;
+        }
+
+        var choices = merge.BuildChoices();
+        var cloudSources = _calendarSync.Repository.GetSources()
+            .Where(source => !CalendarRepository.IsLocalHref(source.Href))
+            .ToList();
+
+        // 先同步一次，本地才有云端日程可用来判断「同一条谁赢」。
+        var now = DateTime.Today;
+        var sync = await _calendarSync.SyncAsync(now.AddMonths(-1), now.AddMonths(2));
+
+        var dialog = new CalendarMergeDialog(_settings, merge, choices, cloudSources);
+        dialog.ShowOver(_appWindow);
+        dialog.Activate();
+        var merged = await dialog.Result;
+
+        RebuildCalendarSources();
+        UpdateSyncStatusText();
+        _settingsChanged();
+
+        if (merged && dialog.Outcome is { } outcome)
+        {
+            CalendarStatusText.Text =
+                $"合并完成：上传 {outcome.UploadedCount} 条，采用云端版本 {outcome.CloudWonCount} 条，" +
+                $"保留本地 {outcome.KeptLocalCount} 条，丢弃 {outcome.DiscardedCount} 条。" +
+                (outcome.FailedCount > 0 ? $" {outcome.FailedCount} 条上传失败，本地日历未删除。" : string.Empty);
+        }
+        else if (!sync.Succeeded)
+        {
+            CalendarStatusText.Text = "已开启同步，但拉取云端失败：" + sync.Message;
+        }
     }
 
     private void UpdateCalendarStatus()
@@ -1014,8 +1306,6 @@ public sealed partial class SettingsWindow : Window
         // 第 2、3 步的编号徽标只在教程模式下显示，已连接后换回普通标题。
         CalendarFormStepHeader.Visibility = connected ? Visibility.Collapsed : Visibility.Visible;
         CalendarFormTitle.Visibility = connected ? Visibility.Visible : Visibility.Collapsed;
-        CalendarSourcesStepHeader.Visibility = connected ? Visibility.Collapsed : Visibility.Visible;
-        CalendarSourcesTitle.Visibility = connected ? Visibility.Visible : Visibility.Collapsed;
         CalendarClearButton.Visibility = connected ? Visibility.Visible : Visibility.Collapsed;
         AppPasswordBox.PlaceholderText = connected ? "新密码（留空则保持不变）" : "应用专用密码";
     }
@@ -1049,8 +1339,9 @@ public sealed partial class SettingsWindow : Window
         {
             CalendarSourceList.Children.Add(new TextBlock
             {
-                Text = "同步一次后会列出你的 iCloud 日历。",
+                Text = "还没有日历。点右上角「新建」建一个本地日历；开启同步后也会列出 iCloud 里的日历。",
                 FontSize = 11,
+                TextWrapping = TextWrapping.Wrap,
                 Foreground = (Brush)Application.Current.Resources["TextMutedBrush"],
             });
             return;
@@ -1058,18 +1349,171 @@ public sealed partial class SettingsWindow : Window
 
         foreach (var source in sources)
         {
+            var local = CalendarRepository.IsLocalHref(source.Href);
             var check = new CheckBox
             {
-                Content = source.DisplayName,
+                Content = local ? $"{source.DisplayName}（本地）" : source.DisplayName,
                 IsChecked = source.IsVisible,
                 Tag = source.Href,
+                MinWidth = 0,
             };
             check.Click += (_, _) =>
             {
                 _calendarSync.Repository.SetSourceVisible(source.Href, check.IsChecked == true);
             };
-            CalendarSourceList.Children.Add(check);
+
+            var row = new Grid { ColumnSpacing = 4 };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.Children.Add(check);
+
+            // 本地日历可改名；云端日历名称由服务器决定，不在这里改。
+            var rename = new Button
+            {
+                Style = (Style)Application.Current.Resources["LinkButtonStyle"],
+                Content = new FontIcon { Glyph = "", FontSize = 10 },
+                Width = 28,
+                Height = 28,
+                MinWidth = 0,
+                Padding = new Thickness(0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Visibility = local ? Visibility.Visible : Visibility.Collapsed,
+                Tag = source,
+            };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(rename, "重命名日历");
+            rename.Click += (_, _) => RenameLocalSource((CalendarSource)rename.Tag);
+            Grid.SetColumn(rename, 1);
+            row.Children.Add(rename);
+
+            var delete = new Button
+            {
+                Style = (Style)Application.Current.Resources["LinkButtonStyle"],
+                Content = new FontIcon { Glyph = "", FontSize = 10 },
+                Width = 28,
+                Height = 28,
+                MinWidth = 0,
+                Padding = new Thickness(0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Tag = source,
+            };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(delete, "删除日历");
+            delete.Click += (_, _) => _ = DeleteSourceAsync((CalendarSource)delete.Tag);
+            Grid.SetColumn(delete, 2);
+            row.Children.Add(delete);
+
+            CalendarSourceList.Children.Add(row);
         }
+    }
+
+    private async void AddLocalCalendar_Click(object sender, RoutedEventArgs e)
+    {
+        if (_calendarSync is null)
+        {
+            return;
+        }
+
+        var box = new TextBox
+        {
+            PlaceholderText = "日历名称，例如 工作",
+            MinWidth = 240,
+        };
+        var dialog = new ContentDialog
+        {
+            Title = "新建本地日历",
+            Content = box,
+            PrimaryButtonText = "创建",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = Root.XamlRoot,
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        var name = box.Text.Trim();
+        if (name.Length == 0)
+        {
+            return;
+        }
+
+        // 本地日历给一个固定色环里的颜色，按已有数量轮换，避免都一个颜色。
+        var colors = new[] { "#4D8FE3", "#4CAF6D", "#F08A3C", "#E34D4D", "#9B6BE8", "#2DB7A3" };
+        var color = colors[_calendarSync.Repository.GetSources().Count % colors.Length];
+        _calendarSync.Repository.AddLocalSource(name, color);
+
+        RebuildCalendarSources();
+        _settingsChanged();
+    }
+
+    private async void RenameLocalSource(CalendarSource source)
+    {
+        if (_calendarSync is null || !CalendarRepository.IsLocalHref(source.Href))
+        {
+            return;
+        }
+
+        var box = new TextBox { Text = source.DisplayName, MinWidth = 240 };
+        var dialog = new ContentDialog
+        {
+            Title = "重命名日历",
+            Content = box,
+            PrimaryButtonText = "保存",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = Root.XamlRoot,
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        var name = box.Text.Trim();
+        if (name.Length == 0)
+        {
+            return;
+        }
+
+        _calendarSync.Repository.RenameSource(source.Href, name);
+        RebuildCalendarSources();
+        _settingsChanged();
+    }
+
+    /// <summary>
+    /// 删日历：本地日历连数据一起删；云端日历只从本机移除显示，
+    /// 绝不在服务器上删集合（避免一个误点把整本 iCloud 日历清空）。
+    /// </summary>
+    private async Task DeleteSourceAsync(CalendarSource source)
+    {
+        if (_calendarSync is null)
+        {
+            return;
+        }
+
+        var local = CalendarRepository.IsLocalHref(source.Href);
+        var dialog = new ContentDialog
+        {
+            Title = local ? "删除本地日历" : "从本机移除日历",
+            Content = local
+                ? $"「{source.DisplayName}」以及里面的日程都会从本机删除，无法恢复。"
+                : $"「{source.DisplayName}」只会从本机移除，iCloud 上的日历和日程不受影响。",
+            PrimaryButtonText = local ? "删除" : "移除",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = Root.XamlRoot,
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        _calendarSync.Repository.DeleteSource(source.Href);
+        RebuildCalendarSources();
+        _settingsChanged();
     }
 
     private async void CalendarSave_Click(object sender, RoutedEventArgs e)

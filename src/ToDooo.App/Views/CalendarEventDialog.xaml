@@ -300,6 +300,28 @@
                 <TextBlock Style="{StaticResource GroupHeader}" Text="详细信息" />
                 <Border Style="{StaticResource Card}">
                     <StackPanel Spacing="8">
+                        <!--  地点：输入自动联想，使用跨窗口 Popup 向下展开，不被窗口底边裁切  -->
+                        <Grid>
+                            <TextBox
+                                x:Name="LocationBox"
+                                Padding="10,8,34,8"
+                                AutomationProperties.Name="地点"
+                                CornerRadius="6"
+                                GotFocus="LocationBox_GotFocus"
+                                PlaceholderText="地点"
+                                PreviewKeyDown="LocationBox_PreviewKeyDown"
+                                TextChanged="LocationBox_TextChanged" />
+                            <ProgressRing
+                                x:Name="PlaceSearchProgress"
+                                Width="14"
+                                Height="14"
+                                Margin="0,0,10,0"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Center"
+                                IsActive="False"
+                                IsHitTestVisible="False"
+                                Visibility="Collapsed" />
+                        </Grid>
                         <TextBox
                             x:Name="NoteBox"
                             MinHeight="56"
@@ -356,5 +378,72 @@
                 </StackPanel>
             </Button>
         </Grid>
+        <!-- 跨窗口地点联想浮层：ShouldConstrainToRootBounds=False 允许跳出弹窗底边完整显示 -->
+        <Popup
+            x:Name="PlaceSuggestionsPopup"
+            IsLightDismissEnabled="False"
+            ShouldConstrainToRootBounds="False">
+            <Border
+                x:Name="PlaceSuggestionsCard"
+                Padding="4"
+                Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8">
+                <ListView
+                    x:Name="PlaceSuggestionsList"
+                    MaxHeight="260"
+                    IsItemClickEnabled="True"
+                    ItemClick="PlaceSuggestionsList_ItemClick"
+                    SelectionMode="Single">
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="MinHeight" Value="0" />
+                            <Setter Property="Padding" Value="8,7" />
+                            <Setter Property="Margin" Value="0,1" />
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Grid ColumnSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border
+                                    Width="28"
+                                    Height="28"
+                                    VerticalAlignment="Center"
+                                    Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                    CornerRadius="14">
+                                    <FontIcon
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        FontSize="12"
+                                        Foreground="{ThemeResource TextSecondaryBrush}"
+                                        Glyph="{Binding Glyph}" />
+                                </Border>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                                    <TextBlock
+                                        FontSize="13"
+                                        FontWeight="SemiBold"
+                                        Foreground="{ThemeResource TextPrimaryBrush}"
+                                        MaxLines="1"
+                                        Text="{Binding Name}"
+                                        TextTrimming="CharacterEllipsis" />
+                                    <TextBlock
+                                        FontSize="11"
+                                        Foreground="{ThemeResource TextMutedBrush}"
+                                        MaxLines="1"
+                                        Text="{Binding Subtitle}"
+                                        TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </Border>
+        </Popup>
     </Grid>
 </Window>

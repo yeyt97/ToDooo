@@ -81,6 +81,18 @@ public sealed partial class SettingsWindow : Window
         var transparency = Math.Clamp(1.0 - settings.Current.WindowOpacity, 0.0, 0.9);
         OpacitySlider.Value = transparency;
         OpacityValue.Text = $"{Math.Round(transparency * 100)}%";
+        StickyAcrylicToggle.IsOn = settings.Current.StickyAcrylicEnabled;
+        StickyOpacityRow.Visibility = settings.Current.StickyAcrylicEnabled ? Visibility.Visible : Visibility.Collapsed;
+        var stickyTransparency = Math.Clamp(1.0 - settings.Current.StickyOpacity, 0.0, 0.9);
+        StickyOpacitySlider.Value = stickyTransparency;
+        StickyOpacityValue.Text = $"{Math.Round(stickyTransparency * 100)}%";
+        var stickyFontSize = Math.Clamp(settings.Current.StickyDefaultFontSize, 11.0, 20.0);
+        StickyFontSizeSlider.Value = stickyFontSize;
+        StickyFontSizeValue.Text = $"{stickyFontSize:0} px";
+        StickyDefaultPinnedToggle.IsOn = settings.Current.StickyDefaultPinned;
+        StickyRestoreToggle.IsOn = settings.Current.StickyRestoreOnStartup;
+        StickyAutoDockTopToggle.IsOn = settings.Current.StickyAutoDockTop;
+        BuildStickyColorSwatches();
         BuildTintSwatches();
         StartupToggle.IsOn = StartupService.IsEnabled;
         AutoHideToggle.IsOn = settings.Current.AutoHide;
@@ -219,11 +231,13 @@ public sealed partial class SettingsWindow : Window
         GeneralPage.Visibility = tag == "general" ? Visibility.Visible : Visibility.Collapsed;
         RemindersPage.Visibility = tag == "reminders" ? Visibility.Visible : Visibility.Collapsed;
         CalendarPage.Visibility = tag == "calendar" ? Visibility.Visible : Visibility.Collapsed;
+        StickyPage.Visibility = tag == "sticky" ? Visibility.Visible : Visibility.Collapsed;
 
         SectionTitle.Text = tag switch
         {
             "reminders" => "提醒事项",
             "calendar" => "日历",
+            "sticky" => "便签",
             _ => "通用",
         };
 
@@ -234,7 +248,7 @@ public sealed partial class SettingsWindow : Window
     private void UpdateNavSelectionVisuals(string selectedTag)
     {
         // XAML 加载过程中 Checked 可能先于其它元素就绪触发，等全部就位后再画。
-        if (NavGeneralBar is null || NavRemindersBar is null || NavCalendarBar is null)
+        if (NavGeneralBar is null || NavRemindersBar is null || NavCalendarBar is null || NavStickyBar is null)
         {
             return;
         }
@@ -258,11 +272,13 @@ public sealed partial class SettingsWindow : Window
         Apply(NavGeneral, NavGeneralBar, NavGeneralIcon, NavGeneralText, selectedTag == "general");
         Apply(NavReminders, NavRemindersBar, NavRemindersIcon, NavRemindersText, selectedTag == "reminders");
         Apply(NavCalendar, NavCalendarBar, NavCalendarIcon, NavCalendarText, selectedTag == "calendar");
+        Apply(NavSticky, NavStickyBar, NavStickyIcon, NavStickyText, selectedTag == "sticky");
     }
 
     private string CurrentNavTag() =>
         NavGeneral.IsChecked == true ? "general" :
-        NavReminders.IsChecked == true ? "reminders" : "calendar";
+        NavReminders.IsChecked == true ? "reminders" :
+        NavSticky.IsChecked == true ? "sticky" : "calendar";
 
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _navAnimTimer;
     private int _navAnimStep;
@@ -301,6 +317,7 @@ public sealed partial class SettingsWindow : Window
             NavGeneralText.Visibility = Visibility.Visible;
             NavRemindersText.Visibility = Visibility.Visible;
             NavCalendarText.Visibility = Visibility.Visible;
+            NavStickyText.Visibility = Visibility.Visible;
         }
 
         // 图标在收起态居中，动画一开始就切好，避免过程中左右乱跳。
@@ -309,12 +326,14 @@ public sealed partial class SettingsWindow : Window
         NavGeneralIcon.Margin = iconMargin;
         NavRemindersIcon.Margin = iconMargin;
         NavCalendarIcon.Margin = iconMargin;
+        NavStickyIcon.Margin = iconMargin;
 
         foreach (var (grid, barColumn, iconColumn, icon) in new[]
                  {
                      (NavGeneralGrid, NavGeneralBarColumn, NavGeneralIconColumn, NavGeneralIcon),
                      (NavRemindersGrid, NavRemindersBarColumn, NavRemindersIconColumn, NavRemindersIcon),
                      (NavCalendarGrid, NavCalendarBarColumn, NavCalendarIconColumn, NavCalendarIcon),
+                     (NavStickyGrid, NavStickyBarColumn, NavStickyIconColumn, NavStickyIcon),
                  })
         {
             grid.ColumnSpacing = compact ? 0 : 12;
@@ -356,6 +375,7 @@ public sealed partial class SettingsWindow : Window
                 NavGeneralText.Visibility = Visibility.Collapsed;
                 NavRemindersText.Visibility = Visibility.Collapsed;
                 NavCalendarText.Visibility = Visibility.Collapsed;
+                NavStickyText.Visibility = Visibility.Collapsed;
             }
         }
     }
@@ -536,8 +556,13 @@ public sealed partial class SettingsWindow : Window
 
     private void HeaderBar_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
-        if (!e.GetCurrentPoint((UIElement)sender).Properties.IsLeftButtonPressed ||
-            !NativeMethods.GetCursorPos(out _dragStartCursor) ||
+        if (Helpers.WindowDragHelper.TryBeginTouchDrag(_hwnd, Root, (UIElement)sender, e))
+        {
+            return;
+        }
+
+        if (!Helpers.WindowDragHelper.IsPrimaryPointerPressed((UIElement)sender, e) ||
+            !Helpers.WindowDragHelper.TryGetScreenPoint(_hwnd, Root, e, out _dragStartCursor) ||
             !NativeMethods.GetWindowRect(_hwnd, out _dragStartRect))
         {
             return;
@@ -549,12 +574,17 @@ public sealed partial class SettingsWindow : Window
 
     private void HeaderBar_PointerMoved(object sender, PointerRoutedEventArgs e)
     {
+        if (Helpers.WindowDragHelper.TryMoveTouchDrag(_hwnd, Root, e))
+        {
+            return;
+        }
+
         if (!_dragging)
         {
             return;
         }
 
-        if (NativeMethods.GetCursorPos(out var cursor))
+        if (Helpers.WindowDragHelper.TryGetScreenPoint(_hwnd, Root, e, out var cursor))
         {
             NativeMethods.SetWindowPos(
                 _hwnd, IntPtr.Zero,
@@ -570,6 +600,11 @@ public sealed partial class SettingsWindow : Window
 
     private void HeaderBar_PointerReleased(object sender, PointerRoutedEventArgs e)
     {
+        if (Helpers.WindowDragHelper.TryEndTouchDrag(_hwnd, e))
+        {
+            return;
+        }
+
         if (!_dragging)
         {
             return;
@@ -830,6 +865,144 @@ public sealed partial class SettingsWindow : Window
         _settings.Save();
         ApplyWindowMaterial();
         _settingsChanged();
+    }
+
+    private void StickyAcrylicToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        StickyOpacityRow.Visibility = StickyAcrylicToggle.IsOn ? Visibility.Visible : Visibility.Collapsed;
+        if (!_ready)
+        {
+            return;
+        }
+
+        _settings.Current.StickyAcrylicEnabled = StickyAcrylicToggle.IsOn;
+        _settings.Save();
+        _settingsChanged();
+    }
+
+    private void StickyOpacitySlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        StickyOpacityValue.Text = $"{Math.Round(e.NewValue * 100)}%";
+        if (!_ready)
+        {
+            return;
+        }
+
+        _settings.Current.StickyOpacity = Math.Clamp(1.0 - e.NewValue, 0.1, 1.0);
+        _settings.Save();
+        _settingsChanged();
+    }
+
+    private void BuildStickyColorSwatches()
+    {
+        StickyColorSwatchPanel.Children.Clear();
+        var current = StickyColorTheme.Resolve(_settings.Current.StickyDefaultColor).Key;
+        foreach (var theme in StickyColorTheme.All)
+        {
+            var isSelected = string.Equals(theme.Key, current, StringComparison.OrdinalIgnoreCase);
+            var dot = new Grid { Width = 24, Height = 24 };
+            dot.Children.Add(new Border
+            {
+                Width = 24,
+                Height = 24,
+                CornerRadius = new CornerRadius(12),
+                Background = new SolidColorBrush(theme.Swatch),
+                BorderBrush = isSelected
+                    ? new SolidColorBrush(Microsoft.UI.Colors.White)
+                    : new SolidColorBrush(Windows.UI.Color.FromArgb(60, 0, 0, 0)),
+                BorderThickness = new Thickness(isSelected ? 2 : 1),
+            });
+
+            if (isSelected)
+            {
+                dot.Children.Add(new FontIcon
+                {
+                    Glyph = "\uE73E",
+                    FontSize = 11,
+                    Foreground = new SolidColorBrush(Microsoft.UI.Colors.White),
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                });
+            }
+
+            var btn = new Button
+            {
+                Width = 28,
+                Height = 28,
+                MinWidth = 0,
+                MinHeight = 0,
+                Padding = new Thickness(0),
+                Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+                BorderThickness = new Thickness(0),
+                CornerRadius = new CornerRadius(14),
+                Content = dot,
+            };
+            ToolTipService.SetToolTip(btn, theme.Name);
+            btn.Click += (_, _) =>
+            {
+                _settings.Current.StickyDefaultColor = theme.Key;
+                _settings.Save();
+                BuildStickyColorSwatches();
+            };
+            StickyColorSwatchPanel.Children.Add(btn);
+        }
+    }
+
+    private void StickyFontSizeSlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        StickyFontSizeValue.Text = $"{Math.Round(e.NewValue):0} px";
+        if (!_ready)
+        {
+            return;
+        }
+
+        _settings.Current.StickyDefaultFontSize = Math.Clamp(Math.Round(e.NewValue), 11.0, 20.0);
+        _settings.Save();
+    }
+
+    private void StickyDefaultPinnedToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (!_ready)
+        {
+            return;
+        }
+
+        _settings.Current.StickyDefaultPinned = StickyDefaultPinnedToggle.IsOn;
+        _settings.Save();
+    }
+
+    private void StickyRestoreToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (!_ready)
+        {
+            return;
+        }
+
+        _settings.Current.StickyRestoreOnStartup = StickyRestoreToggle.IsOn;
+        _settings.Save();
+    }
+
+    private void StickyAutoDockTopToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (!_ready)
+        {
+            return;
+        }
+
+        _settings.Current.StickyAutoDockTop = StickyAutoDockTopToggle.IsOn;
+        _settings.Save();
+        _settingsChanged();
+    }
+
+    private void OpenStickyFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var dir = System.IO.Path.Combine(AppPaths.Root, "notes");
+        System.IO.Directory.CreateDirectory(dir);
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = dir,
+            UseShellExecute = true,
+        });
     }
 
     private void StartupToggle_Toggled(object sender, RoutedEventArgs e)
@@ -1246,6 +1419,40 @@ public sealed partial class SettingsWindow : Window
 
     private static readonly int[] RefreshOptions = { 0, 5, 15, 30, 60 };
 
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _calendarFontDebounce;
+
+    private void CalendarFontSizeSlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        var size = Math.Round(Math.Clamp(e.NewValue, 8.0, 16.0), 1);
+        if (CalendarFontSizeText is not null)
+        {
+            CalendarFontSizeText.Text = $"{size:0.#}";
+        }
+
+        if (!_calendarReady)
+        {
+            return;
+        }
+
+        _settings.Current.CalendarFontSize = size;
+
+        // 防抖 160ms 再落盘与重绘日历，避免拖动滑块时每步都重建整页导致卡顿。
+        _calendarFontDebounce ??= DispatcherQueue.CreateTimer();
+        _calendarFontDebounce.Stop();
+        _calendarFontDebounce.Interval = TimeSpan.FromMilliseconds(160);
+        _calendarFontDebounce.IsRepeating = false;
+        _calendarFontDebounce.Tick -= CalendarFontDebounce_Tick;
+        _calendarFontDebounce.Tick += CalendarFontDebounce_Tick;
+        _calendarFontDebounce.Start();
+    }
+
+    private void CalendarFontDebounce_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
+    {
+        sender.Stop();
+        _settings.Save();
+        _settingsChanged();
+    }
+
     private void LoadCalendarSettings()
     {
         if (_calendarSync is null)
@@ -1254,6 +1461,9 @@ public sealed partial class SettingsWindow : Window
         }
 
         _calendarReady = false;
+        var fontSize = Math.Clamp(_settings.Current.CalendarFontSize, 8.0, 16.0);
+        CalendarFontSizeSlider.Value = fontSize;
+        CalendarFontSizeText.Text = $"{fontSize:0.#}";
         CalendarSyncToggle.IsOn = _settings.Current.CalendarSyncEnabled;
         AppleIdBox.Text = _calendarSync.AppleId;
         var refreshIndex = Math.Max(0, Array.IndexOf(RefreshOptions, _settings.Current.CalendarRefreshMinutes));

@@ -597,6 +597,7 @@ public sealed partial class MainWindow : Window
         }
 
         // 子任务拖到列表外时指针会离开这个区域，但拖动还没结束，别急着把列表拖动打开。
+        ClearHoveredSubtaskRow();
         if (_subtaskDragActive)
         {
             return;
@@ -607,6 +608,8 @@ public sealed partial class MainWindow : Window
         TodoList.CanReorderItems = true;
     }
 
+    private List<TodoItem>? _pendingReorderSnapshot;
+
     private void TodoList_DragItemsStarting(object sender, DragItemsStartingEventArgs e)
     {
         if (_pointerOverSubtasks || _subtaskDragActive || _pressOnSubtask)
@@ -614,6 +617,8 @@ public sealed partial class MainWindow : Window
             e.Cancel = true;
             return;
         }
+
+        _pendingReorderSnapshot = ViewModel.Items.ToList();
 
         if (_calendarExpanded && e.Items.FirstOrDefault() is TodoItem item)
         {
@@ -909,22 +914,49 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void SubtaskRow_PointerEntered(object sender, PointerRoutedEventArgs e) =>
-        ShowSubtaskDeleteButton(sender, true);
+    private Grid? _hoveredSubtaskRow;
+
+    private void ClearHoveredSubtaskRow()
+    {
+        if (_hoveredSubtaskRow is not null)
+        {
+            ShowSubtaskDeleteButton(_hoveredSubtaskRow, false);
+            _hoveredSubtaskRow = null;
+        }
+    }
+
+    private void SubtaskRow_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is Grid row)
+        {
+            if (!ReferenceEquals(_hoveredSubtaskRow, row))
+            {
+                ClearHoveredSubtaskRow();
+                _hoveredSubtaskRow = row;
+            }
+
+            ShowSubtaskDeleteButton(row, true);
+        }
+    }
 
     private void SubtaskRow_PointerExited(object sender, PointerRoutedEventArgs e)
     {
         if (sender is Grid row)
         {
+            // 仅当指针仍在行内部（避开边界像素，防止移出边缘时误判为仍在行内）才保持显示。
             var point = e.GetCurrentPoint(row).Position;
-            if (point.X >= 0 && point.Y >= 0 &&
-                point.X <= row.ActualWidth && point.Y <= row.ActualHeight)
+            if (point.X > 1 && point.Y > 1 &&
+                point.X < row.ActualWidth - 1 && point.Y < row.ActualHeight - 1)
             {
                 return;
             }
-        }
 
-        ShowSubtaskDeleteButton(sender, false);
+            ShowSubtaskDeleteButton(row, false);
+            if (ReferenceEquals(_hoveredSubtaskRow, row))
+            {
+                _hoveredSubtaskRow = null;
+            }
+        }
     }
 
     private static void ShowSubtaskDeleteButton(object sender, bool show)
@@ -1568,6 +1600,14 @@ public sealed partial class MainWindow : Window
     {
         _calendarHostWindow?.Calendar.EndExternalDrag();
         var ordered = ViewModel.Items.ToList();
+        var previous = _pendingReorderSnapshot;
+        _pendingReorderSnapshot = null;
+
+        if (previous is not null && !ordered.SequenceEqual(previous))
+        {
+            _quickUndoStack.Push(("拖动排序", () => ViewModel.RestoreReorder(previous)));
+        }
+
         DispatcherQueue.TryEnqueue(() => ViewModel.PersistReorder(ordered));
     }
 }

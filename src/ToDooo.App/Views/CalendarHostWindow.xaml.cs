@@ -129,7 +129,6 @@ public sealed partial class CalendarHostWindow : Window
     public event EventHandler? DockPointerEntered;
     public event EventHandler? DockPointerExited;
     public event EventHandler? DockPointerPressed;
-    public event EventHandler? DockDragReleased;
 
     public void RefreshTheme()
     {
@@ -175,11 +174,16 @@ public sealed partial class CalendarHostWindow : Window
         bool placedOnLeft;
         var savedX = _settings.Current.CalendarX;
         var savedY = _settings.Current.CalendarY;
-        if (savedX is { } sx && savedY is { } sy && IsPointOnAnyDisplay(sx + 40, sy + 20))
+        if (savedX is { } sx && savedY is { } sy)
         {
-            // 两个窗口不再捆绑：打开时回到上次的位置，而不是重新贴到主窗口旁。
-            x = sx;
-            y = sy;
+            // 回到上次位置；若显示器拔掉或分辨率/DPI 变化，自动夹取到最近可用显示器的可见工作区。
+            var targetArea = DisplayArea.GetFromPoint(
+                new PointInt32(sx + width / 2, sy + height / 2),
+                DisplayAreaFallback.Nearest).WorkArea;
+            width = Math.Min(width, targetArea.Width);
+            height = Math.Min(height, targetArea.Height);
+            x = Math.Clamp(sx, targetArea.X, targetArea.X + Math.Max(0, targetArea.Width - width));
+            y = Math.Clamp(sy, targetArea.Y, targetArea.Y + Math.Max(0, targetArea.Height - height));
             placedOnLeft = false;
         }
         else
@@ -467,8 +471,13 @@ public sealed partial class CalendarHostWindow : Window
 
     private void HeaderDragPressed(object? sender, PointerRoutedEventArgs e)
     {
-        if (!e.GetCurrentPoint(Root).Properties.IsLeftButtonPressed ||
-            !NativeMethods.GetCursorPos(out _dragStartCursor) ||
+        if (Helpers.WindowDragHelper.TryBeginTouchDrag(_hwnd, Root, Root, e))
+        {
+            return;
+        }
+
+        if (!Helpers.WindowDragHelper.IsPrimaryPointerPressed(Root, e) ||
+            !Helpers.WindowDragHelper.TryGetScreenPoint(_hwnd, Root, e, out _dragStartCursor) ||
             !NativeMethods.GetWindowRect(_hwnd, out _dragStartRect))
         {
             return;
@@ -494,7 +503,12 @@ public sealed partial class CalendarHostWindow : Window
 
     private void HeaderDragMoved(object? sender, PointerRoutedEventArgs e)
     {
-        if (!_dragging || !NativeMethods.GetCursorPos(out var cursor))
+        if (Helpers.WindowDragHelper.TryMoveTouchDrag(_hwnd, Root, e))
+        {
+            return;
+        }
+
+        if (!_dragging || !Helpers.WindowDragHelper.TryGetScreenPoint(_hwnd, Root, e, out var cursor))
         {
             return;
         }
@@ -516,6 +530,12 @@ public sealed partial class CalendarHostWindow : Window
 
     private void HeaderDragReleased(object? sender, PointerRoutedEventArgs e)
     {
+        if (Helpers.WindowDragHelper.TryEndTouchDrag(_hwnd, e))
+        {
+            SaveCalendarPosition();
+            return;
+        }
+
         if (!_dragging)
         {
             return;
@@ -529,6 +549,7 @@ public sealed partial class CalendarHostWindow : Window
 
     private void HeaderDragCaptureLost(object? sender, PointerRoutedEventArgs e)
     {
+        Helpers.WindowDragHelper.CancelTouchDrag(_hwnd);
         if (!_dragging)
         {
             return;

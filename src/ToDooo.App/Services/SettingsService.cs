@@ -43,6 +43,9 @@ public sealed class AppSettings
 
     public int CalendarHeight { get; set; } = 560;
 
+    /// <summary>上次退出时日历窗口是否处于打开状态。</summary>
+    public bool CalendarOpen { get; set; }
+
     /// <summary>日历窗口上次的位置（屏幕像素）；为空则打开时摆到主窗口旁边。</summary>
     public int? CalendarX { get; set; }
 
@@ -55,6 +58,9 @@ public sealed class AppSettings
     /// <summary>日历里是否显示本地待办；关闭后只显示 iCloud 日程。</summary>
     public bool CalendarShowTodos { get; set; } = true;
 
+    /// <summary>日历条目基准字号（8–16，默认 10）。</summary>
+    public double CalendarFontSize { get; set; } = 10.0;
+
     public int ThemeMode { get; set; }
 
     /// <summary>启动时默认选中的筛选标签：0=全部，1=进行中，2=重要，3=已完成。</summary>
@@ -62,6 +68,27 @@ public sealed class AppSettings
 
     /// <summary>窗口不透明度（设置页显示为“透明度”）：0.1–1.0，默认 0.8。</summary>
     public double WindowOpacity { get; set; } = 0.8;
+
+    /// <summary>便签独立毛玻璃开关（与待办/日历分开设置）。</summary>
+    public bool StickyAcrylicEnabled { get; set; } = true;
+
+    /// <summary>便签独立不透明度（0.1–1.0，默认 0.3 即 70% 透明度，与待办/日历分开设置）。</summary>
+    public double StickyOpacity { get; set; } = 0.3;
+
+    /// <summary>新建便签的默认颜色 key（yellow / green / blue / pink / purple / graphite）。</summary>
+    public string StickyDefaultColor { get; set; } = "yellow";
+
+    /// <summary>新建便签的默认字号（11–20）。</summary>
+    public double StickyDefaultFontSize { get; set; } = 14.0;
+
+    /// <summary>新建便签是否默认置顶。</summary>
+    public bool StickyDefaultPinned { get; set; }
+
+    /// <summary>启动 ToDooo 时是否自动恢复上次打开的便签。</summary>
+    public bool StickyRestoreOnStartup { get; set; } = true;
+
+    /// <summary>便签拖到屏幕上边缘时是否自动贴边收起。</summary>
+    public bool StickyAutoDockTop { get; set; } = true;
 
     /// <summary>窗口底色：见 Appearance.TintMode（0 跟随主题 / 1 深灰 / 2 藏青 / 3 暖褐）。</summary>
     public int WindowTintMode { get; set; }

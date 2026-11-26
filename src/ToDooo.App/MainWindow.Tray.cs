@@ -96,6 +96,17 @@ public sealed partial class MainWindow : Window
         };
         calendarItem.Click += (_, _) => CalendarButton_Click(this, new RoutedEventArgs());
 
+        NativeMethods.GetCursorPos(out var screenCursor);
+        var stickyManagerItem = new MenuFlyoutItem
+        {
+            Text = "便签管理",
+            Icon = new FontIcon { Glyph = "\uE70B" },
+        };
+        stickyManagerItem.Click += (_, _) =>
+        {
+            DispatcherQueue.TryEnqueue(() => ShowStickyPopupAboveTray(screenCursor.X, screenCursor.Y));
+        };
+
         var settingsItem = new MenuFlyoutItem
         {
             Text = "设置",
@@ -112,6 +123,7 @@ public sealed partial class MainWindow : Window
 
         flyout.Items.Add(showItem);
         flyout.Items.Add(calendarItem);
+        flyout.Items.Add(stickyManagerItem);
         flyout.Items.Add(settingsItem);
         flyout.Items.Add(new MenuFlyoutSeparator());
         flyout.Items.Add(exitItem);
@@ -135,6 +147,7 @@ public sealed partial class MainWindow : Window
         var menu = NativeMethods.CreatePopupMenu();
         NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 1, "显示待办");
         NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 2, "显示日历");
+        NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 5, "便签管理");
         NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 3, "设置");
         NativeMethods.AppendMenuW(menu, NativeMethods.MF_SEPARATOR, 0, null);
         NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, 4, "退出");
@@ -154,6 +167,9 @@ public sealed partial class MainWindow : Window
                 break;
             case 2:
                 CalendarButton_Click(this, new RoutedEventArgs());
+                break;
+            case 5:
+                ShowStickyPopupAboveTray(point.X, point.Y);
                 break;
             case 3:
                 SettingsButton_Click(this, new RoutedEventArgs());
@@ -178,10 +194,12 @@ public sealed partial class MainWindow : Window
 
     private List<TodoItem>? _undoItems;
     private List<MainViewModel.OverdueSnapshot>? _undoPostpone;
+    private bool _undoConfirmPending;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _undoTimer;
 
     private void ShowUndo(string message, List<TodoItem> items)
     {
+        _undoConfirmPending = false;
         _undoPostpone = null;
         _undoItems = items;
         StartUndoBar(message);
@@ -189,19 +207,37 @@ public sealed partial class MainWindow : Window
 
     private void ShowUndoPostpone(string message, List<MainViewModel.OverdueSnapshot> snapshot)
     {
+        _undoConfirmPending = false;
         _undoItems = null;
         _undoPostpone = snapshot;
         StartUndoBar(message);
     }
 
-    private void StartUndoBar(string message)
+    private void ShowUndoConfirm(string description)
+    {
+        _undoItems = null;
+        _undoPostpone = null;
+        _undoConfirmPending = true;
+        StartUndoBar($"是否撤销「{description}」？", showActionButton: true, seconds: 5);
+    }
+
+    private void ShowToast(string message)
+    {
+        _undoConfirmPending = false;
+        _undoItems = null;
+        _undoPostpone = null;
+        StartUndoBar(message, showActionButton: false, seconds: 2);
+    }
+
+    private void StartUndoBar(string message, bool showActionButton = true, int seconds = 6)
     {
         UndoText.Text = message;
+        UndoActionButton.Visibility = showActionButton ? Visibility.Visible : Visibility.Collapsed;
         UndoBar.Visibility = Visibility.Visible;
 
         _undoTimer ??= _dispatcher.CreateTimer();
         _undoTimer.Stop();
-        _undoTimer.Interval = TimeSpan.FromSeconds(6);
+        _undoTimer.Interval = TimeSpan.FromSeconds(seconds);
 
         void OnTick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
         {
@@ -216,6 +252,7 @@ public sealed partial class MainWindow : Window
     private void HideUndo()
     {
         _undoTimer?.Stop();
+        _undoConfirmPending = false;
         _undoItems = null;
         _undoPostpone = null;
         UndoBar.Visibility = Visibility.Collapsed;
@@ -290,6 +327,12 @@ public sealed partial class MainWindow : Window
 
     private void UndoButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_undoConfirmPending)
+        {
+            ExecuteTopQuickUndo();
+            return;
+        }
+
         if (_undoItems is { Count: > 0 } items)
         {
             ViewModel.Restore(items);

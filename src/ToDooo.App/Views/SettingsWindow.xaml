@@ -209,6 +209,39 @@
                             Text="日历" />
                     </Grid>
                 </RadioButton>
+                <RadioButton
+                    x:Name="NavSticky"
+                    Checked="Nav_Checked"
+                    GroupName="SettingsNav"
+                    Style="{StaticResource NavItemStyle}"
+                    Tag="sticky">
+                    <Grid x:Name="NavStickyGrid" ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition x:Name="NavStickyBarColumn" Width="4" />
+                            <ColumnDefinition x:Name="NavStickyIconColumn" Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Border
+                            x:Name="NavStickyBar"
+                            Width="4"
+                            Height="18"
+                            VerticalAlignment="Center"
+                            Background="{ThemeResource AccentBrush}"
+                            CornerRadius="2"
+                            Opacity="0" />
+                        <FontIcon
+                            x:Name="NavStickyIcon"
+                            Grid.Column="1"
+                            FontSize="15"
+                            Glyph="&#xE70B;" />
+                        <TextBlock
+                            x:Name="NavStickyText"
+                            Grid.Column="2"
+                            VerticalAlignment="Center"
+                            FontSize="13.5"
+                            Text="便签" />
+                    </Grid>
+                </RadioButton>
             </StackPanel>
 
             <!--  内容区  -->
@@ -262,7 +295,7 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Style="{StaticResource LabelText}" Text="透明度" />
+                                    <TextBlock Style="{StaticResource LabelText}" Text="透明度（待办与日历）" />
                                     <TextBlock
                                         x:Name="OpacityValue"
                                         Grid.Column="1"
@@ -275,6 +308,7 @@
                                 <Slider
                                     x:Name="OpacitySlider"
                                     MinWidth="0"
+                                    IsThumbToolTipEnabled="False"
                                     Maximum="0.9"
                                     Minimum="0"
                                     StepFrequency="0.05"
@@ -594,6 +628,42 @@
                     Visibility="Collapsed"
                     VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="0,0,12,0">
+                        <!--  日历条目字号  -->
+                        <Border Style="{StaticResource SettingCard}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Spacing="3">
+                                    <TextBlock Style="{StaticResource LabelText}" Text="日历字号" />
+                                    <TextBlock Style="{StaticResource HintText}" Text="调整月视图、周视图与日视图中日程和待办的文字大小。" />
+                                </StackPanel>
+                                <StackPanel
+                                    Grid.Column="1"
+                                    Orientation="Horizontal"
+                                    Spacing="10"
+                                    VerticalAlignment="Center">
+                                    <Slider
+                                        x:Name="CalendarFontSizeSlider"
+                                        Width="120"
+                                        AutomationProperties.Name="日历字号"
+                                        IsThumbToolTipEnabled="False"
+                                        Maximum="16"
+                                        Minimum="8"
+                                        StepFrequency="0.5"
+                                        ValueChanged="CalendarFontSizeSlider_ValueChanged" />
+                                    <TextBlock
+                                        x:Name="CalendarFontSizeText"
+                                        Width="32"
+                                        VerticalAlignment="Center"
+                                        FontSize="12"
+                                        Foreground="{ThemeResource TextSecondaryBrush}"
+                                        TextAlignment="Right" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
                         <!--  总开关：关掉就是纯离线，只用本地日历数据  -->
                         <Border Style="{StaticResource SettingCard}">
                             <Grid ColumnSpacing="16">
@@ -840,6 +910,187 @@
                             </StackPanel>
                         </Border>
                         </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!--  便签设置页  -->
+                <ScrollViewer
+                    x:Name="StickyPage"
+                    Grid.Row="1"
+                    VerticalScrollBarVisibility="Auto"
+                    Visibility="Collapsed">
+                    <StackPanel Margin="0,0,12,0" Spacing="0">
+                        <!--  默认新建颜色  -->
+                        <Border Style="{StaticResource SettingCard}">
+                            <StackPanel Spacing="10">
+                                <StackPanel Spacing="3">
+                                    <TextBlock Style="{StaticResource LabelText}" Text="默认便签颜色" />
+                                    <TextBlock Style="{StaticResource HintText}" Text="新建便签时默认使用的主题色。" />
+                                </StackPanel>
+                                <StackPanel
+                                    x:Name="StickyColorSwatchPanel"
+                                    Orientation="Horizontal"
+                                    Spacing="10" />
+                            </StackPanel>
+                        </Border>
+
+                        <!--  毛玻璃与透明度  -->
+                        <Border Style="{StaticResource SettingCard}">
+                            <StackPanel Spacing="10">
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Style="{StaticResource LabelText}" Text="毛玻璃效果" />
+                                        <TextBlock Style="{StaticResource HintText}" Text="独立控制便签的亚克力磨砂与透明度，不影响待办与日历。" />
+                                    </StackPanel>
+                                    <ToggleSwitch
+                                        x:Name="StickyAcrylicToggle"
+                                        Grid.Column="1"
+                                        MinWidth="0"
+                                        OffContent=""
+                                        OnContent=""
+                                        Toggled="StickyAcrylicToggle_Toggled" />
+                                </Grid>
+                                <StackPanel x:Name="StickyOpacityRow" Spacing="6">
+                                    <Grid ColumnSpacing="16">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Style="{StaticResource HintText}" Text="便签透明度" />
+                                        <TextBlock
+                                            x:Name="StickyOpacityValue"
+                                            Grid.Column="1"
+                                            MinWidth="40"
+                                            VerticalAlignment="Center"
+                                            FontSize="12.5"
+                                            Foreground="{ThemeResource TextSecondaryBrush}"
+                                            TextAlignment="Right" />
+                                    </Grid>
+                                    <Slider
+                                        x:Name="StickyOpacitySlider"
+                                        MinWidth="0"
+                                        IsThumbToolTipEnabled="False"
+                                        Maximum="0.9"
+                                        Minimum="0"
+                                        StepFrequency="0.05"
+                                        ValueChanged="StickyOpacitySlider_ValueChanged" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!--  默认字号  -->
+                        <Border Style="{StaticResource SettingCard}">
+                            <StackPanel Spacing="8">
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Style="{StaticResource LabelText}" Text="默认字号" />
+                                        <TextBlock Style="{StaticResource HintText}" Text="新建便签的初始字号（单张便签内也可用 Ctrl+± 单独缩放）。" />
+                                    </StackPanel>
+                                    <TextBlock
+                                        x:Name="StickyFontSizeValue"
+                                        Grid.Column="1"
+                                        MinWidth="40"
+                                        VerticalAlignment="Center"
+                                        FontSize="12.5"
+                                        Foreground="{ThemeResource TextSecondaryBrush}"
+                                        TextAlignment="Right" />
+                                </Grid>
+                                <Slider
+                                    x:Name="StickyFontSizeSlider"
+                                    MinWidth="0"
+                                    IsThumbToolTipEnabled="False"
+                                    Maximum="20"
+                                    Minimum="11"
+                                    StepFrequency="1"
+                                    ValueChanged="StickyFontSizeSlider_ValueChanged" />
+                            </StackPanel>
+                        </Border>
+
+                        <!--  行为设置  -->
+                        <Border Style="{StaticResource SettingCard}">
+                            <StackPanel Spacing="12">
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Style="{StaticResource LabelText}" Text="新建便签默认置顶" />
+                                        <TextBlock Style="{StaticResource HintText}" Text="开启后新创建的便签会自动浮在其他窗口最前方。" />
+                                    </StackPanel>
+                                    <ToggleSwitch
+                                        x:Name="StickyDefaultPinnedToggle"
+                                        Grid.Column="1"
+                                        MinWidth="0"
+                                        OffContent=""
+                                        OnContent=""
+                                        Toggled="StickyDefaultPinnedToggle_Toggled" />
+                                </Grid>
+                                <Border Height="1" Background="{ThemeResource DividerBrush}" />
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Style="{StaticResource LabelText}" Text="启动时恢复上次打开的便签" />
+                                        <TextBlock Style="{StaticResource HintText}" Text="打开 ToDooo 时自动恢复上次留在桌面上的便签窗口。" />
+                                    </StackPanel>
+                                    <ToggleSwitch
+                                        x:Name="StickyRestoreToggle"
+                                        Grid.Column="1"
+                                        MinWidth="0"
+                                        OffContent=""
+                                        OnContent=""
+                                        Toggled="StickyRestoreToggle_Toggled" />
+                                </Grid>
+                                <Border Height="1" Background="{ThemeResource DividerBrush}" />
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Style="{StaticResource LabelText}" Text="贴近屏幕顶部自动收起" />
+                                        <TextBlock Style="{StaticResource HintText}" Text="将便签拖到屏幕上边缘时自动收起，鼠标移至顶边时在所有窗口之上滑出。" />
+                                    </StackPanel>
+                                    <ToggleSwitch
+                                        x:Name="StickyAutoDockTopToggle"
+                                        Grid.Column="1"
+                                        MinWidth="0"
+                                        OffContent=""
+                                        OnContent=""
+                                        Toggled="StickyAutoDockTopToggle_Toggled" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <!--  数据目录  -->
+                        <Border Style="{StaticResource SettingCard}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Spacing="2">
+                                    <TextBlock Style="{StaticResource LabelText}" Text="本地便签目录" />
+                                    <TextBlock Style="{StaticResource HintText}" Text="所有便签以纯文本文件保存在本地，可直接备份或编辑。" />
+                                </StackPanel>
+                                <Button
+                                    Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    Click="OpenStickyFolder_Click"
+                                    Content="打开目录" />
+                            </Grid>
+                        </Border>
                     </StackPanel>
                 </ScrollViewer>
             </Grid>

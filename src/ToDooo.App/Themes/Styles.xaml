@@ -376,16 +376,16 @@
     <!-- 颜色筛选：26x24 命中区，内容是 14x6 短横条 + 选中环 -->
     <Style x:Key="TagDotButtonStyle" TargetType="Button">
         <Setter Property="Width" Value="26" />
-        <Setter Property="Height" Value="24" />
+        <Setter Property="Height" Value="26" />
         <Setter Property="MinWidth" Value="26" />
-        <Setter Property="MinHeight" Value="24" />
+        <Setter Property="MinHeight" Value="26" />
         <Setter Property="Padding" Value="0" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Grid x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="5">
+                    <Grid x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="13">
                         <VisualStateManager.VisualStateGroups>
                             <VisualStateGroup x:Name="CommonStates">
                                 <VisualState x:Name="Normal" />

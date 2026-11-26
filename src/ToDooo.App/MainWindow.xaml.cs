@@ -39,7 +39,6 @@ public sealed partial class MainWindow : Window
     private readonly List<Button> _tagButtons = new();
     private readonly List<Button> _smartViewButtons = new();
     private readonly List<FontIcon> _tagChecks = new();
-    private Button? _tagClearButton;
 
     private NativeMethods.SUBCLASSPROC? _subclassProc;
     private DesktopAcrylicController? _acrylic;
@@ -136,6 +135,15 @@ public sealed partial class MainWindow : Window
         notifier.CompleteRequested = id => _dispatcher.TryEnqueue(() => CompleteFromNotification(id));
         notifier.CompleteSubtaskRequested = (todoId, subId) =>
             _dispatcher.TryEnqueue(() => CompleteSubtaskFromNotification(todoId, subId));
+
+        _dispatcher.TryEnqueue(() =>
+        {
+            RestoreVisibleStickyNotes();
+            if (_settings.Current.CalendarOpen)
+            {
+                SetCalendarExpanded(true);
+            }
+        });
     }
 
     public MainViewModel ViewModel { get; }
@@ -494,8 +502,11 @@ public sealed partial class MainWindow : Window
         var x = _settings.Current.WindowX ?? fallback.X + fallback.Width - width - (int)(24 * scale);
         var y = _settings.Current.WindowY ?? fallback.Y + fallback.Height - height - (int)(28 * scale);
 
-        // 按保存位置所在的显示器夹取：放到副屏的小组件重启后不会被拉回主屏。
-        var area = DisplayArea.GetFromPoint(new PointInt32(x, y), DisplayAreaFallback.Nearest).WorkArea;
+        // 按保存位置所在的显示器夹取：放到副屏的小组件重启后不会被拉回主屏；
+        // 若副屏已拔掉或分辨率/DPI 变化，自动夹取到最近可用显示器的可见工作区内。
+        var area = DisplayArea.GetFromPoint(new PointInt32(x + width / 2, y + height / 2), DisplayAreaFallback.Nearest).WorkArea;
+        width = Math.Min(width, area.Width);
+        height = Math.Min(height, area.Height);
         x = Math.Clamp(x, area.X, area.X + Math.Max(0, area.Width - width));
         y = Math.Clamp(y, area.Y, area.Y + Math.Max(0, area.Height - height));
 
@@ -637,6 +648,8 @@ public sealed partial class MainWindow : Window
 
             _calendarAnimating = true;
             _calendarExpanded = true;
+            _settings.Current.CalendarOpen = true;
+            _settings.Save();
             UpdateCalendarButtonVisual();
 
             _calendarHostWindow.ShowNextTo(_appWindow, () =>
@@ -649,6 +662,8 @@ public sealed partial class MainWindow : Window
 
         _calendarAnimating = true;
         _calendarExpanded = false;
+        _settings.Current.CalendarOpen = false;
+        _settings.Save();
         UpdateCalendarButtonVisual();
 
         if (_calendarHostWindow is null)
@@ -768,6 +783,8 @@ public sealed partial class MainWindow : Window
         _reminder.LeadMinutes = _settings.Current.ReminderLeadMinutes;
         BuildSmartViewChips();
         ScheduleCalendarRefresh();
+        _calendarHostWindow?.Calendar.Refresh();
+        RefreshStickyThemes();
 
         // 关掉自动隐藏时把可能已经变淡的窗口拉回来。
         if (!_settings.Current.AutoHide)
@@ -787,6 +804,7 @@ public sealed partial class MainWindow : Window
         WindowCloak.Cancel(_hwnd, reveal: false);
         _calendarAnimating = false;
         _calendarHostWindow?.ForceClose();
+        CloseAllStickyWindows();
         NativeMethods.UnregisterHotKey(_hwnd, GlobalHotkeyId);
         NativeMethods.UnregisterHotKey(_hwnd, QuickAddHotkeyId);
         ExpandDock();
@@ -879,7 +897,7 @@ public sealed partial class MainWindow : Window
                 if ((pos.flags & NativeMethods.SWP_NOSIZE) == 0 && pos.cx > 0 && pos.cy > 0)
                 {
                     var scale = NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
-                    var minWidth = (int)Math.Round(320 * scale);
+                    var minWidth = (int)Math.Round(360 * scale);
                     var minHeight = (int)Math.Round(360 * scale);
                     if (pos.cx < minWidth)
                     {
@@ -960,7 +978,13 @@ public sealed partial class MainWindow : Window
 
     private void DragRegion_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
-        if (!e.GetCurrentPoint((UIElement)sender).Properties.IsLeftButtonPressed)
+        if (WindowDragHelper.TryBeginTouchDrag(_hwnd, Root, (UIElement)sender, e))
+        {
+            _attachedFollowers.Clear();
+            return;
+        }
+
+        if (!WindowDragHelper.IsPrimaryPointerPressed((UIElement)sender, e))
         {
             return;
         }
@@ -971,7 +995,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        if (!NativeMethods.GetCursorPos(out _dragStartCursor) ||
+        if (!WindowDragHelper.TryGetScreenPoint(_hwnd, Root, e, out _dragStartCursor) ||
             !NativeMethods.GetWindowRect(_hwnd, out _dragStartRect))
         {
             return;
@@ -985,12 +1009,17 @@ public sealed partial class MainWindow : Window
 
     private void DragRegion_PointerMoved(object sender, PointerRoutedEventArgs e)
     {
+        if (WindowDragHelper.TryMoveTouchDrag(_hwnd, Root, e, MoveWindowTo))
+        {
+            return;
+        }
+
         if (!_dragging)
         {
             return;
         }
 
-        if (NativeMethods.GetCursorPos(out var cursor))
+        if (WindowDragHelper.TryGetScreenPoint(_hwnd, Root, e, out var cursor))
         {
             MoveWindowTo(
                 _dragStartRect.Left + cursor.X - _dragStartCursor.X,
@@ -1002,6 +1031,11 @@ public sealed partial class MainWindow : Window
 
     private void DragRegion_PointerReleased(object sender, PointerRoutedEventArgs e)
     {
+        if (WindowDragHelper.TryEndTouchDrag(_hwnd, e))
+        {
+            return;
+        }
+
         if (!_dragging)
         {
             return;

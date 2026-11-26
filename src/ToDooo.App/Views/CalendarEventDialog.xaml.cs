@@ -182,6 +182,7 @@ public sealed partial class CalendarEventDialog : Window
         _endTouched = false;
 
         NoteBox.Text = editing.Notes;
+        SetLocationTextSilently(editing.Location);
         UrlBox.Text = editing.Url;
         CategoryBox.Text = editing.Categories;
         ClassBox.SelectedIndex = editing.Class?.ToUpperInvariant() switch
@@ -597,6 +598,7 @@ public sealed partial class CalendarEventDialog : Window
 
     private void HeaderBar_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
+        HidePlaceSuggestions();
         if (!e.GetCurrentPoint((UIElement)sender).Properties.IsLeftButtonPressed ||
             !NativeMethods.GetCursorPos(out _dragStartCursor) ||
             !NativeMethods.GetWindowRect(_hwnd, out _dragStartRect))
@@ -647,6 +649,214 @@ public sealed partial class CalendarEventDialog : Window
 
     private void SaveButton_Click(object sender, RoutedEventArgs e) => Finish(true);
 
+    private CancellationTokenSource? _placeSearchCts;
+    private bool _suppressPlaceSearch;
+
+    private void SetLocationTextSilently(string text)
+    {
+        _suppressPlaceSearch = true;
+        try
+        {
+            LocationBox.Text = text ?? string.Empty;
+        }
+        finally
+        {
+            _suppressPlaceSearch = false;
+        }
+    }
+
+    private void LocationBox_GotFocus(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(LocationBox.Text))
+        {
+            var recent = PlaceSearchService.GetRecent(limit: 5);
+            if (recent.Count > 0)
+            {
+                PlaceSuggestionsList.ItemsSource = recent;
+                PlaceSuggestionsList.SelectedIndex = -1;
+                ShowPlaceSuggestions();
+            }
+        }
+    }
+
+    private async void LocationBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_suppressPlaceSearch)
+        {
+            return;
+        }
+
+        await TriggerPlaceSearchAsync(LocationBox.Text, debounceMs: 350);
+    }
+
+    private async void LocationBox_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (PlaceSuggestionsPopup.IsOpen && PlaceSuggestionsList.Items.Count > 0)
+        {
+            var count = PlaceSuggestionsList.Items.Count;
+            if (e.Key == Windows.System.VirtualKey.Down)
+            {
+                PlaceSuggestionsList.SelectedIndex = (PlaceSuggestionsList.SelectedIndex + 1) % count;
+                e.Handled = true;
+                return;
+            }
+
+            if (e.Key == Windows.System.VirtualKey.Up)
+            {
+                PlaceSuggestionsList.SelectedIndex = PlaceSuggestionsList.SelectedIndex <= 0
+                    ? count - 1
+                    : PlaceSuggestionsList.SelectedIndex - 1;
+                e.Handled = true;
+                return;
+            }
+
+            if (e.Key == Windows.System.VirtualKey.Enter && PlaceSuggestionsList.SelectedItem is PlaceSuggestion selected)
+            {
+                ApplyPlaceSuggestion(selected);
+                e.Handled = true;
+                return;
+            }
+
+            if (e.Key == Windows.System.VirtualKey.Escape)
+            {
+                HidePlaceSuggestions();
+                e.Handled = true;
+                return;
+            }
+        }
+        else if (e.Key == Windows.System.VirtualKey.Enter)
+        {
+            e.Handled = true;
+            await TriggerPlaceSearchAsync(LocationBox.Text, debounceMs: 0);
+        }
+    }
+
+    private void PlaceSuggestionsList_ItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is PlaceSuggestion suggestion)
+        {
+            ApplyPlaceSuggestion(suggestion);
+        }
+    }
+
+    private void ApplyPlaceSuggestion(PlaceSuggestion suggestion)
+    {
+        _placeSearchCts?.Cancel();
+        // 写完整地址：手机上点这个地点能直接定位，只写简称容易搜不到。
+        SetLocationTextSilently(suggestion.DisplayName);
+        LocationBox.SelectionStart = LocationBox.Text.Length;
+        HidePlaceSuggestions();
+    }
+
+    private void ShowPlaceSuggestions()
+    {
+        var origin = LocationBox.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(0, 0));
+        PlaceSuggestionsCard.Width = Math.Max(240, LocationBox.ActualWidth);
+        PlaceSuggestionsPopup.HorizontalOffset = origin.X;
+        PlaceSuggestionsPopup.VerticalOffset = origin.Y + LocationBox.ActualHeight + 4;
+        PlaceSuggestionsPopup.IsOpen = true;
+    }
+
+    private void HidePlaceSuggestions()
+    {
+        PlaceSuggestionsPopup.IsOpen = false;
+        PlaceSuggestionsList.SelectedIndex = -1;
+    }
+
+    private async Task TriggerPlaceSearchAsync(string rawText, int debounceMs)
+    {
+        var keyword = (rawText ?? string.Empty).Trim();
+
+        // 上一次搜索还没回来就取消，避免结果乱序覆盖。
+        _placeSearchCts?.Cancel();
+
+        // 1. 先用本地最近地点瞬时匹配（离线也能用，在线时也会排在最上方）。
+        var recent = PlaceSearchService.GetRecent(keyword, limit: keyword.Length == 0 ? 5 : 4);
+        if (recent.Count > 0)
+        {
+            PlaceSuggestionsList.ItemsSource = recent;
+            PlaceSuggestionsList.SelectedIndex = -1;
+            ShowPlaceSuggestions();
+        }
+        else if (keyword.Length < 2)
+        {
+            PlaceSuggestionsList.ItemsSource = null;
+            HidePlaceSuggestions();
+        }
+
+        if (keyword.Length < 2)
+        {
+            SetPlaceSearchLoading(false);
+            return;
+        }
+
+        var cts = new CancellationTokenSource();
+        _placeSearchCts = cts;
+
+        try
+        {
+            if (debounceMs > 0)
+            {
+                await Task.Delay(debounceMs, cts.Token);
+            }
+
+            if (cts.IsCancellationRequested)
+            {
+                return;
+            }
+
+            SetPlaceSearchLoading(true);
+            var online = await PlaceSearchService.SearchAsync(keyword, limit: 6, token: cts.Token);
+            if (cts.IsCancellationRequested)
+            {
+                return;
+            }
+
+            // 合并：匹配的最近地点置顶 + 去重后的在线结果（最多 6 条）；断网时自动降级保留 recent。
+            var merged = new List<PlaceSuggestion>(6);
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in recent.Concat(online))
+            {
+                if (seen.Add(item.DisplayName))
+                {
+                    merged.Add(item);
+                    if (merged.Count >= 6)
+                    {
+                        break;
+                    }
+                }
+            }
+
+            PlaceSuggestionsList.ItemsSource = merged;
+            PlaceSuggestionsList.SelectedIndex = -1;
+            if (merged.Count > 0)
+            {
+                ShowPlaceSuggestions();
+            }
+            else
+            {
+                HidePlaceSuggestions();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // 用户继续输入导致取消，静默忽略。
+        }
+        finally
+        {
+            if (ReferenceEquals(_placeSearchCts, cts))
+            {
+                SetPlaceSearchLoading(false);
+            }
+        }
+    }
+
+    private void SetPlaceSearchLoading(bool loading)
+    {
+        PlaceSearchProgress.IsActive = loading;
+        PlaceSearchProgress.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     private void CancelButton_Click(object sender, RoutedEventArgs e) => Finish(false);
 
     private void SaveAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
@@ -658,6 +868,12 @@ public sealed partial class CalendarEventDialog : Window
     private void CancelAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
         args.Handled = true;
+        if (PlaceSuggestionsPopup.IsOpen)
+        {
+            HidePlaceSuggestions();
+            return;
+        }
+
         Finish(false);
     }
 
@@ -667,6 +883,9 @@ public sealed partial class CalendarEventDialog : Window
         {
             return;
         }
+
+        _placeSearchCts?.Cancel();
+        HidePlaceSuggestions();
 
         if (saved)
         {
@@ -706,13 +925,16 @@ public sealed partial class CalendarEventDialog : Window
                 ? RepeatOptions[RepeatBox.SelectedIndex]
                 : null;
 
+            var location = LocationBox.Text.Trim();
+            PlaceSearchService.RecordRecent(location);
+
             Draft = new CalendarSyncService.CalendarEventDraft
             {
                 Summary = summary,
                 Start = start.Value,
                 End = end,
                 AllDay = allDay,
-                Location = _editing?.Location ?? string.Empty,
+                Location = location,
                 Notes = NoteBox.Text.Trim(),
                 Url = UrlBox.Text.Trim(),
                 Categories = CategoryBox.Text.Trim(),

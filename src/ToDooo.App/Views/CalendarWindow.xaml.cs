@@ -374,6 +374,9 @@ public sealed partial class CalendarWindow : UserControl
         return Math.Clamp(Math.Min(width / DefaultLogicalWidth, height / DefaultLogicalHeight), 0.82, 1.55);
     }
 
+    private double CalendarFontFactor() =>
+        Math.Clamp((_settings?.Current.CalendarFontSize ?? 10.0) / 10.0, 0.8, 1.6);
+
     /// <summary>
     /// 详情抽屉固定在日历右侧，不随吸附方向换边。
     /// 之前按吸附侧把抽屉换到左边，会让左侧吸附时开合走过与右侧不同的窗口几何，
@@ -1045,7 +1048,7 @@ public sealed partial class CalendarWindow : UserControl
             var dateText = new TextBlock
             {
                 Text = $"{date:M/d}",
-                FontSize = Math.Round(12 * scale, 1),
+                FontSize = Math.Round(12 * scale * CalendarFontFactor(), 1),
                 FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
                 VerticalAlignment = VerticalAlignment.Center,
                 Foreground = isToday
@@ -1071,7 +1074,7 @@ public sealed partial class CalendarWindow : UserControl
             dateStack.Children.Add(new TextBlock
             {
                 Text = weekdayNames[dayOfWeekIdx],
-                FontSize = Math.Round(11 * scale, 1),
+                FontSize = Math.Round(11 * scale * CalendarFontFactor(), 1),
                 VerticalAlignment = VerticalAlignment.Center,
                 Foreground = (Brush)Application.Current.Resources[dayOfWeekIdx >= 5 ? "TextMutedBrush" : "TextSecondaryBrush"],
             });
@@ -1113,7 +1116,7 @@ public sealed partial class CalendarWindow : UserControl
                 var emptyText = new TextBlock
                 {
                     Text = "无安排",
-                    FontSize = Math.Round(11 * scale, 1),
+                    FontSize = Math.Round(11 * scale * CalendarFontFactor(), 1),
                     VerticalAlignment = VerticalAlignment.Center,
                     Opacity = 0.55,
                     Foreground = (Brush)Application.Current.Resources["TextMutedBrush"],
@@ -1343,7 +1346,7 @@ public sealed partial class CalendarWindow : UserControl
             grid.Children.Add(new FontIcon
             {
                 Glyph = "\uE787",
-                FontSize = Math.Round(12 * scale, 1),
+                FontSize = Math.Round(12 * scale * CalendarFontFactor(), 1),
                 Width = 20,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
@@ -1365,9 +1368,9 @@ public sealed partial class CalendarWindow : UserControl
         var title = new TextBlock
         {
             Text = evt.Summary,
-            FontSize = Math.Round((showCalendarIcon ? 12 : 11.5) * scale, 1),
+            FontSize = Math.Round((showCalendarIcon ? 12 : 11.5) * scale * CalendarFontFactor(), 1),
             MaxLines = 1,
-            TextTrimming = TextTrimming.CharacterEllipsis,
+            TextTrimming = TextTrimming.Clip,
             VerticalAlignment = VerticalAlignment.Center,
             Foreground = (Brush)Application.Current.Resources["TextPrimaryBrush"],
         };
@@ -1378,7 +1381,7 @@ public sealed partial class CalendarWindow : UserControl
         var time = new TextBlock
         {
             Text = evt.IsAllDay ? "全天" : evt.StartAt.ToString("HH:mm"),
-            FontSize = Math.Round(11 * scale, 1),
+            FontSize = Math.Round(11 * scale * CalendarFontFactor(), 1),
             VerticalAlignment = VerticalAlignment.Center,
             Foreground = (Brush)Application.Current.Resources["TextMutedBrush"],
         };
@@ -1503,10 +1506,10 @@ public sealed partial class CalendarWindow : UserControl
         var title = new TextBlock
         {
             Text = entry.Title,
-            FontSize = Math.Round(12 * scale, 1),
+            FontSize = Math.Round(12 * scale * CalendarFontFactor(), 1),
             MaxLines = 2,
             TextWrapping = TextWrapping.Wrap,
-            TextTrimming = TextTrimming.CharacterEllipsis,
+            TextTrimming = TextTrimming.Clip,
             Foreground = (Brush)Application.Current.Resources[entry.IsDone ? "TextMutedBrush" : "TextPrimaryBrush"],
             TextDecorations = entry.IsDone
                 ? Windows.UI.Text.TextDecorations.Strikethrough
@@ -1519,9 +1522,9 @@ public sealed partial class CalendarWindow : UserControl
             textStack.Children.Add(new TextBlock
             {
                 Text = $"\u21B3 {entry.Parent.Title}",
-                FontSize = Math.Round(10.5 * scale, 1),
+                FontSize = Math.Round(10.5 * scale * CalendarFontFactor(), 1),
                 MaxLines = 1,
-                TextTrimming = TextTrimming.CharacterEllipsis,
+                TextTrimming = TextTrimming.Clip,
                 Foreground = (Brush)Application.Current.Resources["TextMutedBrush"],
             });
         }
@@ -1532,9 +1535,9 @@ public sealed partial class CalendarWindow : UserControl
             textStack.Children.Add(new TextBlock
             {
                 Text = note,
-                FontSize = Math.Round(10.5 * scale, 1),
+                FontSize = Math.Round(10.5 * scale * CalendarFontFactor(), 1),
                 MaxLines = 1,
-                TextTrimming = TextTrimming.CharacterEllipsis,
+                TextTrimming = TextTrimming.Clip,
                 Foreground = (Brush)Application.Current.Resources["TextMutedBrush"],
             });
         }
@@ -1730,9 +1733,9 @@ public sealed partial class CalendarWindow : UserControl
         var text = new TextBlock
         {
             Text = bar.Event.Summary,
-            FontSize = Math.Round(9.5 * scale, 1),
+            FontSize = Math.Round(9.5 * scale * CalendarFontFactor(), 1),
             MaxLines = 1,
-            TextTrimming = TextTrimming.CharacterEllipsis,
+            TextTrimming = TextTrimming.Clip,
             VerticalAlignment = VerticalAlignment.Center,
             Foreground = (Brush)Application.Current.Resources["TextPrimaryBrush"],
         };
@@ -2194,9 +2197,9 @@ public sealed partial class CalendarWindow : UserControl
         var title = new TextBlock
         {
             Text = evt.Summary,
-            FontSize = Math.Round(9.5 * scale, 1),
+            FontSize = Math.Round(9.5 * scale * CalendarFontFactor(), 1),
             MaxLines = 1,
-            TextTrimming = TextTrimming.CharacterEllipsis,
+            TextTrimming = TextTrimming.Clip,
             VerticalAlignment = VerticalAlignment.Center,
             Foreground = (Brush)Application.Current.Resources["TextPrimaryBrush"],
         };
@@ -2262,9 +2265,9 @@ public sealed partial class CalendarWindow : UserControl
         var title = new TextBlock
         {
             Text = entry.Title,
-            FontSize = Math.Round(9.5 * scale, 1),
+            FontSize = Math.Round(9.5 * scale * CalendarFontFactor(), 1),
             MaxLines = 1,
-            TextTrimming = TextTrimming.CharacterEllipsis,
+            TextTrimming = TextTrimming.Clip,
             TextAlignment = TextAlignment.Left,
             HorizontalAlignment = HorizontalAlignment.Left,
             TextDecorations = entry.IsDone ? Windows.UI.Text.TextDecorations.Strikethrough : Windows.UI.Text.TextDecorations.None,
@@ -2595,10 +2598,10 @@ public sealed partial class CalendarWindow : UserControl
         var title = new TextBlock
         {
             Text = entry.Title,
-            FontSize = Math.Round(12 * scale, 1),
+            FontSize = Math.Round(12 * scale * CalendarFontFactor(), 1),
             MaxLines = 2,
             TextWrapping = TextWrapping.Wrap,
-            TextTrimming = TextTrimming.CharacterEllipsis,
+            TextTrimming = TextTrimming.Clip,
             VerticalAlignment = VerticalAlignment.Center,
             Foreground = (Brush)Application.Current.Resources[
                 entry.IsDone ? "TextMutedBrush" : "TextPrimaryBrush"],
@@ -2613,7 +2616,7 @@ public sealed partial class CalendarWindow : UserControl
         var time = new TextBlock
         {
             Text = entry.DueAt?.ToString("HH:mm") ?? string.Empty,
-            FontSize = Math.Round(11 * scale, 1),
+            FontSize = Math.Round(11 * scale * CalendarFontFactor(), 1),
             VerticalAlignment = VerticalAlignment.Center,
             Foreground = (Brush)Application.Current.Resources[
                 entry.IsOverdue ? "OverdueBrush" : "TextMutedBrush"],
@@ -2714,9 +2717,9 @@ public sealed partial class CalendarWindow : UserControl
         var title = new TextBlock
         {
             Text = subtask.Title,
-            FontSize = Math.Round(11 * scale, 1),
+            FontSize = Math.Round(11 * scale * CalendarFontFactor(), 1),
             MaxLines = 1,
-            TextTrimming = TextTrimming.CharacterEllipsis,
+            TextTrimming = TextTrimming.Clip,
             VerticalAlignment = VerticalAlignment.Center,
             Foreground = (Brush)Application.Current.Resources[
                 subtask.IsDone ? "TextMutedBrush" : "TextSecondaryBrush"],
@@ -2819,7 +2822,7 @@ public sealed partial class CalendarWindow : UserControl
                 row.Children.Add(new TextBlock
                 {
                     Text = label,
-                    FontSize = Math.Round(10.5 * scale, 1),
+                    FontSize = Math.Round(10.5 * scale * CalendarFontFactor(), 1),
                     Foreground = muted,
                 });
                 row.Children.Add(line);
@@ -2949,13 +2952,13 @@ public sealed partial class CalendarWindow : UserControl
                 subHeader.Children.Add(new TextBlock
                 {
                     Text = "子任务",
-                    FontSize = Math.Round(10.5 * scale, 1),
+                    FontSize = Math.Round(10.5 * scale * CalendarFontFactor(), 1),
                     Foreground = muted,
                 });
                 subtaskProgressText = new TextBlock
                 {
                     Text = entry.Parent.SubtaskProgressText,
-                    FontSize = Math.Round(10.5 * scale, 1),
+                    FontSize = Math.Round(10.5 * scale * CalendarFontFactor(), 1),
                     Foreground = muted,
                 };
                 Grid.SetColumn(subtaskProgressText, 1);
@@ -3202,7 +3205,7 @@ public sealed partial class CalendarWindow : UserControl
                 row.Children.Add(new TextBlock
                 {
                     Text = label,
-                    FontSize = Math.Round(10.5 * scale, 1),
+                    FontSize = Math.Round(10.5 * scale * CalendarFontFactor(), 1),
                     Foreground = muted,
                 });
                 row.Children.Add(line);
@@ -3623,7 +3626,7 @@ public sealed partial class CalendarWindow : UserControl
             FontSize = 11,
             MaxLines = 2,
             TextWrapping = TextWrapping.Wrap,
-            TextTrimming = TextTrimming.CharacterEllipsis,
+            TextTrimming = TextTrimming.Clip,
             VerticalAlignment = VerticalAlignment.Center,
             Foreground = subtask.IsDone ? muted : primary,
             TextDecorations = subtask.IsDone

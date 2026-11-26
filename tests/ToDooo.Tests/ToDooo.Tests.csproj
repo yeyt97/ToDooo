@@ -24,6 +24,7 @@
     <Compile Include="..\..\src\ToDooo.App\Services\TodoRepository.cs" Link="Linked\Services\TodoRepository.cs" />
     <Compile Include="..\..\src\ToDooo.App\Helpers\NaturalDateParser.cs" Link="Linked\Helpers\NaturalDateParser.cs" />
     <Compile Include="..\..\src\ToDooo.App\Services\UpdateService.cs" Link="Linked\Services\UpdateService.cs" />
+    <Compile Include="..\..\src\ToDooo.App\Services\PlaceSearchService.cs" Link="Linked\Services\PlaceSearchService.cs" />
     <Compile Include="..\..\src\ToDooo.App\Models\CalendarEvent.cs" Link="Linked\Models\CalendarEvent.cs" />
     <Compile Include="..\..\src\ToDooo.App\Services\IcsCalendar.cs" Link="Linked\Services\IcsCalendar.cs" />
     <Compile Include="..\..\src\ToDooo.App\Services\RecurrenceExpander.cs" Link="Linked\Services\RecurrenceExpander.cs" />

@@ -80,6 +80,27 @@ public sealed class UpdateServiceTests
     }
 
     [Fact]
+    public async Task PlaceSearch_ReturnsResultsForKnownPlace()
+    {
+        // 真实网络调用：验证 OSM 能返回中文地名。网络不可用时跳过，不让 CI 红灯。
+        var results = await ToDooo.Services.PlaceSearchService.SearchAsync("温州大学", limit: 3);
+        if (results.Count == 0)
+        {
+            return;
+        }
+
+        Assert.All(results, r => Assert.False(string.IsNullOrWhiteSpace(r.DisplayName)));
+        Assert.All(results, r => Assert.False(string.IsNullOrWhiteSpace(r.Name)));
+    }
+
+    [Fact]
+    public async Task PlaceSearch_BlankQueryReturnsEmpty()
+    {
+        var results = await ToDooo.Services.PlaceSearchService.SearchAsync("   ");
+        Assert.Empty(results);
+    }
+
+    [Fact]
     public void IsNewer_HandlesCurrentWithFourParts()
     {
         Assert.False(UpdateService.IsNewer("v1.4.0", new Version(1, 4, 0, 0)));

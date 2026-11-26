@@ -32,13 +32,65 @@ public sealed partial class MainWindow : Window
         {
             OpenSearchBar();
         }
+        else
+        {
+            CloseSearchBar();
+        }
     }
+
+    private bool _searchDismissHooked;
 
     private void OpenSearchBar()
     {
+        if (!_searchDismissHooked)
+        {
+            _searchDismissHooked = true;
+            Root.AddHandler(
+                UIElement.PointerPressedEvent,
+                new PointerEventHandler(Root_DismissEmptySearch_PointerPressed),
+                handledEventsToo: true);
+            Activated += (_, args) =>
+            {
+                if (args.WindowActivationState == WindowActivationState.Deactivated &&
+                    SearchBar.Visibility == Visibility.Visible &&
+                    SearchBox.Text.Length == 0)
+                {
+                    CloseSearchBar();
+                }
+            };
+        }
+
+        TagPanel.Visibility = Visibility.Collapsed;
         SearchBar.Visibility = Visibility.Visible;
-        SearchButton.IsEnabled = false;
         SearchBox.Focus(FocusState.Programmatic);
+    }
+
+    private void Root_DismissEmptySearch_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (SearchBar.Visibility != Visibility.Visible || SearchBox.Text.Length > 0)
+        {
+            return;
+        }
+
+        var pos = e.GetCurrentPoint(Root).Position;
+        if (IsPointInside(SearchBar, pos) || IsPointInside(SearchButton, pos))
+        {
+            return;
+        }
+
+        CloseSearchBar();
+    }
+
+    private bool IsPointInside(FrameworkElement element, Windows.Foundation.Point rootPos)
+    {
+        if (element.Visibility != Visibility.Visible || element.ActualWidth <= 0 || element.ActualHeight <= 0)
+        {
+            return false;
+        }
+
+        var topLeft = element.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(0, 0));
+        return rootPos.X >= topLeft.X && rootPos.X <= topLeft.X + element.ActualWidth &&
+               rootPos.Y >= topLeft.Y && rootPos.Y <= topLeft.Y + element.ActualHeight;
     }
 
     private void CloseSearchBar()
@@ -46,7 +98,7 @@ public sealed partial class MainWindow : Window
         SearchBox.Text = string.Empty;
         ViewModel.SetSearch(string.Empty);
         SearchBar.Visibility = Visibility.Collapsed;
-        SearchButton.IsEnabled = true;
+        TagPanel.Visibility = Visibility.Visible;
     }
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -118,42 +170,6 @@ public sealed partial class MainWindow : Window
             AddTagButton(style, i, color, _settings.GetTagName(i));
         }
 
-        // 选中某个颜色后，末尾才出现的“清除颜色”按钮（圆圈 + 叉）。
-        var clearIcon = new Grid
-        {
-            Width = 18,
-            Height = 18,
-        };
-        clearIcon.Children.Add(new Border
-        {
-            Width = 18,
-            Height = 18,
-            CornerRadius = new CornerRadius(9),
-            BorderThickness = new Thickness(1),
-            BorderBrush = (Brush)Application.Current.Resources["TextMutedBrush"],
-        });
-        clearIcon.Children.Add(new FontIcon
-        {
-            Glyph = "\uE711",
-            FontSize = 7,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-            Foreground = (Brush)Application.Current.Resources["TextMutedBrush"],
-        });
-
-        _tagClearButton = new Button
-        {
-            Style = style,
-            Content = clearIcon,
-            Visibility = Visibility.Collapsed,
-        };
-        _tagClearButton.Click += (_, _) =>
-        {
-            ViewModel.SelectTag(-1);
-            UpdateTagVisuals();
-        };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(_tagClearButton, "清除颜色筛选");
-        TagPanel.Children.Add(_tagClearButton);
         RefreshTagButtonLabels();
     }
 
@@ -193,6 +209,7 @@ public sealed partial class MainWindow : Window
             Background = (Brush)Application.Current.Resources["TransparentBrush"],
         };
         button.Click += TagDot_Click;
+        AttachTagDragHandlers(button, index, color);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, name);
         _tagButtons.Add(button);
         _tagChecks.Add(check);
@@ -201,6 +218,11 @@ public sealed partial class MainWindow : Window
 
     private void TagDot_Click(object sender, RoutedEventArgs e)
     {
+        if (ConsumeSuppressedTagClick())
+        {
+            return;
+        }
+
         if (sender is Button { Tag: int index })
         {
             // 再点一次已选中的颜色即取消筛选。
@@ -226,11 +248,6 @@ public sealed partial class MainWindow : Window
         {
             _tagChecks[i].Visibility = ViewModel.SelectedTag == i ? Visibility.Visible : Visibility.Collapsed;
             _tagButtons[i].Background = transparent;
-        }
-
-        if (_tagClearButton is not null)
-        {
-            _tagClearButton.Visibility = ViewModel.SelectedTag >= 0 ? Visibility.Visible : Visibility.Collapsed;
         }
     }
 

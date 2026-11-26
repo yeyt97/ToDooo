@@ -890,6 +890,12 @@ public sealed partial class MainViewModel : ObservableObject
         _repository.UpdateOrders(_all);
     }
 
+    public void RestoreReorder(IReadOnlyList<TodoItem> ordered)
+    {
+        PersistReorder(ordered);
+        ApplyFilter();
+    }
+
     public void RefreshTime()
     {
         foreach (var item in _all)

@@ -22,6 +22,27 @@ public sealed class UpdateServiceTests
         Assert.Equal(expected, UpdateService.IsNewer(tag, Current));
     }
 
+    [Theory]
+    [InlineData("1.7.3")]
+    [InlineData("2.0.0")]
+    public void SetupDownloadUrl_FollowsReleaseAssetLayout(string version)
+    {
+        var uri = UpdateService.SetupDownloadUrl(version);
+
+        Assert.NotNull(uri);
+        Assert.Equal(
+            $"https://github.com/yeyt97/ToDooo/releases/download/v{version}/ToDooo-{version}-setup.exe",
+            uri!.ToString());
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void SetupDownloadUrl_RejectsBlankVersion(string version)
+    {
+        Assert.Null(UpdateService.SetupDownloadUrl(version));
+    }
+
     [Fact]
     public void ParseFeed_ReadsLatestReleaseTagAndUrl()
     {

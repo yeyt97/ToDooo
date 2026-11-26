@@ -633,7 +633,14 @@ public sealed partial class MainWindow : Window
             _draggedSubtask = subtask;
             _draggedOwner = FindOwnerTodo(sender);
             _subtaskDragActive = true;
-            if (sender is UIElement element)
+            if (sender is Grid row)
+            {
+                // 拖动中的行给一块圆角底色，别让它只是半透明地悬在空中。
+                row.Opacity = 0.85;
+                row.Background = PaletteBrush("ItemCardBrush");
+                _draggedRow = row;
+            }
+            else if (sender is UIElement element)
             {
                 element.Opacity = 0.55;
             }
@@ -667,6 +674,28 @@ public sealed partial class MainWindow : Window
         if (_draggedOwner is { } owner && _draggedSubtask is not null)
         {
             ViewModel.CommitSubtaskOrder(owner);
+        }
+    }
+
+    private Grid? _draggedRow;
+
+    /// <summary>拖动结束后把源行的底色和透明度还原。</summary>
+    private void RestoreDraggedRowVisual()
+    {
+        if (_draggedRow is not { } row)
+        {
+            return;
+        }
+
+        _draggedRow = null;
+        try
+        {
+            row.Opacity = 1;
+            row.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        }
+        catch
+        {
+            // 行可能已经随列表重建被销毁，忽略即可。
         }
     }
 
@@ -712,6 +741,7 @@ public sealed partial class MainWindow : Window
 
     private void SubtaskRow_DropCompleted(UIElement sender, DropCompletedEventArgs args)
     {
+        RestoreDraggedRowVisual();
         sender.Opacity = 1;
         _draggedSubtask = null;
         _draggedOwner = null;

@@ -56,6 +56,55 @@ public class IcsCalendarTests
     }
 
     [Fact]
+    public void Parse_IgnoresAlarmDescription()
+    {
+        // 苹果日历的 VALARM 里固定写 DESCRIPTION:提醒事项，
+        // 它不能覆盖事件本身的备注——否则每条日程都凭空多出一句「提醒事项」。
+        var ics =
+            "BEGIN:VCALENDAR\r\n" +
+            "BEGIN:VEVENT\r\n" +
+            "UID:alarm-1\r\n" +
+            "DTSTART:20261123T090000\r\n" +
+            "DTEND:20261123T100000\r\n" +
+            "SUMMARY:取快递\r\n" +
+            "DESCRIPTION:真实备注内容\r\n" +
+            "BEGIN:VALARM\r\n" +
+            "ACTION:DISPLAY\r\n" +
+            "DESCRIPTION:提醒事项\r\n" +
+            "TRIGGER:-PT30M\r\n" +
+            "END:VALARM\r\n" +
+            "END:VEVENT\r\n" +
+            "END:VCALENDAR\r\n";
+
+        var evt = Assert.Single(IcsCalendar.ParseEvents(ics));
+
+        Assert.Equal("真实备注内容", evt.Description);
+        Assert.Equal("取快递", evt.Summary);
+    }
+
+    [Fact]
+    public void Parse_AlarmOnlyDescriptionDoesNotBecomeNote()
+    {
+        var ics =
+            "BEGIN:VCALENDAR\r\n" +
+            "BEGIN:VEVENT\r\n" +
+            "UID:alarm-2\r\n" +
+            "DTSTART:20261123T090000\r\n" +
+            "SUMMARY:没有备注\r\n" +
+            "BEGIN:VALARM\r\n" +
+            "ACTION:DISPLAY\r\n" +
+            "DESCRIPTION:提醒事项\r\n" +
+            "TRIGGER:-PT30M\r\n" +
+            "END:VALARM\r\n" +
+            "END:VEVENT\r\n" +
+            "END:VCALENDAR\r\n";
+
+        var evt = Assert.Single(IcsCalendar.ParseEvents(ics));
+
+        Assert.Equal(string.Empty, evt.Description);
+    }
+
+    [Fact]
     public void Parse_HandlesFoldedLines()
     {
         const string folded = """

@@ -683,7 +683,8 @@ public sealed partial class MainWindow : Window
             OnSettingsChanged,
             ExportDataAsync,
             ImportDataAsync,
-            _calendarSync);
+            _calendarSync,
+            ExitApp);
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         _settingsWindow.ShowOver(_appWindow);
         TopmostDialogIfDocked(_settingsWindow);

@@ -36,6 +36,7 @@ public sealed partial class SettingsWindow : Window
 
     private readonly SettingsService _settings;
     private readonly Action _settingsChanged;
+    private readonly Action? _settingsChangedForExit;
     private readonly Func<Task> _exportRequested;
     private readonly Func<Task>? _importRequested;
     private readonly CalendarSyncService? _calendarSync;
@@ -55,13 +56,15 @@ public sealed partial class SettingsWindow : Window
         Action settingsChanged,
         Func<Task> exportRequested,
         Func<Task>? importRequested = null,
-        CalendarSyncService? calendarSync = null)
+        CalendarSyncService? calendarSync = null,
+        Action? exitRequested = null)
     {
         _settings = settings;
         _settingsChanged = settingsChanged;
         _exportRequested = exportRequested;
         _importRequested = importRequested;
         _calendarSync = calendarSync;
+        _settingsChangedForExit = exitRequested;
 
         InitializeComponent();
         Root.RequestedTheme = Appearance.ToElementTheme((ThemeMode)settings.Current.ThemeMode);
@@ -98,6 +101,12 @@ public sealed partial class SettingsWindow : Window
         BuildTagNameEditors();
         LeadBox.SelectedIndex = Math.Max(0, Array.IndexOf(LeadOptions, settings.Current.ReminderLeadMinutes));
         LoadCalendarSettings();
+
+        // 后台检查发现过新版本时，进设置就能看到，不用再点一次检查。
+        if (!string.IsNullOrWhiteSpace(settings.Current.PendingUpdateVersion))
+        {
+            UpdateStatusText.Text = $"发现新版本 {settings.Current.PendingUpdateVersion}，点「检查更新」可直接安装。";
+        }
         CalendarCard.Visibility = calendarSync is null ? Visibility.Collapsed : Visibility.Visible;
 
         // 首次显示前按初始宽度排一次侧栏，避免先宽后窄闪一下。
@@ -1150,20 +1159,87 @@ public sealed partial class SettingsWindow : Window
                 return;
             }
 
-            if (!result.HasUpdate)
+            if (!result.HasUpdate || result.Version is not { } version)
             {
                 UpdateStatusText.Text = $"已是最新版本（{AppInfo.DisplayVersion}）";
                 return;
             }
 
-            UpdateStatusText.Text = $"发现新版本 {result.Version}，正在打开下载页…";
-            if (result.Url is { } url)
-            {
-                await Windows.System.Launcher.LaunchUriAsync(new Uri(url));
-            }
+            _settings.Current.LastUpdateCheckDate = DateTime.Now.ToString("yyyy-MM-dd");
+            _settings.Save();
+            UpdateStatusText.Text = $"发现新版本 {version}。";
+            await OfferUpdateAsync(version, result.Url);
         }
         finally
         {
+            CheckUpdateButton.IsEnabled = true;
+        }
+    }
+
+    /// <summary>
+    /// 发现新版本后的出口：安装版给「现在更新」，下载安装包后静默安装并重启；
+    /// 绿色版/无法覆盖安装时退回打开下载页。
+    /// </summary>
+    private async Task OfferUpdateAsync(string version, string? pageUrl)
+    {
+        var canAutoInstall = UpdateInstaller.IsInstalledCopy();
+        var dialog = new ContentDialog
+        {
+            Title = $"发现新版本 {version}",
+            Content = new TextBlock
+            {
+                Text = canAutoInstall
+                    ? "现在下载并安装吗？安装过程中应用会自动关闭，完成后自动重新打开。"
+                    : "当前不是安装版，无法自动覆盖安装，将打开下载页手动更新。",
+                TextWrapping = TextWrapping.Wrap,
+            },
+            PrimaryButtonText = canAutoInstall ? "立即更新" : "打开下载页",
+            CloseButtonText = "稍后",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = Root.XamlRoot,
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        if (!canAutoInstall)
+        {
+            if (pageUrl is not null && Uri.TryCreate(pageUrl, UriKind.Absolute, out var uri))
+            {
+                await Windows.System.Launcher.LaunchUriAsync(uri);
+            }
+
+            return;
+        }
+
+        await DownloadAndInstallAsync(version);
+    }
+
+    private async Task DownloadAndInstallAsync(string version)
+    {
+        CheckUpdateButton.IsEnabled = false;
+        var progress = new Progress<double>(value =>
+            UpdateStatusText.Text = $"正在下载更新… {value * 100:0}%");
+
+        var setup = await UpdateService.DownloadSetupAsync(version, progress);
+        if (setup is null)
+        {
+            UpdateStatusText.Text = "下载失败，请稍后重试或到 GitHub 下载页手动更新。";
+            CheckUpdateButton.IsEnabled = true;
+            return;
+        }
+
+        UpdateStatusText.Text = "下载完成，正在安装…应用即将重启。";
+        _settings.Current.PendingUpdateVersion = string.Empty;
+        _settings.Save();
+
+        // 先把应用退干净，安装程序才能覆盖 exe；安装完由 /RESTARTAPPLICATIONS 自动拉起。
+        _settingsChangedForExit?.Invoke();
+        if (!UpdateInstaller.TryLaunchInstaller(setup))
+        {
+            UpdateStatusText.Text = "无法启动安装程序，请到 GitHub 下载页手动更新。";
             CheckUpdateButton.IsEnabled = true;
         }
     }

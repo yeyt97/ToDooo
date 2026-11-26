@@ -222,25 +222,70 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>启动后静默检查一次 GitHub Release，有新版本只提示一次。</summary>
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _updateCheckTimer;
+
+    /// <summary>
+    /// 启动后查一次，之后每天查一次。只在发现新版本、且这次还没提醒过时弹气泡；
+    /// 真正安装仍由用户在设置里点「检查更新」触发。
+    /// </summary>
     private void ScheduleUpdateCheck()
     {
-        var timer = _dispatcher.CreateTimer();
-        timer.Interval = TimeSpan.FromSeconds(8);
-        timer.IsRepeating = false;
-        timer.Tick += async (_, _) =>
+        // 启动延迟 8 秒，别和开屏动画、首次同步抢时间。
+        var first = _dispatcher.CreateTimer();
+        first.Interval = TimeSpan.FromSeconds(8);
+        first.IsRepeating = false;
+        first.Tick += (_, _) =>
         {
-            timer.Stop();
-            var result = await UpdateService.CheckAsync(ToDooo.Helpers.AppInfo.Version);
-            if (!result.HasUpdate || result.Version == _settings.Current.LastNotifiedVersion)
+            first.Stop();
+            _ = CheckUpdateQuietAsync();
+        };
+        first.Start();
+
+        // 之后每 24 小时一次；进程活过夜也能收到。
+        _updateCheckTimer ??= _dispatcher.CreateTimer();
+        _updateCheckTimer.Stop();
+        _updateCheckTimer.Interval = TimeSpan.FromHours(24);
+        _updateCheckTimer.IsRepeating = true;
+        _updateCheckTimer.Tick += (_, _) => _ = CheckUpdateQuietAsync();
+        _updateCheckTimer.Start();
+    }
+
+    private async Task CheckUpdateQuietAsync()
+    {
+        try
+        {
+            // 同一天只查一次：频繁重启也不该反复打网络。
+            var today = DateTime.Now.ToString("yyyy-MM-dd");
+            if (string.Equals(_settings.Current.LastUpdateCheckDate, today, StringComparison.Ordinal))
             {
                 return;
             }
 
-            _settings.Current.LastNotifiedVersion = result.Version!;
+            _settings.Current.LastUpdateCheckDate = today;
             _settings.Save();
-            ShowBalloon("发现新版本", $"ToDooo {result.Version} 已发布，可在设置里点「检查更新」打开下载页");
-        };
-        timer.Start();
+
+            var result = await UpdateService.CheckAsync(ToDooo.Helpers.AppInfo.Version);
+            if (!result.HasUpdate || result.Version is not { } version)
+            {
+                return;
+            }
+
+            // 记下待更新版本，下次启动还能提示；同一版本只弹一次，别每天烦人。
+            _settings.Current.PendingUpdateVersion = version;
+            if (version == _settings.Current.LastNotifiedVersion)
+            {
+                _settings.Save();
+                return;
+            }
+
+            _settings.Current.LastNotifiedVersion = version;
+            _settings.Save();
+            ShowBalloon("发现新版本", $"ToDooo {version} 已发布，打开设置点「检查更新」即可直接安装");
+        }
+        catch
+        {
+            // 静默检查失败不影响使用
+        }
     }
 
     private void UndoButton_Click(object sender, RoutedEventArgs e)

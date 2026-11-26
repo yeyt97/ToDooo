@@ -72,6 +72,12 @@ public sealed class AppSettings
     /// <summary>鼠标离开窗口时自动变淡、移回恢复。</summary>
     public bool AutoHide { get; set; }
 
+    /// <summary>上次检查更新的日期（yyyy-MM-dd）；用于每日只查一次。</summary>
+    public string LastUpdateCheckDate { get; set; } = string.Empty;
+
+    /// <summary>发现但用户还没处理的新版本号；不为空时下次启动会提示。</summary>
+    public string PendingUpdateVersion { get; set; } = string.Empty;
+
     /// <summary>鼠标离开多少秒后变淡；0 = 立即变淡。</summary>
     public int AutoHideDelaySeconds { get; set; }
 

@@ -142,6 +142,80 @@ public static class UpdateService
         return remote is not null && remote > new Version(current.Major, current.Minor, Math.Max(0, current.Build));
     }
 
+    /// <summary>
+    /// 安装包直链：GitHub Release 的固定路径规则，tag 与文件名都能推出来，不必再查一次 API。
+    /// </summary>
+    public static Uri? SetupDownloadUrl(string version)
+    {
+        if (string.IsNullOrWhiteSpace(version))
+        {
+            return null;
+        }
+
+        var tag = $"v{version}";
+        var file = $"ToDooo-{version}-setup.exe";
+        return Uri.TryCreate(
+            $"https://github.com/yeyt97/ToDooo/releases/download/{tag}/{file}", UriKind.Absolute, out var uri)
+            ? uri
+            : null;
+    }
+
+    /// <summary>下载安装包到临时目录，返回本地路径；失败返回 null。</summary>
+    public static async Task<string?> DownloadSetupAsync(
+        string version, IProgress<double>? progress, CancellationToken token = default)
+    {
+        var uri = SetupDownloadUrl(version);
+        if (uri is null)
+        {
+            return null;
+        }
+
+        var target = System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(), $"ToDooo-{version}-setup.exe");
+
+        try
+        {
+            using var response = await Http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, token)
+                .ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            var total = response.Content.Headers.ContentLength ?? -1L;
+            await using var source = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
+            await using var destination = System.IO.File.Create(target);
+
+            var buffer = new byte[81920];
+            long received = 0;
+            int read;
+            while ((read = await source.ReadAsync(buffer, token).ConfigureAwait(false)) > 0)
+            {
+                await destination.WriteAsync(buffer.AsMemory(0, read), token).ConfigureAwait(false);
+                received += read;
+                if (total > 0)
+                {
+                    progress?.Report((double)received / total);
+                }
+            }
+
+            return target;
+        }
+        catch
+        {
+            try
+            {
+                System.IO.File.Delete(target);
+            }
+            catch
+            {
+                // 清理失败不影响结果
+            }
+
+            return null;
+        }
+    }
+
     private static Version? Normalize(string? tag)
     {
         var text = (tag ?? string.Empty).Trim().TrimStart('v', 'V');

@@ -131,8 +131,29 @@ public static class IcsCalendar
     private static IcsEvent? ParseEventBlock(List<string> block)
     {
         var evt = new IcsEvent();
+        // VALARM 是嵌在 VEVENT 里的子块，里面的 DESCRIPTION 是提醒通知正文
+        // （苹果默认写「提醒事项」），不能被当成事件备注。整块跳过。
+        var insideAlarm = false;
+
         foreach (var line in block)
         {
+            if (line.StartsWith("BEGIN:VALARM", StringComparison.OrdinalIgnoreCase))
+            {
+                insideAlarm = true;
+                continue;
+            }
+
+            if (line.StartsWith("END:VALARM", StringComparison.OrdinalIgnoreCase))
+            {
+                insideAlarm = false;
+                continue;
+            }
+
+            if (insideAlarm)
+            {
+                continue;
+            }
+
             var colon = line.IndexOf(':');
             if (colon <= 0)
             {

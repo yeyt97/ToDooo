@@ -548,12 +548,18 @@ public sealed partial class SettingsWindow : Window
         });
     }
 
+    private bool? _lastDarkMode;
+
     private void ApplyWindowMaterial()
     {
         var dark = Appearance.IsDark((ThemeMode)_settings.Current.ThemeMode);
-        var darkFlag = dark ? 1 : 0;
-        NativeMethods.DwmSetWindowAttribute(
-            _hwnd, NativeMethods.DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkFlag, sizeof(int));
+        if (_lastDarkMode != dark)
+        {
+            _lastDarkMode = dark;
+            var darkFlag = dark ? 1 : 0;
+            NativeMethods.DwmSetWindowAttribute(
+                _hwnd, NativeMethods.DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkFlag, sizeof(int));
+        }
 
         if (_acrylic is null)
         {
@@ -879,6 +885,27 @@ public sealed partial class SettingsWindow : Window
         _settingsChanged();
     }
 
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _opacityDebounce;
+
+    private void ScheduleOpacityCommit()
+    {
+        if (_opacityDebounce is null)
+        {
+            _opacityDebounce = DispatcherQueue.CreateTimer();
+            _opacityDebounce.Interval = TimeSpan.FromMilliseconds(150);
+            _opacityDebounce.IsRepeating = false;
+            _opacityDebounce.Tick += (_, _) =>
+            {
+                ApplyWindowMaterial();
+                _settings.Save();
+                _settingsChanged();
+            };
+        }
+
+        _opacityDebounce.Stop();
+        _opacityDebounce.Start();
+    }
+
     private void OpacitySlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
     {
         OpacityValue.Text = $"{Math.Round(e.NewValue * 100)}%";
@@ -888,9 +915,8 @@ public sealed partial class SettingsWindow : Window
         }
 
         _settings.Current.WindowOpacity = Math.Clamp(1.0 - e.NewValue, 0.1, 1.0);
-        _settings.Save();
-        ApplyWindowMaterial();
-        _settingsChanged();
+        // 拖动期间只更新数值，停手 150ms 后再统一刷新亚克力材质与落盘，彻底避免 DWM 频繁重合成卡顿。
+        ScheduleOpacityCommit();
     }
 
     private void StickyAcrylicToggle_Toggled(object sender, RoutedEventArgs e)
@@ -915,8 +941,7 @@ public sealed partial class SettingsWindow : Window
         }
 
         _settings.Current.StickyOpacity = Math.Clamp(1.0 - e.NewValue, 0.1, 1.0);
-        _settings.Save();
-        _settingsChanged();
+        ScheduleOpacityCommit();
     }
 
     private void BuildStickyColorSwatches()
@@ -1502,7 +1527,7 @@ public sealed partial class SettingsWindow : Window
     {
         _placeReady = false;
         CalendarOpenOnStartupToggle.IsOn = _settings.Current.CalendarOpenOnStartup;
-        CalendarScrollMonthHintToggle.IsOn = _settings.Current.CalendarScrollMonthHint;
+        CalendarScrollMonthHintBox.SelectedIndex = Math.Clamp(_settings.Current.CalendarScrollMonthHintMode, 0, 2);
         PlaceSourceBox.SelectedIndex = Math.Clamp(_settings.Current.PlaceSearchProvider, 0, 3);
         PlaceAmapKeyBox.Text = _settings.Current.PlaceSearchAmapKey;
         UpdatePlaceSourceVisibility();
@@ -1521,14 +1546,14 @@ public sealed partial class SettingsWindow : Window
         _settings.Save();
     }
 
-    private void CalendarScrollMonthHint_Toggled(object sender, RoutedEventArgs e)
+    private void CalendarScrollMonthHint_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!_placeReady)
         {
             return;
         }
 
-        _settings.Current.CalendarScrollMonthHint = CalendarScrollMonthHintToggle.IsOn;
+        _settings.Current.CalendarScrollMonthHintMode = Math.Clamp(CalendarScrollMonthHintBox.SelectedIndex, 0, 2);
         _settings.Save();
     }
 

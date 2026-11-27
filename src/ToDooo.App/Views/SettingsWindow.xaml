@@ -653,7 +653,7 @@
                             </Grid>
                         </Border>
 
-                        <!--  月视图滚动时浮出年月胶囊  -->
+                        <!--  月视图滚动时的月份提示样式  -->
                         <Border Style="{StaticResource SettingCard}">
                             <Grid ColumnSpacing="12">
                                 <Grid.ColumnDefinitions>
@@ -664,17 +664,19 @@
                                     <TextBlock Style="{StaticResource LabelText}" Text="滚动时显示月份提示" />
                                     <TextBlock
                                         Style="{StaticResource HintText}"
-                                        Text="月视图上下滑动时，顶部浮出当前年月胶囊，停手后自动消失。" />
+                                        Text="月视图上下滑动时提示当前年月，停手后自动消失。" />
                                 </StackPanel>
-                                <ToggleSwitch
-                                    x:Name="CalendarScrollMonthHintToggle"
+                                <ComboBox
+                                    x:Name="CalendarScrollMonthHintBox"
                                     Grid.Column="1"
-                                    MinWidth="0"
+                                    MinWidth="148"
                                     VerticalAlignment="Center"
                                     AutomationProperties.Name="滚动时显示月份提示"
-                                    OffContent=""
-                                    OnContent=""
-                                    Toggled="CalendarScrollMonthHint_Toggled" />
+                                    SelectionChanged="CalendarScrollMonthHint_SelectionChanged">
+                                    <ComboBoxItem Content="关闭" />
+                                    <ComboBoxItem Content="顶部胶囊（默认）" />
+                                    <ComboBoxItem Content="背景大数字水印" />
+                                </ComboBox>
                             </Grid>
                         </Border>
 

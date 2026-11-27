@@ -352,9 +352,14 @@
                     <TextBox
                         x:Name="AddTextBox"
                         Grid.Column="0"
-                        Height="46"
+                        MinHeight="46"
+                        MaxHeight="140"
                         Margin="12,0,4,0"
+                        Padding="0,12,0,12"
+                        AcceptsReturn="False"
+                        ScrollViewer.VerticalScrollBarVisibility="Auto"
                         Style="{StaticResource AddTextBoxStyle}"
+                        TextWrapping="Wrap"
                         TextChanged="AddTextBox_TextChanged"
                         KeyDown="AddTextBox_KeyDown"
                         LostFocus="AddTextBox_LostFocus"
@@ -700,7 +705,11 @@
                                                 <TextBox
                                                     Grid.Column="1"
                                                     MinHeight="22"
+                                                    MaxHeight="96"
                                                     Padding="0"
+                                                    AcceptsReturn="False"
+                                                    ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                                    TextWrapping="Wrap"
                                                     VerticalContentAlignment="Center"
                                                     FontSize="12"
                                                     Tag="SubtaskAddBox"
@@ -875,37 +884,13 @@
             </Grid>
         </Border>
 
-        <!--  删除/清空后的撤销条，6 秒后自动消失  -->
-        <Border
-            x:Name="UndoBar"
+        <!--  删除/清空后的撤销条堆栈，最多同时显示 3 条，各自独立 6 秒倒计时  -->
+        <StackPanel
+            x:Name="UndoStack"
             Grid.RowSpan="7"
             Margin="12,0,12,10"
-            Padding="12,8,10,8"
             VerticalAlignment="Bottom"
-            Background="{ThemeResource OverlaySurfaceBrush}"
-            BorderBrush="{ThemeResource LayerStrokeBrush}"
-            BorderThickness="1"
-            CornerRadius="8"
-            Visibility="Collapsed">
-            <Grid ColumnSpacing="8">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <TextBlock
-                    x:Name="UndoText"
-                    VerticalAlignment="Center"
-                    FontSize="12"
-                    Foreground="{ThemeResource TextPrimaryBrush}"
-                    TextTrimming="CharacterEllipsis" />
-                <Button
-                    x:Name="UndoActionButton"
-                    Grid.Column="1"
-                    Content="撤销"
-                    Click="UndoButton_Click"
-                    Style="{StaticResource LinkButtonStyle}" />
-            </Grid>
-        </Border>
+            Spacing="6" />
 
         <!-- 颜色标签拖拽动画浮层（粘滞拉丝 + 圆形变形竖条） -->
         <Canvas x:Name="TagDragOverlay" IsHitTestVisible="False" />

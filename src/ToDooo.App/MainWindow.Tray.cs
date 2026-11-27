@@ -197,65 +197,196 @@ public sealed partial class MainWindow : Window
     private bool _undoConfirmPending;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _undoTimer;
 
-    private void ShowUndo(string message, List<TodoItem> items)
+    private sealed class UndoToastEntry
     {
-        _undoConfirmPending = false;
-        _undoPostpone = null;
-        _undoItems = items;
-        StartUndoBar(message);
+        public required Border Card { get; init; }
+        public ProgressRing? Ring { get; init; }
+        public TextBlock? Countdown { get; init; }
+        public required DateTime DeadlineUtc { get; init; }
+        public required double TotalSeconds { get; init; }
+        public Action? OnUndo { get; init; }
     }
 
-    private void ShowUndoPostpone(string message, List<MainViewModel.OverdueSnapshot> snapshot)
-    {
-        _undoConfirmPending = false;
-        _undoItems = null;
-        _undoPostpone = snapshot;
-        StartUndoBar(message);
-    }
+    private const int MaxUndoStack = 3;
+    private readonly List<UndoToastEntry> _undoEntries = new();
+    private bool _undoTimerWired;
 
-    private void ShowUndoConfirm(string description)
-    {
-        _undoItems = null;
-        _undoPostpone = null;
-        _undoConfirmPending = true;
-        StartUndoBar($"是否撤销「{description}」？", showActionButton: true, seconds: 5);
-    }
-
-    private void ShowToast(string message)
-    {
-        _undoConfirmPending = false;
-        _undoItems = null;
-        _undoPostpone = null;
-        StartUndoBar(message, showActionButton: false, seconds: 2);
-    }
-
-    private void StartUndoBar(string message, bool showActionButton = true, int seconds = 6)
-    {
-        UndoText.Text = message;
-        UndoActionButton.Visibility = showActionButton ? Visibility.Visible : Visibility.Collapsed;
-        UndoBar.Visibility = Visibility.Visible;
-
-        _undoTimer ??= _dispatcher.CreateTimer();
-        _undoTimer.Stop();
-        _undoTimer.Interval = TimeSpan.FromSeconds(seconds);
-
-        void OnTick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
+    private void ShowUndo(string message, List<TodoItem> items) =>
+        PushUndoToast(message, () =>
         {
-            sender.Tick -= OnTick;
-            HideUndo();
+            ViewModel.Restore(items);
+            UpdateFilterVisuals();
+            UpdateTagVisuals();
+        }, seconds: 6);
+
+    private void ShowUndoPostpone(string message, List<MainViewModel.OverdueSnapshot> snapshot) =>
+        PushUndoToast(message, () =>
+        {
+            ViewModel.RestoreDueDates(snapshot);
+            UpdateFilterVisuals();
+        }, seconds: 6);
+
+    private void ShowUndoConfirm(string description) =>
+        PushUndoToast($"是否撤销「{description}」？", ExecuteTopQuickUndo, seconds: 5);
+
+    private void ShowToast(string message) =>
+        PushUndoToast(message, onUndo: null, seconds: 2);
+
+    private void PushUndoToast(string message, Action? onUndo, int seconds)
+    {
+        var showAction = onUndo is not null;
+        var total = Math.Max(1, seconds);
+
+        var grid = new Grid { ColumnSpacing = 8 };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        ProgressRing? ring = null;
+        TextBlock? countdown = null;
+        if (showAction)
+        {
+            ring = new ProgressRing
+            {
+                Width = 22,
+                Height = 22,
+                Foreground = (Brush)Application.Current.Resources["AccentBrush"],
+                IsIndeterminate = false,
+                Minimum = 0,
+                Maximum = 100,
+                Value = 100,
+            };
+            countdown = new TextBlock
+            {
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                FontSize = 10,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                Foreground = (Brush)Application.Current.Resources["TextSecondaryBrush"],
+                Text = seconds.ToString(),
+            };
+            var host = new Grid { Width = 22, Height = 22, VerticalAlignment = VerticalAlignment.Center };
+            host.Children.Add(ring);
+            host.Children.Add(countdown);
+            Grid.SetColumn(host, 0);
+            grid.Children.Add(host);
         }
 
-        _undoTimer.Tick += OnTick;
-        _undoTimer.Start();
+        var text = new TextBlock
+        {
+            Text = message,
+            VerticalAlignment = VerticalAlignment.Center,
+            FontSize = 12,
+            Foreground = (Brush)Application.Current.Resources["TextPrimaryBrush"],
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+        Grid.SetColumn(text, 1);
+        grid.Children.Add(text);
+
+        var card = new Border
+        {
+            Padding = new Thickness(10, 7, 10, 7),
+            Background = (Brush)Application.Current.Resources["SolidBackgroundFillColorSecondaryBrush"],
+            BorderBrush = (Brush)Application.Current.Resources["LayerStrokeBrush"],
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Child = grid,
+        };
+
+        var entry = new UndoToastEntry
+        {
+            Card = card,
+            Ring = ring,
+            Countdown = countdown,
+            DeadlineUtc = DateTime.UtcNow.AddSeconds(total),
+            TotalSeconds = total,
+            OnUndo = onUndo,
+        };
+
+        if (showAction)
+        {
+            var button = new Button
+            {
+                Content = "撤销",
+                Style = (Style)Application.Current.Resources["LinkButtonStyle"],
+            };
+            button.Click += (_, _) =>
+            {
+                RemoveUndoEntry(entry);
+                entry.OnUndo?.Invoke();
+            };
+            Grid.SetColumn(button, 2);
+            grid.Children.Add(button);
+        }
+
+        // 最多堆积 3 条：超出时顶掉最早的一条。
+        while (_undoEntries.Count >= MaxUndoStack)
+        {
+            RemoveUndoEntry(_undoEntries[0]);
+        }
+
+        _undoEntries.Add(entry);
+        UndoStack.Children.Add(card);
+
+        if (_undoTimer is null)
+        {
+            _undoTimer = _dispatcher.CreateTimer();
+            _undoTimer.Interval = TimeSpan.FromMilliseconds(50);
+            _undoTimer.IsRepeating = true;
+        }
+
+        if (!_undoTimerWired)
+        {
+            _undoTimer.Tick += UndoTimer_Tick;
+            _undoTimerWired = true;
+        }
+
+        if (!_undoTimer.IsRunning)
+        {
+            _undoTimer.Start();
+        }
+    }
+
+    private void RemoveUndoEntry(UndoToastEntry entry)
+    {
+        _undoEntries.Remove(entry);
+        UndoStack.Children.Remove(entry.Card);
+        if (_undoEntries.Count == 0)
+        {
+            _undoTimer?.Stop();
+        }
+    }
+
+    private void UndoTimer_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
+    {
+        var now = DateTime.UtcNow;
+        for (var i = _undoEntries.Count - 1; i >= 0; i--)
+        {
+            var entry = _undoEntries[i];
+            var remaining = (entry.DeadlineUtc - now).TotalSeconds;
+            if (remaining <= 0)
+            {
+                RemoveUndoEntry(entry);
+                continue;
+            }
+
+            if (entry.Ring is not null)
+            {
+                entry.Ring.Value = Math.Clamp(remaining / entry.TotalSeconds * 100, 0, 100);
+            }
+
+            if (entry.Countdown is not null)
+            {
+                entry.Countdown.Text = Math.Ceiling(remaining).ToString("0");
+            }
+        }
     }
 
     private void HideUndo()
     {
         _undoTimer?.Stop();
-        _undoConfirmPending = false;
-        _undoItems = null;
-        _undoPostpone = null;
-        UndoBar.Visibility = Visibility.Collapsed;
+        _undoEntries.Clear();
+        UndoStack.Children.Clear();
     }
 
     /// <summary>启动后静默检查一次 GitHub Release，有新版本在主窗顶栏显示胶囊提示。</summary>

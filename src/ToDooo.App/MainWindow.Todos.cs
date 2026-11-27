@@ -1544,23 +1544,19 @@ public sealed partial class MainWindow : Window
         _ = ConfirmDeleteAsync();
     }
 
-    private async Task ConfirmDeleteAsync()
+    private Task ConfirmDeleteAsync()
     {
         if (_menuItem is not { } item)
         {
-            return;
+            return Task.CompletedTask;
         }
 
-        var dialog = CreateCardDialog("删除待办", $"确定删除「{item.Title}」吗？", "删除");
-
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
-        {
-            return;
-        }
-
+        // 直接删除并浮出底部「撤销」条，不弹全屏遮罩确认框打断操作。
         ViewModel.Delete(item);
         UpdateFilterVisuals();
-        ShowUndo($"已删除「{item.Title}」", new List<TodoItem> { item });
+        var label = item.Title.Length > 18 ? item.Title[..18] + "…" : item.Title;
+        ShowUndo($"已删除「{label}」", new List<TodoItem> { item });
+        return Task.CompletedTask;
     }
 
     private async Task EditItemAsync(TodoItem item, AppWindow? owner = null)

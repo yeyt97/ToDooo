@@ -49,8 +49,11 @@ public sealed class AppSettings
     /// <summary>启动应用时自动打开日历窗口（无视上次退出前是否收起）。</summary>
     public bool CalendarOpenOnStartup { get; set; }
 
-    /// <summary>月视图滚动时顶部居中浮出当前年月胶囊提示。</summary>
-    public bool CalendarScrollMonthHint { get; set; } = true;
+    /// <summary>
+    /// 月视图滚动时的月份提示样式：
+    /// 0 = 关闭；1 = 顶部胶囊（默认）；2 = 背景大水印；3 = 胶囊 + 水印。
+    /// </summary>
+    public int CalendarScrollMonthHintMode { get; set; } = 1;
 
     /// <summary>日历窗口上次的位置（屏幕像素）；为空则打开时摆到主窗口旁边。</summary>
     public int? CalendarX { get; set; }
@@ -73,13 +76,13 @@ public sealed class AppSettings
     public int DefaultTab { get; set; }
 
     /// <summary>窗口不透明度（设置页显示为“透明度”）：0.1–1.0，默认 0.8。</summary>
-    public double WindowOpacity { get; set; } = 0.8;
+    public double WindowOpacity { get; set; } = 0.7;
 
     /// <summary>便签独立毛玻璃开关（与待办/日历分开设置）。</summary>
     public bool StickyAcrylicEnabled { get; set; } = true;
 
     /// <summary>便签独立不透明度（0.1–1.0，默认 0.3 即 70% 透明度，与待办/日历分开设置）。</summary>
-    public double StickyOpacity { get; set; } = 0.3;
+    public double StickyOpacity { get; set; } = 0.7;
 
     /// <summary>新建便签的默认颜色 key（yellow / green / blue / pink / purple / graphite）。</summary>
     public string StickyDefaultColor { get; set; } = "yellow";

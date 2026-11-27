@@ -242,6 +242,31 @@
                     </Grid.RowDefinitions>
 
                     <Grid x:Name="WeekdayRow" Margin="8,0,8,6" />
+                    <!--  月视图滚动时的背景大数字水印（置于网格底层，低透明度不遮挡日程）  -->
+                    <StackPanel
+                        x:Name="ScrollMonthWatermark"
+                        Grid.Row="1"
+                        Canvas.ZIndex="-1"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        IsHitTestVisible="False"
+                        Opacity="0.09"
+                        Spacing="-14"
+                        Visibility="Collapsed">
+                        <TextBlock
+                            x:Name="ScrollMonthWatermarkMonth"
+                            HorizontalAlignment="Center"
+                            FontSize="128"
+                            FontWeight="Bold"
+                            Foreground="{ThemeResource TextPrimaryBrush}" />
+                        <TextBlock
+                            x:Name="ScrollMonthWatermarkYear"
+                            HorizontalAlignment="Center"
+                            FontSize="22"
+                            FontWeight="SemiBold"
+                            Foreground="{ThemeResource TextPrimaryBrush}" />
+                    </StackPanel>
+
                     <Grid
                         x:Name="DaysGrid"
                         Grid.Row="1"
@@ -256,12 +281,11 @@
                         Padding="14,5,14,5"
                         HorizontalAlignment="Center"
                         VerticalAlignment="Top"
-                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
                         BorderBrush="{ThemeResource LayerStrokeBrush}"
                         BorderThickness="1"
                         CornerRadius="14"
                         IsHitTestVisible="False"
-                        Opacity="0.94"
                         Visibility="Collapsed">
                         <TextBlock
                             x:Name="ScrollMonthHintText"

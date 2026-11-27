@@ -277,16 +277,28 @@ public sealed partial class CalendarWindow : UserControl
 
     private void ShowScrollMonthHint()
     {
-        if (_viewMode != CalendarViewMode.Month ||
-            _settings?.Current.CalendarScrollMonthHint == false ||
-            ScrollMonthHintPill is null ||
-            ScrollMonthHintText is null)
+        var mode = _settings?.Current.CalendarScrollMonthHintMode ?? 1;
+        if (_viewMode != CalendarViewMode.Month || mode <= 0)
         {
             return;
         }
 
-        ScrollMonthHintText.Text = $"{_month:yyyy 年 M 月}";
-        ScrollMonthHintPill.Visibility = Visibility.Visible;
+        var showPill = mode == 1;
+        var showWatermark = mode == 2;
+
+        if (showPill && ScrollMonthHintPill is not null && ScrollMonthHintText is not null)
+        {
+            ScrollMonthHintText.Text = $"{_month:yyyy 年 M 月}";
+            ScrollMonthHintPill.Visibility = Visibility.Visible;
+        }
+
+        if (showWatermark && ScrollMonthWatermark is not null &&
+            ScrollMonthWatermarkMonth is not null && ScrollMonthWatermarkYear is not null)
+        {
+            ScrollMonthWatermarkMonth.Text = $"{_month.Month}月";
+            ScrollMonthWatermarkYear.Text = $"{_month.Year}";
+            ScrollMonthWatermark.Visibility = Visibility.Visible;
+        }
 
         if (_scrollMonthHintTimer is null)
         {
@@ -298,6 +310,11 @@ public sealed partial class CalendarWindow : UserControl
                 if (ScrollMonthHintPill is not null)
                 {
                     ScrollMonthHintPill.Visibility = Visibility.Collapsed;
+                }
+
+                if (ScrollMonthWatermark is not null)
+                {
+                    ScrollMonthWatermark.Visibility = Visibility.Collapsed;
                 }
             };
         }
@@ -1336,6 +1353,7 @@ public sealed partial class CalendarWindow : UserControl
                 MonthTitle.Text = FormatHeaderTitle();
                 Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(MonthTitle, MonthTitle.Text);
                 UpdateSelectionVisuals();
+                ShowScrollMonthHint();
                 // 滚到已同步窗口之外时防抖触发动态补拉，不要求用户手动点同步。
                 if (_syncedRangeEnd == DateTime.MinValue ||
                     _month < _syncedRangeStart.AddMonths(1) ||
@@ -1344,8 +1362,6 @@ public sealed partial class CalendarWindow : UserControl
                     ScheduleScrollSync();
                 }
             }
-
-            ShowScrollMonthHint();
 
             if (args.IsIntermediate || extendQueued)
             {

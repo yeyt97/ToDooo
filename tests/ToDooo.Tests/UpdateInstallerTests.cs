@@ -48,6 +48,10 @@ public class UpdateInstallerTests
         Assert.Contains("ExtractToFile($entry, $target, $true)", script);
         Assert.Contains("Start-Process -FilePath 'D:\\apps\\ToDooo\\ToDooo.exe'", script);
 
+        // 压缩包外面套了一层 ToDooo 目录，必须剥掉，否则解压进 <程序目录>\ToDooo，等于没更新。
+        Assert.Contains("$root = ''", script);
+        Assert.Contains("$rel.Substring($root.Length)", script);
+
         // Expand-Archive -Force 在 PowerShell 5.1 上没有可用重载，会直接抛 MethodException。
         Assert.DoesNotContain("Expand-Archive", script);
 

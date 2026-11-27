@@ -3464,13 +3464,6 @@ public sealed partial class CalendarWindow : UserControl
                 OptionRow(options, "\uE707", "地点", evt.Location);
             }
 
-
-            if (!string.IsNullOrEmpty(evt.Class) && !string.Equals(evt.Class, "PUBLIC", StringComparison.OrdinalIgnoreCase))
-            {
-                OptionRow(options, "\uE72E", "隐私",
-                    string.Equals(evt.Class, "PRIVATE", StringComparison.OrdinalIgnoreCase) ? "私密" : "机密");
-            }
-
             if (evt.Priority > 0)
             {
                 OptionRow(options, "\uE7C1", "优先级", evt.Priority switch { <= 4 => "高", 5 => "中", _ => "低" });

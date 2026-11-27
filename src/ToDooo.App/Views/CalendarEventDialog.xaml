@@ -246,36 +246,6 @@
                                 VerticalAlignment="Center"
                                 FontSize="14"
                                 Foreground="{ThemeResource TextMutedBrush}"
-                                Glyph="&#xE72E;" />
-                            <TextBlock
-                                Grid.Column="1"
-                                VerticalAlignment="Center"
-                                FontSize="12.5"
-                                Foreground="{ThemeResource TextPrimaryBrush}"
-                                Text="隐私" />
-                            <ComboBox
-                                x:Name="ClassBox"
-                                Grid.Column="2"
-                                Width="150"
-                                AutomationProperties.Name="隐私">
-                                <ComboBoxItem Content="公开" />
-                                <ComboBoxItem Content="私密" />
-                                <ComboBoxItem Content="机密" />
-                            </ComboBox>
-                        </Grid>
-
-                        <Border Height="1" Background="{ThemeResource DividerBrush}" />
-
-                        <Grid ColumnSpacing="10">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <FontIcon
-                                VerticalAlignment="Center"
-                                FontSize="14"
-                                Foreground="{ThemeResource TextMutedBrush}"
                                 Glyph="&#xE7C1;" />
                             <TextBlock
                                 Grid.Column="1"

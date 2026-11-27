@@ -1600,25 +1600,17 @@ public sealed partial class SettingsWindow : Window
         var connected = _calendarSync.IsConfigured;
 
         // 状态卡：圆点 + 一句话标题说清连没连上，细节放第二行。
-        CalendarHeadlineText.Text = connected ? $"已连接 {_calendarSync.AppleId}" : "iCloud 日历尚未连接";
+        CalendarHeadlineText.Text = connected ? $"已连接 {AccountMask.Apply(_calendarSync.AppleId)}" : "iCloud 日历尚未连接";
         CalendarStatusText.Text = connected
             ? "日程会与 iCloud 双向同步。待办只存在本机。"
             : "按下面三步操作，大约两分钟。";
         CalendarStatusDot.Fill = (Brush)Application.Current.Resources[
             connected ? "AccentBrush" : "TextMutedBrush"];
 
-        // 教程只在没连接时显示；已连接就收起来，别占地方。
+        // 教程和登录表单只在没连接时出现：连上以后收起来，换账号走「注销」——点了表单再回来。
         CalendarSetupPanel.Visibility = connected ? Visibility.Collapsed : Visibility.Visible;
-
-        // 同一张表单两种用途：首次连接 / 修改账号或换密码。
-        CalendarFormTitle.Text = connected ? "修改账号或密码" : "账号";
-        CalendarSaveButton.Content = connected ? "保存修改" : "保存并连接";
-
-        // 第 2、3 步的编号徽标只在教程模式下显示，已连接后换回普通标题。
-        CalendarFormStepHeader.Visibility = connected ? Visibility.Collapsed : Visibility.Visible;
-        CalendarFormTitle.Visibility = connected ? Visibility.Visible : Visibility.Collapsed;
+        CalendarFormCard.Visibility = connected ? Visibility.Collapsed : Visibility.Visible;
         CalendarClearButton.Visibility = connected ? Visibility.Visible : Visibility.Collapsed;
-        AppPasswordBox.PlaceholderText = connected ? "新密码（留空则保持不变）" : "应用专用密码";
     }
 
     /// <summary>教程第 1 步的直达按钮：打开 Apple 账户管理页，省得手输网址。</summary>
@@ -1910,6 +1902,12 @@ public sealed partial class SettingsWindow : Window
         UpdateCalendarStatus();
         SyncStatusText.Text = "尚未同步";
         RebuildCalendarSources();
+
+        // 注销后登录表单重新出现，直接带到眼前，省得还要自己往下翻。
+        // 布局要等这一帧结束才更新，所以延到下一轮再滚。
+        DispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () => CalendarFormCard.StartBringIntoView());
         _settingsChanged();
     }
 

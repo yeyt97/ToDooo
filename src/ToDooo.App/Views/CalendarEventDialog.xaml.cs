@@ -92,7 +92,6 @@ public sealed partial class CalendarEventDialog : Window
         EndDate.Date = new DateTimeOffset(start.Date);
         SetTime(start: false, start.TimeOfDay + DefaultDuration);
 
-        ClassBox.SelectedIndex = 0;
         PriorityBox.SelectedIndex = 0;
 
         if (editing is not null)
@@ -185,12 +184,6 @@ public sealed partial class CalendarEventDialog : Window
         SetLocationTextSilently(editing.Location);
         UrlBox.Text = editing.Url;
         CategoryBox.Text = editing.Categories;
-        ClassBox.SelectedIndex = editing.Class?.ToUpperInvariant() switch
-        {
-            "PRIVATE" => 1,
-            "CONFIDENTIAL" => 2,
-            _ => 0,
-        };
         PriorityBox.SelectedIndex = editing.Priority switch
         {
             >= 1 and <= 4 => 1,
@@ -939,12 +932,9 @@ public sealed partial class CalendarEventDialog : Window
                 Url = UrlBox.Text.Trim(),
                 Categories = CategoryBox.Text.Trim(),
                 Busy = _editing?.IsBusy ?? true,
-                Class = ClassBox.SelectedIndex switch
-                {
-                    1 => "PRIVATE",
-                    2 => "CONFIDENTIAL",
-                    _ => "PUBLIC",
-                },
+                // iCloud / Apple 日历没有「公开/私密/机密」这套东西，界面上不再给选项；
+                // 编辑已有日程时原样带回去（缺省按 PUBLIC）。
+                Class = string.IsNullOrWhiteSpace(_editing?.Class) ? "PUBLIC" : _editing!.Class,
                 Priority = PriorityBox.SelectedIndex switch
                 {
                     1 => 1,

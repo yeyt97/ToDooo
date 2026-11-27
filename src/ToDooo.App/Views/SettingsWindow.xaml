@@ -746,7 +746,8 @@
                                     Grid.Column="2"
                                     VerticalAlignment="Center"
                                     Click="CalendarClear_Click"
-                                    Content="断开" />
+                                    Content="注销"
+                                    ToolTipService.ToolTip="退出该 Apple 账户，清除本机保存的应用专用密码" />
                             </Grid>
                         </Border>
 
@@ -807,10 +808,10 @@
 
                         </StackPanel>
 
-                        <!--  账号表单：未连接时是教程第 2 步，已连接时用来改账号或换密码  -->
-                        <Border Style="{StaticResource SettingCard}">
+                        <!--  账号表单：只在未连接时出现，已连接后由状态卡的「注销」重新唤出  -->
+                        <Border x:Name="CalendarFormCard" Style="{StaticResource SettingCard}">
                             <StackPanel Spacing="10">
-                                <Grid x:Name="CalendarFormStepHeader" ColumnSpacing="10" Visibility="Collapsed">
+                                <Grid x:Name="CalendarFormStepHeader" ColumnSpacing="10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
@@ -834,10 +835,6 @@
                                         Style="{StaticResource LabelText}"
                                         Text="填入账号和密码" />
                                 </Grid>
-                                <TextBlock
-                                    x:Name="CalendarFormTitle"
-                                    Style="{StaticResource LabelText}"
-                                    Text="账号" />
                                 <TextBox
                                     x:Name="AppleIdBox"
                                     PlaceholderText="Apple ID（邮箱）"

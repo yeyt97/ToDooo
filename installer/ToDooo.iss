@@ -34,9 +34,10 @@ SolidCompression=yes
 WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-CloseApplications=yes
-; 自动更新时安装程序要能自己把新版本拉起来；装完不强制重启系统。
-RestartApplications=yes
+CloseApplications=force
+CloseApplicationsFilter=ToDooo.exe
+; 装完不重启系统，也不让 Inno 自己把程序拉起来（重启由 [Run] 负责，避免拉起两份）。
+RestartApplications=no
 VersionInfoVersion={#AppVersion}
 
 [Code]
@@ -44,6 +45,20 @@ VersionInfoVersion={#AppVersion}
 function IsAutoUpdate: Boolean;
 begin
   Result := ExpandConstant('{param:AUTOUPDATE|0}') = '1';
+end;
+
+{ 覆盖文件前先把在跑的 ToDooo 结束掉。
+  只要没有文件被占用，Inno 就不会排「必须重启计算机」——用户装完直接就是新版本。 }
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResultCode: Integer;
+begin
+  if CurStep = ssInstall then
+  begin
+    Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM ToDooo.exe /T', '',
+      SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Sleep(400);
+  end;
 end;
 
 [Languages]

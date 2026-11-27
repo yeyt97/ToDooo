@@ -38,6 +38,7 @@
     <Compile Include="..\..\src\ToDooo.App\Services\SettingsService.cs" Link="Linked\Services\SettingsService.cs" />
     <Compile Include="..\..\src\ToDooo.App\Services\AppPaths.cs" Link="Linked\Services\AppPaths.cs" />
     <Compile Include="..\..\src\ToDooo.App\Views\MonthWeekLayout.cs" Link="Linked\Views\MonthWeekLayout.cs" />
+    <Compile Include="..\..\src\ToDooo.App\Views\CalendarMonthWindow.cs" Link="Linked\Views\CalendarMonthWindow.cs" />
   </ItemGroup>
 
 </Project>

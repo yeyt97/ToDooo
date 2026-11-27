@@ -249,7 +249,7 @@ public sealed partial class CalendarWindow : UserControl
             QueueRefreshIfVisible();
         });
 
-    /// <summary>从母事件按窗口展开出当前月份前后各一个月的事件。</summary>
+    /// <summary>从缓存取回「整块可滚动缓冲」内的事件，而不是只取当前这一个月。</summary>
     private void LoadCachedEvents()
     {
         if (_calendarSync is null)
@@ -260,8 +260,7 @@ public sealed partial class CalendarWindow : UserControl
 
         try
         {
-            var from = _month.AddMonths(-1);
-            var to = _month.AddMonths(2);
+            var (from, to) = CalendarMonthWindow.For(_monthGridStart, _monthLoadedWeeks, _month, _pendingJumpDate);
             _events = _calendarSync.LoadEvents(from, to);
         }
         catch
@@ -963,8 +962,8 @@ public sealed partial class CalendarWindow : UserControl
         if (!keepExistingBuffer)
         {
             var anchor = _pendingJumpDate ?? _month;
-            _monthGridStart = WeekStart(new DateTime(anchor.Year, anchor.Month, 1)).AddDays(-42);
-            _monthLoadedWeeks = 18;
+            _monthGridStart = CalendarMonthWindow.GridStartFor(anchor);
+            _monthLoadedWeeks = CalendarMonthWindow.DefaultWeeks;
         }
 
         // 左右留白与下边距一致（8）；滚动条已隐藏，不再为它预留额外宽度。
@@ -1147,6 +1146,8 @@ public sealed partial class CalendarWindow : UserControl
 
                     var startIdx = _monthLoadedWeeks;
                     _monthLoadedWeeks += 6;
+                    // 新加的这 6 周在原来的事件窗口之外，不重取的话滚下去就是一片空白。
+                    LoadCachedEvents();
                     var currentDated = BuildDatedLookup();
                     AppendWeeks(startIdx, 6, currentDated);
                     UpdateSelectionVisuals();

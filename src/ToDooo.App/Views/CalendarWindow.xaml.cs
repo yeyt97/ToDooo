@@ -273,6 +273,38 @@ public sealed partial class CalendarWindow : UserControl
     private DateTime _syncedRangeStart;
     private DateTime _syncedRangeEnd;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _scrollSyncDebounce;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _scrollMonthHintTimer;
+
+    private void ShowScrollMonthHint()
+    {
+        if (_viewMode != CalendarViewMode.Month ||
+            _settings?.Current.CalendarScrollMonthHint == false ||
+            ScrollMonthHintPill is null ||
+            ScrollMonthHintText is null)
+        {
+            return;
+        }
+
+        ScrollMonthHintText.Text = $"{_month:yyyy 年 M 月}";
+        ScrollMonthHintPill.Visibility = Visibility.Visible;
+
+        if (_scrollMonthHintTimer is null)
+        {
+            _scrollMonthHintTimer = DispatcherQueue.CreateTimer();
+            _scrollMonthHintTimer.Interval = TimeSpan.FromMilliseconds(650);
+            _scrollMonthHintTimer.IsRepeating = false;
+            _scrollMonthHintTimer.Tick += (_, _) =>
+            {
+                if (ScrollMonthHintPill is not null)
+                {
+                    ScrollMonthHintPill.Visibility = Visibility.Collapsed;
+                }
+            };
+        }
+
+        _scrollMonthHintTimer.Stop();
+        _scrollMonthHintTimer.Start();
+    }
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _shimmerTimer;
     private LinearGradientBrush? _shimmerBrush;
     private double _shimmerPhase;
@@ -1312,6 +1344,8 @@ public sealed partial class CalendarWindow : UserControl
                     ScheduleScrollSync();
                 }
             }
+
+            ShowScrollMonthHint();
 
             if (args.IsIntermediate || extendQueued)
             {
@@ -4384,6 +4418,13 @@ public sealed partial class CalendarWindow : UserControl
                 _pendingJumpDate = _viewMode == CalendarViewMode.Month ? _month : _selected;
                 flyout.Hide();
                 Refresh();
+                // 直接选月跳到已同步窗口之外时，立刻触发动态补拉并展示骨架扫光。
+                if (_syncedRangeEnd == DateTime.MinValue ||
+                    _month < _syncedRangeStart.AddMonths(1) ||
+                    _month >= _syncedRangeEnd.AddMonths(-1))
+                {
+                    _ = SyncAndRefreshAsync(showSkeleton: true);
+                }
             };
             Grid.SetRow(btn, (m - 1) / 4);
             Grid.SetColumn(btn, (m - 1) % 4);

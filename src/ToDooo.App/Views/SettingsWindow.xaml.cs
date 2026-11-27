@@ -1502,6 +1502,7 @@ public sealed partial class SettingsWindow : Window
     {
         _placeReady = false;
         CalendarOpenOnStartupToggle.IsOn = _settings.Current.CalendarOpenOnStartup;
+        CalendarScrollMonthHintToggle.IsOn = _settings.Current.CalendarScrollMonthHint;
         PlaceSourceBox.SelectedIndex = Math.Clamp(_settings.Current.PlaceSearchProvider, 0, 3);
         PlaceAmapKeyBox.Text = _settings.Current.PlaceSearchAmapKey;
         UpdatePlaceSourceVisibility();
@@ -1517,6 +1518,17 @@ public sealed partial class SettingsWindow : Window
         }
 
         _settings.Current.CalendarOpenOnStartup = CalendarOpenOnStartupToggle.IsOn;
+        _settings.Save();
+    }
+
+    private void CalendarScrollMonthHint_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (!_placeReady)
+        {
+            return;
+        }
+
+        _settings.Current.CalendarScrollMonthHint = CalendarScrollMonthHintToggle.IsOn;
         _settings.Save();
     }
 

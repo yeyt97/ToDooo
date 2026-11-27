@@ -49,6 +49,9 @@ public sealed class AppSettings
     /// <summary>启动应用时自动打开日历窗口（无视上次退出前是否收起）。</summary>
     public bool CalendarOpenOnStartup { get; set; }
 
+    /// <summary>月视图滚动时顶部居中浮出当前年月胶囊提示。</summary>
+    public bool CalendarScrollMonthHint { get; set; } = true;
+
     /// <summary>日历窗口上次的位置（屏幕像素）；为空则打开时摆到主窗口旁边。</summary>
     public int? CalendarX { get; set; }
 

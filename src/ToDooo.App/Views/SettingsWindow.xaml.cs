@@ -1375,23 +1375,20 @@ public sealed partial class SettingsWindow : Window
     }
 
     /// <summary>
-    /// 发现新版本后的出口：安装版给「现在更新」，下载安装包后静默安装并重启；
-    /// 绿色版/无法覆盖安装时退回打开下载页。
+    /// 发现新版本后的出口。安装版静默覆盖安装；绿色版下载压缩包后原地解压重启。
+    /// 两条路都是「点一下就不用管」，只有下载失败才退回打开下载页。
     /// </summary>
     private async Task OfferUpdateAsync(string version, string? pageUrl)
     {
-        var canAutoInstall = UpdateInstaller.IsInstalledCopy();
         var dialog = new ContentDialog
         {
             Title = $"发现新版本 {version}",
             Content = new TextBlock
             {
-                Text = canAutoInstall
-                    ? "现在下载并安装吗？安装过程中应用会自动关闭，完成后自动重新打开。"
-                    : "当前不是安装版，无法自动覆盖安装，将打开下载页手动更新。",
+                Text = "现在下载并安装吗？安装过程中应用会自动关闭，完成后自动重新打开。",
                 TextWrapping = TextWrapping.Wrap,
             },
-            PrimaryButtonText = canAutoInstall ? "立即更新" : "打开下载页",
+            PrimaryButtonText = "立即更新",
             CloseButtonText = "稍后",
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = Root.XamlRoot,
@@ -1402,8 +1399,26 @@ public sealed partial class SettingsWindow : Window
             return;
         }
 
-        if (!canAutoInstall)
+        await DownloadAndInstallAsync(version, pageUrl);
+    }
+
+    private async Task DownloadAndInstallAsync(string version, string? pageUrl)
+    {
+        CheckUpdateButton.IsEnabled = false;
+
+        // 安装版能静默覆盖安装；绿色版没有安装程序可覆盖，改下载压缩包原地解压。
+        var installed = UpdateInstaller.IsInstalledCopy();
+        var progress = new Progress<double>(value =>
+            UpdateStatusText.Text = $"正在下载更新… {value * 100:0}%");
+
+        var payload = installed
+            ? await UpdateService.DownloadSetupAsync(version, progress)
+            : await UpdateService.DownloadPortableAsync(version, progress);
+
+        if (payload is null)
         {
+            UpdateStatusText.Text = "下载失败，正在打开下载页手动更新。";
+            CheckUpdateButton.IsEnabled = true;
             if (pageUrl is not null && Uri.TryCreate(pageUrl, UriKind.Absolute, out var uri))
             {
                 await Windows.System.Launcher.LaunchUriAsync(uri);
@@ -1412,30 +1427,30 @@ public sealed partial class SettingsWindow : Window
             return;
         }
 
-        await DownloadAndInstallAsync(version);
-    }
-
-    private async Task DownloadAndInstallAsync(string version)
-    {
-        CheckUpdateButton.IsEnabled = false;
-        var progress = new Progress<double>(value =>
-            UpdateStatusText.Text = $"正在下载更新… {value * 100:0}%");
-
-        var setup = await UpdateService.DownloadSetupAsync(version, progress);
-        if (setup is null)
-        {
-            UpdateStatusText.Text = "下载失败，请稍后重试或到 GitHub 下载页手动更新。";
-            CheckUpdateButton.IsEnabled = true;
-            return;
-        }
-
-        UpdateStatusText.Text = "下载完成，正在安装…应用即将重启。";
+        UpdateStatusText.Text = "下载完成，正在更新…应用即将重启。";
         _settings.Current.PendingUpdateVersion = string.Empty;
         _settings.Save();
 
+        if (!installed)
+        {
+            // 绿色版：先拉起等着我们退出的更新脚本，再自行退出；脚本解压完会把应用重新打开。
+            if (!UpdateInstaller.TryLaunchPortableUpdate(
+                    payload,
+                    AppContext.BaseDirectory,
+                    Environment.ProcessPath ?? string.Empty))
+            {
+                UpdateStatusText.Text = "无法启动更新程序，请到 GitHub 下载页手动更新。";
+                CheckUpdateButton.IsEnabled = true;
+                return;
+            }
+
+            _settingsChangedForExit?.Invoke();
+            return;
+        }
+
         // 先把应用退干净，安装程序才能覆盖 exe；安装完由 /RESTARTAPPLICATIONS 自动拉起。
         _settingsChangedForExit?.Invoke();
-        if (!UpdateInstaller.TryLaunchInstaller(setup))
+        if (!UpdateInstaller.TryLaunchInstaller(payload))
         {
             UpdateStatusText.Text = "无法启动安装程序，请到 GitHub 下载页手动更新。";
             CheckUpdateButton.IsEnabled = true;

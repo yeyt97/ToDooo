@@ -34,6 +34,7 @@
     <Compile Include="..\..\src\ToDooo.App\Services\CalDavClient.cs" Link="Linked\Services\CalDavClient.cs" />
     <Compile Include="..\..\src\ToDooo.App\Services\SecretProtector.cs" Link="Linked\Services\SecretProtector.cs" />
     <Compile Include="..\..\src\ToDooo.App\Services\AccountMask.cs" Link="Linked\Services\AccountMask.cs" />
+    <Compile Include="..\..\src\ToDooo.App\Services\UpdateInstaller.cs" Link="Linked\Services\UpdateInstaller.cs" />
     <Compile Include="..\..\src\ToDooo.App\Services\SettingsService.cs" Link="Linked\Services\SettingsService.cs" />
     <Compile Include="..\..\src\ToDooo.App\Services\AppPaths.cs" Link="Linked\Services\AppPaths.cs" />
     <Compile Include="..\..\src\ToDooo.App\Views\MonthWeekLayout.cs" Link="Linked\Views\MonthWeekLayout.cs" />

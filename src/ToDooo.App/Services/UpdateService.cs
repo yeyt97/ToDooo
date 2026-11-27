@@ -17,11 +17,21 @@ public static class UpdateService
     private const string LatestReleaseApi = "https://api.github.com/repos/yeyt97/ToDooo/releases/latest";
     private static readonly HttpClient Http = CreateClient();
 
+    // 安装包/绿色包有几十 MB，检查更新用的 5 秒超时套上去必然半路断掉，下载单独一个客户端。
+    private static readonly HttpClient DownloadHttp = CreateDownloadClient();
+
     private static HttpClient CreateClient()
     {
         var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("ToDooo-UpdateCheck");
         client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+        return client;
+    }
+
+    private static HttpClient CreateDownloadClient()
+    {
+        var client = new HttpClient { Timeout = TimeSpan.FromMinutes(30) };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("ToDooo-UpdateCheck");
         return client;
     }
 
@@ -146,6 +156,13 @@ public static class UpdateService
     /// 安装包直链：GitHub Release 的固定路径规则，tag 与文件名都能推出来，不必再查一次 API。
     /// </summary>
     public static Uri? SetupDownloadUrl(string version)
+        => ReleaseAssetUrl(version, $"ToDooo-{version}-setup.exe");
+
+    /// <summary>绿色版（压缩包）直链，命名规则同安装包。</summary>
+    public static Uri? PortableDownloadUrl(string version)
+        => ReleaseAssetUrl(version, $"ToDooo-{version}-win-x64.zip");
+
+    private static Uri? ReleaseAssetUrl(string version, string file)
     {
         if (string.IsNullOrWhiteSpace(version))
         {
@@ -153,7 +170,6 @@ public static class UpdateService
         }
 
         var tag = $"v{version}";
-        var file = $"ToDooo-{version}-setup.exe";
         return Uri.TryCreate(
             $"https://github.com/yeyt97/ToDooo/releases/download/{tag}/{file}", UriKind.Absolute, out var uri)
             ? uri
@@ -161,21 +177,28 @@ public static class UpdateService
     }
 
     /// <summary>下载安装包到临时目录，返回本地路径；失败返回 null。</summary>
-    public static async Task<string?> DownloadSetupAsync(
+    public static Task<string?> DownloadSetupAsync(
         string version, IProgress<double>? progress, CancellationToken token = default)
+        => DownloadAsync(SetupDownloadUrl(version), $"ToDooo-{version}-setup.exe", progress, token);
+
+    /// <summary>下载绿色版压缩包到临时目录，返回本地路径；失败返回 null。</summary>
+    public static Task<string?> DownloadPortableAsync(
+        string version, IProgress<double>? progress, CancellationToken token = default)
+        => DownloadAsync(PortableDownloadUrl(version), $"ToDooo-{version}-win-x64.zip", progress, token);
+
+    private static async Task<string?> DownloadAsync(
+        Uri? uri, string fileName, IProgress<double>? progress, CancellationToken token)
     {
-        var uri = SetupDownloadUrl(version);
         if (uri is null)
         {
             return null;
         }
 
-        var target = System.IO.Path.Combine(
-            System.IO.Path.GetTempPath(), $"ToDooo-{version}-setup.exe");
+        var target = System.IO.Path.Combine(System.IO.Path.GetTempPath(), fileName);
 
         try
         {
-            using var response = await Http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, token)
+            using var response = await DownloadHttp.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, token)
                 .ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {

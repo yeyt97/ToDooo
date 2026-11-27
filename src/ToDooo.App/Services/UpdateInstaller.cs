@@ -1,12 +1,12 @@
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 
 namespace ToDooo.Services;
 
 /// <summary>
-/// 应用内自动更新：下载安装包 → 启动安装程序（静默）→ 安装完成后自动重新拉起应用。
-/// 只在当前进程确实是安装版（exe 位于安装目录）时才走自动安装；
-/// 否则退回「打开下载页」，避免把绿色版用户带进半吊子状态。
+/// 应用内自动更新：安装版下载安装包静默覆盖；绿色版下载压缩包后由脚本原地解压。
+/// 两种都做到「点一下就不再管」——应用自动退出、更新、重新打开，不用去开网页。
 /// </summary>
 public static class UpdateInstaller
 {
@@ -72,5 +72,78 @@ public static class UpdateInstaller
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// 绿色版自更新：拉起一个脱离本进程的脚本，等主程序退出 → 解压压缩包覆盖程序目录 → 重新启动。
+    /// 必须在调用后主动退出应用，否则脚本会一直等着。
+    /// </summary>
+    public static bool TryLaunchPortableUpdate(string zipPath, string appDir, string exePath)
+    {
+        try
+        {
+            if (!File.Exists(zipPath) || !File.Exists(exePath) || !Directory.Exists(appDir))
+            {
+                return false;
+            }
+
+            var scriptPath = Path.Combine(Path.GetTempPath(), $"ToDooo-update-{Guid.NewGuid():N}.ps1");
+
+            // 路径里可能有中文，带 BOM 才能让 Windows PowerShell 5.1 按 UTF-8 解析。
+            File.WriteAllText(
+                scriptPath,
+                BuildPortableUpdateScript(zipPath, appDir, exePath, Environment.ProcessId),
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = $"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{scriptPath}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WindowStyle = ProcessWindowStyle.Hidden,
+            };
+            return Process.Start(startInfo) is not null;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>生成绿色版自更新脚本；单独拆出来便于单测检查内容。</summary>
+    public static string BuildPortableUpdateScript(string zipPath, string appDir, string exePath, int processId)
+    {
+        static string Quote(string path) => path.Replace("'", "''");
+
+        return string.Join(
+            "\r\n",
+            "$ErrorActionPreference = 'Stop'",
+            $"$targetPid = {processId}",
+            // 先等主程序退干净，否则 ToDooo.exe 还被占用，覆盖文件会失败。
+            "while (Get-Process -Id $targetPid -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 300 }",
+            "Start-Sleep -Milliseconds 800",
+            // 不用 Expand-Archive -Force：Windows PowerShell 5.1 的 -Force 分支会去找
+            // ZipFile.ExtractToDirectory 的三参数重载，.NET Framework 上没有，直接报 MethodException。
+            // 逐条 ExtractToFile(..., $true) 是 4.5 就有的 API，覆盖写、跳过目录条目都稳。
+            "Add-Type -AssemblyName System.IO.Compression.FileSystem",
+            $"$dest = '{Quote(appDir)}'",
+            $"$archive = [System.IO.Compression.ZipFile]::OpenRead('{Quote(zipPath)}')",
+            "try {",
+            "  foreach ($entry in $archive.Entries) {",
+            "    if ([string]::IsNullOrEmpty($entry.Name)) { continue }",
+            "    $target = Join-Path $dest $entry.FullName",
+            "    $parent = Split-Path -Parent $target",
+            "    if (-not (Test-Path -LiteralPath $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }",
+            "    [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $target, $true)",
+            "  }",
+            "}",
+            "finally { $archive.Dispose() }",
+            // 用户数据在 %LocalAppData%\ToDooo，不在程序目录，覆盖程序文件不会碰到它。
+            $"Start-Process -FilePath '{Quote(exePath)}' -WorkingDirectory $dest",
+            "Start-Sleep -Seconds 2",
+            $"Remove-Item -LiteralPath '{Quote(zipPath)}' -Force -ErrorAction SilentlyContinue",
+            "Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue",
+            string.Empty);
     }
 }

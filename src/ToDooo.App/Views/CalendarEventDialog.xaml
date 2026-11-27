@@ -95,11 +95,12 @@
                             CornerRadius="1.5" />
 
                         <StackPanel Grid.Column="1" Spacing="8">
+                            <!--  内边距上下对称，文字才落在框的垂直中线上；不给 MinHeight，
+                                  否则内容顶在上面、下面空一截，光标看着就"偏高"  -->
                             <TextBox
                                 x:Name="TitleBox"
-                                MinHeight="38"
                                 MaxLength="150"
-                                Padding="0,4"
+                                Padding="10,8,10,8"
                                 VerticalContentAlignment="Center"
                                 Background="Transparent"
                                 BorderThickness="0"

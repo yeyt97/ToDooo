@@ -51,7 +51,10 @@
                     Style="{StaticResource FlatIconButtonStyle}">
                     <FontIcon x:Name="CalendarFiltersIcon" Glyph="&#xE71C;" FontSize="13" />
                     <Button.Flyout>
-                        <MenuFlyout Placement="BottomEdgeAlignedRight">
+                        <MenuFlyout
+                            Opening="FiltersFlyout_Opening"
+                            Closed="FiltersFlyout_Closed"
+                            Placement="BottomEdgeAlignedRight">
                             <ToggleMenuFlyoutItem
                                 x:Name="ShowTodosMenuItem"
                                 Click="ShowTodos_Click"
@@ -60,6 +63,11 @@
                                 x:Name="HideCompletedMenuItem"
                                 Click="HideCompleted_Click"
                                 Text="已完成待办" />
+                            <MenuFlyoutSeparator />
+                            <!--  子菜单在展开时按仓库里的日历列表重建，勾选状态与设置页共用  -->
+                            <MenuFlyoutSubItem
+                                x:Name="CalendarSourcesMenuItem"
+                                Text="按日历筛选" />
                         </MenuFlyout>
                     </Button.Flyout>
                 </Button>

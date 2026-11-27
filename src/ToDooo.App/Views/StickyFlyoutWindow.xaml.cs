@@ -85,10 +85,15 @@ public sealed partial class StickyFlyoutWindow : Window
     private bool _renderHooked;
     private long _lastTick;
 
+    /// <summary>上一次「失焦自动收起」的时刻；便签按钮靠它把「再点一下」判成收起。</summary>
+    private DateTime _lastAutoHideUtc;
+    private readonly Func<bool> _isToggleClick;
+
     public StickyFlyoutWindow(
         StickyNoteStore store,
         SettingsService settings,
         Func<string, bool> isNoteOpen,
+        Func<bool> isToggleClick,
         Func<string?, StickyNote> onCreateNew,
         Action<StickyNote, bool> onSetNoteVisible,
         Action<StickyNote> onBringToFront,
@@ -101,6 +106,7 @@ public sealed partial class StickyFlyoutWindow : Window
         _store = store;
         _settings = settings;
         _isNoteOpen = isNoteOpen;
+        _isToggleClick = isToggleClick;
         _onCreateNew = onCreateNew;
         _onSetNoteVisible = onSetNoteVisible;
         _onBringToFront = onBringToFront;
@@ -130,6 +136,15 @@ public sealed partial class StickyFlyoutWindow : Window
             if (e.WindowActivationState == WindowActivationState.Deactivated)
             {
                 CleanupDragOverlay();
+
+                // 焦点是被便签按钮抢走的：先别收，等按钮的 Click 决定开合，
+                // 否则按钮读到的已经是「已收起」，再点一下就会重新展开，看着像刷新。
+                if (_isToggleClick())
+                {
+                    return;
+                }
+
+                _lastAutoHideUtc = DateTime.UtcNow;
                 _appWindow.Hide();
             }
         };
@@ -142,6 +157,13 @@ public sealed partial class StickyFlyoutWindow : Window
     }
 
     public bool IsPopupVisible => _appWindow.IsVisible;
+
+    /// <summary>
+    /// 刚刚是因为失去焦点被自动收起的（点主窗口的便签按钮就是这种情况）。
+    /// 这时 <see cref="IsPopupVisible"/> 已经是 false，但用户的意思显然是「关掉它」。
+    /// </summary>
+    public bool WasAutoHiddenRecently =>
+        _lastAutoHideUtc != default && (DateTime.UtcNow - _lastAutoHideUtc).TotalMilliseconds < 600;
 
     public void RefreshTheme()
     {
@@ -193,9 +215,21 @@ public sealed partial class StickyFlyoutWindow : Window
 
     private void ShowAt(int x, int y, int w, int h)
     {
+        _lastAutoHideUtc = default;
         _appWindow.MoveAndResize(new RectInt32(x, y, w, h));
-        _appWindow.Show(activateWindow: true);
-        NativeMethods.SetForegroundWindow(_hwnd);
+
+        // 先藏住视觉输出、把内容摆好再露出来：直接 Show 会先给一帧空面板，看着像卡片闪了一下。
+        WindowCloak.ShowCloaked(
+            _hwnd,
+            Root,
+            DispatcherQueue,
+            () =>
+            {
+                Root.UpdateLayout();
+                _appWindow.Show(activateWindow: true);
+                NativeMethods.SetForegroundWindow(_hwnd);
+            },
+            waitFrames: 2);
     }
 
     private void ConfigureWindow()

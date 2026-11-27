@@ -47,6 +47,12 @@ public sealed partial class CalendarWindow : UserControl
 
     /// <summary>当前窗口内要显示的事件，按开始时间排序；由同步结果填充。</summary>
     private List<CalendarEvent> _events = new();
+
+    /// <summary>日历列表快照：筛选菜单靠它渲染，避免菜单弹出时同步读库卡住 UI 线程。</summary>
+    private List<CalendarSource> _calendarSources = [];
+    private bool _calendarSourcesRefreshing;
+    private bool _calendarSourcesDirty;
+    private bool _filtersFlyoutOpen;
     private CancellationTokenSource? _syncCts;
 
     private enum CalendarViewMode
@@ -135,6 +141,7 @@ public sealed partial class CalendarWindow : UserControl
         {
             _calendarSync.EventsChanged -= OnCalendarEventsChanged;
             _calendarSync.SyncingChanged -= OnCalendarSyncingChanged;
+            _calendarSync.Repository.SourceVisibilityChanged -= OnSourceVisibilityChanged;
         }
 
         _viewModel = viewModel;
@@ -155,8 +162,10 @@ public sealed partial class CalendarWindow : UserControl
         {
             _calendarSync.EventsChanged += OnCalendarEventsChanged;
             _calendarSync.SyncingChanged += OnCalendarSyncingChanged;
+            _calendarSync.Repository.SourceVisibilityChanged += OnSourceVisibilityChanged;
             SetSyncSpinner(_calendarSync.IsSyncing);
             UpdateSyncPendingIndicator();
+            RefreshCalendarSourcesAsync();
         }
 
         RefreshTheme();
@@ -236,6 +245,7 @@ public sealed partial class CalendarWindow : UserControl
         DispatcherQueue.TryEnqueue(() =>
         {
             LoadCachedEvents();
+            RefreshCalendarSourcesAsync();
             QueueRefreshIfVisible();
         });
 
@@ -493,6 +503,190 @@ public sealed partial class CalendarWindow : UserControl
         _settings.Save();
         UpdateShowTodosVisuals();
         Refresh();
+    }
+
+    /// <summary>
+    /// 展开时只同步勾选状态。菜单必须立刻弹出来，这条路径上既不读数据库也不增删菜单项：
+    /// 读库可能撞上后台同步，改集合会让正在弹出的菜单重新布局——两种都会把窗口卡住。
+    /// </summary>
+    private void FiltersFlyout_Opening(object? sender, object e)
+    {
+        _filtersFlyoutOpen = true;
+
+        // 这里是 WinUI 的弹出回调，抛异常会把整个菜单留在坏状态（之后再也弹不出来），所以兜住。
+        try
+        {
+            UpdateShowTodosVisuals();
+            SyncCalendarSourceChecks();
+        }
+        catch
+        {
+            // 菜单内容不全总好过弹不出来。
+        }
+    }
+
+    private void FiltersFlyout_Closed(object? sender, object e)
+    {
+        _filtersFlyoutOpen = false;
+
+        // 菜单开着的时候来了新日历，等它收起来再重建。
+        if (_calendarSourcesDirty)
+        {
+            _calendarSourcesDirty = false;
+            BuildCalendarSourcesMenu();
+        }
+    }
+
+    /// <summary>
+    /// 重新拉一次日历列表。读库丢到线程池：后台同步写库时，UI 线程上的同步读会一直等到
+    /// SQLite 超时，表现出来就是点一下菜单整个窗口死住。
+    /// </summary>
+    private async void RefreshCalendarSourcesAsync()
+    {
+        if (_calendarSync is null || _calendarSourcesRefreshing)
+        {
+            return;
+        }
+
+        _calendarSourcesRefreshing = true;
+        try
+        {
+            var sources = await Task.Run(() => _calendarSync.Repository.GetSources());
+            ApplyCalendarSources(sources);
+        }
+        catch
+        {
+            // 读库失败就沿用上一次的快照，菜单不是关键路径。
+        }
+        finally
+        {
+            _calendarSourcesRefreshing = false;
+        }
+    }
+
+    /// <summary>
+    /// 只在「日历本身变了」（增删、改名、换色）时重建菜单；单纯的显示开关只改勾选。
+    /// 重建会清空 Items，菜单开着的时候不能动，先记下来等收起后再建。
+    /// </summary>
+    private void ApplyCalendarSources(List<CalendarSource> sources)
+    {
+        var structureChanged = sources.Count != _calendarSources.Count
+            || sources.Zip(_calendarSources).Any(pair =>
+                pair.First.Href != pair.Second.Href
+                || pair.First.DisplayName != pair.Second.DisplayName
+                || pair.First.Color != pair.Second.Color);
+
+        _calendarSources = sources;
+        if (!structureChanged)
+        {
+            SyncCalendarSourceChecks();
+            return;
+        }
+
+        if (_filtersFlyoutOpen)
+        {
+            _calendarSourcesDirty = true;
+            return;
+        }
+
+        BuildCalendarSourcesMenu();
+    }
+
+    /// <summary>
+    /// 「按日历筛选」子菜单：一个日历一行，行首是对应颜色的圆点，勾选表示显示。
+    /// 默认全勾，状态和设置 → 日历里的勾选是同一份数据。
+    /// </summary>
+    private void BuildCalendarSourcesMenu()
+    {
+        if (CalendarSourcesMenuItem is null)
+        {
+            return;
+        }
+
+        CalendarSourcesMenuItem.Items.Clear();
+        if (_calendarSources.Count == 0)
+        {
+            CalendarSourcesMenuItem.Items.Add(new MenuFlyoutItem
+            {
+                Text = "还没有日历",
+                IsEnabled = false,
+            });
+            return;
+        }
+
+        foreach (var source in _calendarSources)
+        {
+            var local = CalendarRepository.IsLocalHref(source.Href);
+            var item = new ToggleMenuFlyoutItem
+            {
+                Text = local ? $"{source.DisplayName}（本地）" : source.DisplayName,
+                IsChecked = source.IsVisible,
+                Tag = source.Href,
+                Icon = BuildCalendarColorDot(source.Color),
+            };
+            item.Click += CalendarSourceToggle_Click;
+            CalendarSourcesMenuItem.Items.Add(item);
+        }
+    }
+
+    /// <summary>只改勾选，不动集合：弹出过程中改 Items 会引起重排甚至重入。</summary>
+    private void SyncCalendarSourceChecks()
+    {
+        if (CalendarSourcesMenuItem is null)
+        {
+            return;
+        }
+
+        foreach (var entry in CalendarSourcesMenuItem.Items)
+        {
+            if (entry is not ToggleMenuFlyoutItem { Tag: string href } item)
+            {
+                continue;
+            }
+
+            var source = _calendarSources.FirstOrDefault(candidate => candidate.Href == href);
+            if (source is not null)
+            {
+                item.IsChecked = source.IsVisible;
+            }
+        }
+    }
+
+    /// <summary>菜单行首的实心圆点；用椭圆几何画，颜色取日历自己的颜色。</summary>
+    private static PathIcon BuildCalendarColorDot(string colorHex)
+    {
+        return new PathIcon
+        {
+            Data = new EllipseGeometry
+            {
+                Center = new Windows.Foundation.Point(8, 8),
+                RadiusX = 6,
+                RadiusY = 6,
+            },
+            Foreground = new SolidColorBrush(ParseCalendarColor(colorHex)),
+        };
+    }
+
+    private void CalendarSourceToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ToggleMenuFlyoutItem { Tag: string href } item || _calendarSync is null)
+        {
+            return;
+        }
+
+        // 点击时菜单项已自行翻转，以它为准；落库后会由 SourceVisibilityChanged 统一刷新两处界面。
+        _calendarSync.Repository.SetSourceVisible(href, item.IsChecked);
+    }
+
+    /// <summary>日历显示开关在两处被改动（本菜单或设置页），这里把事件和格子重新算一遍。</summary>
+    private void OnSourceVisibilityChanged(object? sender, string href)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            RefreshCalendarSourcesAsync();
+            LoadCachedEvents();
+            QueueRefreshIfVisible();
+        });
     }
 
     private void UpdateViewModeVisuals()

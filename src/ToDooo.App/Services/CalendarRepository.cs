@@ -168,7 +168,14 @@ public sealed class CalendarRepository
         command.Parameters.AddWithValue("$visible", visible ? 1 : 0);
         command.Parameters.AddWithValue("$href", href);
         command.ExecuteNonQuery();
+
+        // 日历筛选菜单和设置页共用这一份开关，任一处改动都要通知另一处，
+        // 否则两边会各说各话（菜单里关掉了，设置里还勾着）。
+        SourceVisibilityChanged?.Invoke(this, href);
     }
+
+    /// <summary>某个日历的显示开关被改动了；参数是集合 href。</summary>
+    public event EventHandler<string>? SourceVisibilityChanged;
 
     public void SetSourceColor(string href, string color)
     {

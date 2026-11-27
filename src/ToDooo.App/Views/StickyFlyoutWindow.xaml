@@ -111,14 +111,7 @@
                 Grid.Row="1"
                 VerticalScrollBarVisibility="Auto">
                 <Grid>
-                    <StackPanel x:Name="ListPanel" Spacing="6">
-                        <StackPanel.ChildrenTransitions>
-                            <TransitionCollection>
-                                <AddDeleteThemeTransition />
-                                <RepositionThemeTransition />
-                            </TransitionCollection>
-                        </StackPanel.ChildrenTransitions>
-                    </StackPanel>
+                    <StackPanel x:Name="ListPanel" Spacing="6" />
                     <TextBlock
                         x:Name="EmptyText"
                         Margin="0,28"

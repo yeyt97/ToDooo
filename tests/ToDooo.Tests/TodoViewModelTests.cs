@@ -203,12 +203,15 @@ public sealed class TodoViewModelTests : IDisposable
     }
 
     [Fact]
-    public void DueText_MarksOverdue()
+    public void DueText_LeavesOverdueToColour()
     {
         var item = new TodoItem { Title = "逾期任务", DueAt = DateTime.Now.AddHours(-1) };
 
+        // 逾期只靠颜色区分，文字里不再出现「截止」「已逾期」。
         Assert.True(item.IsOverdue);
-        Assert.Contains("已逾期", item.DueText);
+        Assert.DoesNotContain("已逾期", item.DueText);
+        Assert.DoesNotContain("截止", item.DueText);
+        Assert.Equal(item.DueAt!.Value.ToString("yyyy/M/d HH:mm"), item.DueText);
     }
 
     [Fact]

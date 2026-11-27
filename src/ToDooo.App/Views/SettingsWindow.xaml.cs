@@ -47,6 +47,7 @@ public sealed partial class SettingsWindow : Window
     private DesktopAcrylicController? _acrylic;
     private bool _ready;
     private bool _closing;
+    private bool _rebuildingSources;
     private int _navResizeHit;
     private NativeMethods.POINT _navResizeStartCursor;
     private NativeMethods.RECT _navResizeStartRect;
@@ -130,7 +131,31 @@ public sealed partial class SettingsWindow : Window
         {
             WindowCloak.Cancel(_hwnd, reveal: false);
             WindowAcrylic.DetachAndDispose(ref _acrylic, ref _backdropConfig);
+
+            if (_calendarSync is not null)
+            {
+                _calendarSync.Repository.SourceVisibilityChanged -= OnSourceVisibilityChanged;
+            }
         };
+
+        // 日历筛选菜单里改的显示开关要立刻反映到这一页的勾选上。
+        if (_calendarSync is not null)
+        {
+            _calendarSync.Repository.SourceVisibilityChanged += OnSourceVisibilityChanged;
+        }
+    }
+
+    private void OnSourceVisibilityChanged(object? sender, string href)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (_rebuildingSources)
+            {
+                return;
+            }
+
+            RebuildCalendarSources();
+        });
     }
 
     public void ShowOver(AppWindow? owner)
@@ -1645,7 +1670,16 @@ public sealed partial class SettingsWindow : Window
             };
             check.Click += (_, _) =>
             {
-                _calendarSync.Repository.SetSourceVisible(source.Href, check.IsChecked == true);
+                // 这一处改动由本页自己维护勾选状态，不必再整体重建一次（会打断点击）。
+                _rebuildingSources = true;
+                try
+                {
+                    _calendarSync.Repository.SetSourceVisible(source.Href, check.IsChecked == true);
+                }
+                finally
+                {
+                    _rebuildingSources = false;
+                }
             };
 
             var row = new Grid { ColumnSpacing = 4 };

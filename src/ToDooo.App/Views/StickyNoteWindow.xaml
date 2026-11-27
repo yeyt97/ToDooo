@@ -11,26 +11,27 @@
         KeyboardAcceleratorPlacementMode="Hidden">
         <Grid.Resources>
             <Style x:Key="StickyIconButtonStyle" TargetType="Button">
-                <Setter Property="Width" Value="30" />
-                <Setter Property="Height" Value="30" />
+                <Setter Property="Width" Value="26" />
+                <Setter Property="Height" Value="26" />
                 <Setter Property="MinWidth" Value="0" />
                 <Setter Property="MinHeight" Value="0" />
                 <Setter Property="Padding" Value="0" />
                 <Setter Property="Background" Value="Transparent" />
                 <Setter Property="BorderThickness" Value="0" />
-                <Setter Property="CornerRadius" Value="7" />
+                <Setter Property="CornerRadius" Value="6" />
                 <Setter Property="Foreground" Value="{ThemeResource TextSecondaryBrush}" />
             </Style>
             <Style x:Key="StickyEditorTextBoxStyle" TargetType="TextBox">
                 <Setter Property="Background" Value="Transparent" />
                 <Setter Property="BorderThickness" Value="0" />
-                <Setter Property="Padding" Value="18,6,18,14" />
+                <Setter Property="Padding" Value="12,2,10,8" />
                 <Setter Property="FontFamily" Value="Segoe UI Variable Text, Microsoft YaHei UI" />
                 <Setter Property="FontSize" Value="14" />
                 <Setter Property="Foreground" Value="{ThemeResource TextPrimaryBrush}" />
                 <Setter Property="AcceptsReturn" Value="True" />
                 <Setter Property="TextWrapping" Value="Wrap" />
-                <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
+                <!-- 滚动条不占版面：便签本来就窄，12px 的滚动条加内边距会吃掉正文宽度 -->
+                <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Hidden" />
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="TextBox">
@@ -72,16 +73,16 @@
             BorderThickness="1">
             <Grid>
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="42" />
+                    <RowDefinition Height="32" />
                     <RowDefinition Height="*" />
-                    <RowDefinition Height="28" />
+                    <RowDefinition Height="18" />
                 </Grid.RowDefinitions>
 
                 <!-- 极简顶栏：新建 + 拖拽区 + 颜色圆点/置顶/更多/关闭 -->
                 <Grid
                     x:Name="HeaderBar"
                     Grid.Row="0"
-                    Padding="12,0,8,0"
+                    Padding="10,0,6,0"
                     Background="Transparent"
                     PointerCaptureLost="HeaderBar_PointerCaptureLost"
                     PointerMoved="HeaderBar_PointerMoved"
@@ -180,19 +181,19 @@
                     TextChanged="EditorBox_TextChanged" />
 
                 <!-- 底部轻量状态条 -->
-                <Grid Grid.Row="2" Padding="18,0,18,6">
+                <Grid Grid.Row="2" Padding="12,0,10,3">
                     <TextBlock
                         x:Name="WordCountText"
                         HorizontalAlignment="Left"
                         VerticalAlignment="Center"
-                        FontSize="11"
+                        FontSize="10"
                         Foreground="{ThemeResource TextMutedBrush}"
-                        Opacity="0.65" />
+                        Opacity="0.55" />
                     <TextBlock
                         x:Name="StatusText"
                         HorizontalAlignment="Right"
                         VerticalAlignment="Center"
-                        FontSize="11"
+                        FontSize="10"
                         Foreground="{ThemeResource TextMutedBrush}"
                         Opacity="0" />
                 </Grid>

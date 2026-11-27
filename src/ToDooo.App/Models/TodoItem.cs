@@ -116,19 +116,16 @@ public partial class TodoItem : ObservableObject
     {
         get
         {
-            var parts = new List<string>(3);
+            var parts = new List<string>(2);
             if (Recurrence != TodoRecurrence.None)
             {
                 parts.Add(RecurrenceText);
             }
 
+            // 卡片上只写日期时间：逾期与否由颜色表达，再写「截止」「已逾期」是重复信息。
             if (DueAt is { } due)
             {
-                parts.Add($"截止 {due:yyyy/M/d HH:mm}");
-                if (!IsDone && due < DateTime.Now)
-                {
-                    parts.Add("已逾期");
-                }
+                parts.Add(due.ToString("yyyy/M/d HH:mm"));
             }
 
             return string.Join(" · ", parts);

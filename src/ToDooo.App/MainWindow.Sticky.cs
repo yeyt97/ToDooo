@@ -48,6 +48,7 @@ public sealed partial class MainWindow
             _stickyStore,
             _settings,
             isNoteOpen: id => _openStickyWindows.ContainsKey(id),
+            isToggleClick: IsCursorOverStickyButton,
             onCreateNew: colorKey => CreateAndOpenStickyNote(nearNote: null, activateWindow: false, overrideColor: colorKey),
             onSetNoteVisible: (note, visible) =>
             {
@@ -107,13 +108,40 @@ public sealed partial class MainWindow
     private void StickyButton_Click(object sender, RoutedEventArgs e)
     {
         var popup = EnsureStickyPopup();
-        if (popup.IsPopupVisible)
+
+        // 点这个按钮时弹出窗会先失焦；若那时它把自己收了起来，这里读到的就是「已关」，
+        // 再展开一遍看着像刷新。所以「刚因这次点击收起」也按收起处理。
+        if (popup.IsPopupVisible || popup.WasAutoHiddenRecently)
         {
             popup.HidePopup();
             return;
         }
 
         ShowStickyPopupBelowButton();
+    }
+
+    /// <summary>光标是不是正压在便签按钮上：弹出窗据此分辨「这次失焦要不要立刻收起」。</summary>
+    private bool IsCursorOverStickyButton()
+    {
+        try
+        {
+            if (!NativeMethods.GetCursorPos(out var cursor) || !NativeMethods.GetWindowRect(_hwnd, out var rect))
+            {
+                return false;
+            }
+
+            var scale = Math.Max(1.0, NativeMethods.GetDpiForWindow(_hwnd) / 96.0);
+            var topLeft = StickyButton.TransformToVisual(Root).TransformPoint(new Point(0, 0));
+            var x = rect.Left + topLeft.X * scale;
+            var y = rect.Top + topLeft.Y * scale;
+            var w = StickyButton.ActualWidth * scale;
+            var h = StickyButton.ActualHeight * scale;
+            return cursor.X >= x && cursor.X <= x + w && cursor.Y >= y && cursor.Y <= y + h;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private void ShowStickyPopupBelowButton()

@@ -258,15 +258,18 @@ public sealed partial class MainWindow : Window
         UndoBar.Visibility = Visibility.Collapsed;
     }
 
-    /// <summary>启动后静默检查一次 GitHub Release，有新版本只提示一次。</summary>
+    /// <summary>启动后静默检查一次 GitHub Release，有新版本在主窗顶栏显示胶囊提示。</summary>
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _updateCheckTimer;
+    private bool _updatingInProgress;
 
     /// <summary>
-    /// 启动后查一次，之后每天查一次。只在发现新版本、且这次还没提醒过时弹气泡；
-    /// 真正安装仍由用户在设置里点「检查更新」触发。
+    /// 启动后查一次，之后每天查一次。有新版本时不弹窗打断，只在日历按钮左侧亮起胶囊提示，
+    /// 由用户自行决定何时点击更新。
     /// </summary>
     private void ScheduleUpdateCheck()
     {
+        RefreshUpdatePill();
+
         // 启动延迟 8 秒，别和开屏动画、首次同步抢时间。
         var first = _dispatcher.CreateTimer();
         first.Interval = TimeSpan.FromSeconds(8);
@@ -285,6 +288,27 @@ public sealed partial class MainWindow : Window
         _updateCheckTimer.IsRepeating = true;
         _updateCheckTimer.Tick += (_, _) => _ = CheckUpdateQuietAsync();
         _updateCheckTimer.Start();
+    }
+
+    /// <summary>按 PendingUpdateVersion 控制顶栏「更新」胶囊的显隐。</summary>
+    private void RefreshUpdatePill()
+    {
+        var pending = (_settings.Current.PendingUpdateVersion ?? string.Empty).Trim();
+        if (pending.Length > 0 && UpdateService.IsNewer(pending, ToDooo.Helpers.AppInfo.Version))
+        {
+            UpdatePillText.Text = "更新";
+            ToolTipService.SetToolTip(UpdatePillButton, $"发现新版本 {pending}，点击更新");
+            UpdatePillButton.Visibility = Visibility.Visible;
+            return;
+        }
+
+        if (pending.Length > 0)
+        {
+            _settings.Current.PendingUpdateVersion = string.Empty;
+            _settings.Save();
+        }
+
+        UpdatePillButton.Visibility = Visibility.Collapsed;
     }
 
     private async Task CheckUpdateQuietAsync()
@@ -307,21 +331,106 @@ public sealed partial class MainWindow : Window
                 return;
             }
 
-            // 记下待更新版本，下次启动还能提示；同一版本只弹一次，别每天烦人。
             _settings.Current.PendingUpdateVersion = version;
-            if (version == _settings.Current.LastNotifiedVersion)
-            {
-                _settings.Save();
-                return;
-            }
-
             _settings.Current.LastNotifiedVersion = version;
             _settings.Save();
-            ShowBalloon("发现新版本", $"ToDooo {version} 已发布，打开设置点「检查更新」即可直接安装");
+            _dispatcher.TryEnqueue(RefreshUpdatePill);
         }
         catch
         {
             // 静默检查失败不影响使用
+        }
+    }
+
+    private async void UpdatePillButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_updatingInProgress)
+        {
+            return;
+        }
+
+        var version = (_settings.Current.PendingUpdateVersion ?? string.Empty).Trim();
+        if (version.Length == 0 || !UpdateService.IsNewer(version, ToDooo.Helpers.AppInfo.Version))
+        {
+            RefreshUpdatePill();
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            Title = $"发现新版本 {version}",
+            Content = new TextBlock
+            {
+                Text = "现在下载并安装吗？安装过程中应用会自动关闭，完成后自动重新打开。",
+                TextWrapping = TextWrapping.Wrap,
+            },
+            PrimaryButtonText = "立即更新",
+            CloseButtonText = "稍后",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = Root.XamlRoot,
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        _updatingInProgress = true;
+        UpdatePillButton.IsEnabled = false;
+        UpdatePillText.Text = "0%";
+        try
+        {
+            var installed = UpdateInstaller.IsInstalledCopy();
+            var progress = new Progress<double>(value =>
+                UpdatePillText.Text = $"{value * 100:0}%");
+
+            var payload = installed
+                ? await UpdateService.DownloadSetupAsync(version, progress)
+                : await UpdateService.DownloadPortableAsync(version, progress);
+
+            if (payload is null)
+            {
+                UpdatePillText.Text = "重试";
+                UpdatePillButton.IsEnabled = true;
+                var pageUrl = $"https://github.com/yeyt97/ToDooo/releases/tag/v{version}";
+                if (Uri.TryCreate(pageUrl, UriKind.Absolute, out var uri))
+                {
+                    await Windows.System.Launcher.LaunchUriAsync(uri);
+                }
+
+                return;
+            }
+
+            UpdatePillText.Text = "安装中";
+            _settings.Current.PendingUpdateVersion = string.Empty;
+            _settings.Save();
+
+            if (!installed)
+            {
+                if (!UpdateInstaller.TryLaunchPortableUpdate(
+                        payload,
+                        AppContext.BaseDirectory,
+                        Environment.ProcessPath ?? string.Empty))
+                {
+                    UpdatePillText.Text = "重试";
+                    UpdatePillButton.IsEnabled = true;
+                    return;
+                }
+
+                ExitApp();
+                return;
+            }
+
+            ExitApp();
+            if (!UpdateInstaller.TryLaunchInstaller(payload))
+            {
+                UpdatePillText.Text = "重试";
+                UpdatePillButton.IsEnabled = true;
+            }
+        }
+        finally
+        {
+            _updatingInProgress = false;
         }
     }
 

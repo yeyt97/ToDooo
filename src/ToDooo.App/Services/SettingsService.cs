@@ -46,6 +46,9 @@ public sealed class AppSettings
     /// <summary>上次退出时日历窗口是否处于打开状态。</summary>
     public bool CalendarOpen { get; set; }
 
+    /// <summary>启动应用时自动打开日历窗口（无视上次退出前是否收起）。</summary>
+    public bool CalendarOpenOnStartup { get; set; }
+
     /// <summary>日历窗口上次的位置（屏幕像素）；为空则打开时摆到主窗口旁边。</summary>
     public int? CalendarX { get; set; }
 
@@ -148,6 +151,12 @@ public sealed class AppSettings
 
     /// <summary>后台自动刷新间隔（分钟）：0 = 只手动刷新。</summary>
     public int CalendarRefreshMinutes { get; set; } = 15;
+
+    /// <summary>地点联想用哪个数据源：0 = Nominatim（默认），1 = Photon，2 = 高德。</summary>
+    public int PlaceSearchProvider { get; set; }
+
+    /// <summary>高德开放平台的 Web 服务 Key（仅在选择高德时使用）。</summary>
+    public string PlaceSearchAmapKey { get; set; } = string.Empty;
 }
 
 public sealed class SettingsService

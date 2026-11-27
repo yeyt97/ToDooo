@@ -87,7 +87,10 @@ public sealed partial class MainWindow
 
     private void UpdateMultiSelectionVisuals()
     {
-        var accent = (Brush)Application.Current.Resources["AccentBrush"];
+        var accentBrush = Application.Current.Resources["AccentBrush"] as SolidColorBrush;
+        var selectedStroke = accentBrush is not null
+            ? new SolidColorBrush(Windows.UI.Color.FromArgb(0xCC, accentBrush.Color.R, accentBrush.Color.G, accentBrush.Color.B))
+            : (Brush)Application.Current.Resources["AccentBrush"];
         var normalStroke = (Brush)Application.Current.Resources["ItemCardStrokeBrush"];
 
         for (var i = 0; i < TodoList.Items.Count; i++)
@@ -100,8 +103,8 @@ public sealed partial class MainWindow
             if (container.ContentTemplateRoot is Border card && container.Content is TodoItem item)
             {
                 var selected = _selectedTodoIds.Contains(item.Id);
-                card.BorderBrush = selected ? accent : normalStroke;
-                card.BorderThickness = selected ? new Thickness(1.5) : new Thickness(1);
+                card.BorderBrush = selected ? selectedStroke : normalStroke;
+                card.BorderThickness = new Thickness(selected ? 2 : 1);
             }
         }
 

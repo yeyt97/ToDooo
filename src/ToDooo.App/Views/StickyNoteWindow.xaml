@@ -75,10 +75,9 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="32" />
                     <RowDefinition Height="*" />
-                    <RowDefinition Height="18" />
                 </Grid.RowDefinitions>
 
-                <!-- 极简顶栏：新建 + 拖拽区 + 颜色圆点/置顶/更多/关闭 -->
+                <!-- 极简顶栏：新建 + 字数/拖拽区 + 颜色圆点/置顶/更多/关闭 -->
                 <Grid
                     x:Name="HeaderBar"
                     Grid.Row="0"
@@ -102,6 +101,28 @@
                         ToolTipService.ToolTip="新建便签 (Ctrl+N)">
                         <FontIcon Glyph="&#xE710;" FontSize="12.5" />
                     </Button>
+
+                    <TextBlock
+                        x:Name="WordCountText"
+                        Grid.Column="1"
+                        Margin="6,0,0,0"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Center"
+                        FontSize="10.5"
+                        Foreground="{ThemeResource TextMutedBrush}"
+                        IsHitTestVisible="False"
+                        Opacity="0.6" />
+
+                    <TextBlock
+                        x:Name="StatusText"
+                        Grid.Column="1"
+                        Margin="0,0,6,0"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        FontSize="10"
+                        Foreground="{ThemeResource TextMutedBrush}"
+                        IsHitTestVisible="False"
+                        Opacity="0" />
 
                     <StackPanel
                         Grid.Column="2"
@@ -179,24 +200,6 @@
                     PlaceholderText="记点什么…"
                     Style="{StaticResource StickyEditorTextBoxStyle}"
                     TextChanged="EditorBox_TextChanged" />
-
-                <!-- 底部轻量状态条 -->
-                <Grid Grid.Row="2" Padding="12,0,10,3">
-                    <TextBlock
-                        x:Name="WordCountText"
-                        HorizontalAlignment="Left"
-                        VerticalAlignment="Center"
-                        FontSize="10"
-                        Foreground="{ThemeResource TextMutedBrush}"
-                        Opacity="0.55" />
-                    <TextBlock
-                        x:Name="StatusText"
-                        HorizontalAlignment="Right"
-                        VerticalAlignment="Center"
-                        FontSize="10"
-                        Foreground="{ThemeResource TextMutedBrush}"
-                        Opacity="0" />
-                </Grid>
             </Grid>
         </Border>
     </Grid>

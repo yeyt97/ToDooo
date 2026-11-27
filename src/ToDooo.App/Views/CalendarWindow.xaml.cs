@@ -270,8 +270,150 @@ public sealed partial class CalendarWindow : UserControl
         }
     }
 
-    /// <summary>同步远端并刷新。窗口取前后一个月，覆盖月视图滚动缓冲与日视图。</summary>
-    private async Task SyncAndRefreshAsync()
+    private DateTime _syncedRangeStart;
+    private DateTime _syncedRangeEnd;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _scrollSyncDebounce;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _shimmerTimer;
+    private LinearGradientBrush? _shimmerBrush;
+    private double _shimmerPhase;
+    private readonly List<(Grid Host, UIElement Skeleton)> _activeSkeletons = new();
+
+    private void ScheduleScrollSync()
+    {
+        if (_calendarSync is null || !_calendarSync.IsConfigured)
+        {
+            return;
+        }
+
+        if (_scrollSyncDebounce is null)
+        {
+            _scrollSyncDebounce = DispatcherQueue.CreateTimer();
+            _scrollSyncDebounce.Interval = TimeSpan.FromMilliseconds(260);
+            _scrollSyncDebounce.IsRepeating = false;
+            _scrollSyncDebounce.Tick += (_, _) => _ = SyncAndRefreshAsync(showSkeleton: true);
+        }
+
+        _scrollSyncDebounce.Stop();
+        _scrollSyncDebounce.Start();
+    }
+
+    private void ShowMonthLoadingSkeleton(DateTime month)
+    {
+        ClearMonthLoadingSkeleton();
+        if (_viewMode != CalendarViewMode.Month)
+        {
+            return;
+        }
+
+        var dark = _settings is null || Appearance.IsDark((ThemeMode)_settings.Current.ThemeMode);
+        var baseColor = dark ? Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0x18, 0x00, 0x00, 0x00);
+        var sheenColor = dark ? Color.FromArgb(0x58, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0x38, 0x00, 0x00, 0x00);
+
+        _shimmerPhase = -0.35;
+        _shimmerBrush = new LinearGradientBrush
+        {
+            StartPoint = new Windows.Foundation.Point(0, 0.5),
+            EndPoint = new Windows.Foundation.Point(1, 0.5),
+            GradientStops =
+            {
+                new GradientStop { Color = baseColor, Offset = 0 },
+                new GradientStop { Color = sheenColor, Offset = 0 },
+                new GradientStop { Color = baseColor, Offset = 0.25 },
+            },
+        };
+
+        var scale = GetUiScale();
+        var barHeight = Math.Round(13 * scale);
+        foreach (var (date, cell, _) in _cells)
+        {
+            if (date.Year != month.Year || date.Month != month.Month)
+            {
+                continue;
+            }
+
+            if (cell.Child is not Grid content || content.Children.Count > 1)
+            {
+                continue;
+            }
+
+            // 留白格子放 1~2 条灰色圆角骨架条，不同日期长度错开，看起来像正在刷日程。
+            var panel = new StackPanel
+            {
+                Spacing = Math.Round(4 * scale),
+                Margin = new Thickness(0, Math.Round(5 * scale), 0, 0),
+                IsHitTestVisible = false,
+            };
+            var right1 = (date.Day % 3) switch { 0 => 6, 1 => 14, _ => 22 };
+            panel.Children.Add(new Border
+            {
+                Height = barHeight,
+                Margin = new Thickness(0, 0, right1, 0),
+                CornerRadius = new CornerRadius(3.5),
+                Background = _shimmerBrush,
+            });
+            if (date.Day % 2 == 0)
+            {
+                var right2 = (date.Day % 4 == 0) ? 26 : 16;
+                panel.Children.Add(new Border
+                {
+                    Height = barHeight,
+                    Margin = new Thickness(0, 0, right2, 0),
+                    CornerRadius = new CornerRadius(3.5),
+                    Background = _shimmerBrush,
+                });
+            }
+
+            Grid.SetRow(panel, 1);
+            content.Children.Add(panel);
+            _activeSkeletons.Add((content, panel));
+        }
+
+        if (_activeSkeletons.Count == 0)
+        {
+            return;
+        }
+
+        if (_shimmerTimer is null)
+        {
+            _shimmerTimer = DispatcherQueue.CreateTimer();
+            _shimmerTimer.Interval = TimeSpan.FromMilliseconds(33);
+            _shimmerTimer.IsRepeating = true;
+            _shimmerTimer.Tick += (_, _) =>
+            {
+                if (_shimmerBrush is null || _shimmerBrush.GradientStops.Count < 3)
+                {
+                    return;
+                }
+
+                _shimmerPhase += 0.055;
+                if (_shimmerPhase > 1.35)
+                {
+                    _shimmerPhase = -0.35;
+                }
+
+                _shimmerBrush.GradientStops[0].Offset = Math.Clamp(_shimmerPhase - 0.25, 0, 1);
+                _shimmerBrush.GradientStops[1].Offset = Math.Clamp(_shimmerPhase, 0, 1);
+                _shimmerBrush.GradientStops[2].Offset = Math.Clamp(_shimmerPhase + 0.25, 0, 1);
+            };
+        }
+
+        _shimmerTimer.Start();
+    }
+
+    private void ClearMonthLoadingSkeleton()
+    {
+        _shimmerTimer?.Stop();
+        foreach (var (host, skeleton) in _activeSkeletons)
+        {
+            host.Children.Remove(skeleton);
+        }
+
+        _activeSkeletons.Clear();
+        _shimmerBrush = null;
+    }
+
+    /// <summary>同步远端并刷新。窗口默认覆盖锚点前后 12 个月。</summary>
+    private async Task SyncAndRefreshAsync(bool showSkeleton = false)
     {
         if (_calendarSync is null || !_calendarSync.IsConfigured)
         {
@@ -284,14 +426,25 @@ public sealed partial class CalendarWindow : UserControl
         _syncCts = new CancellationTokenSource();
         var token = _syncCts.Token;
 
-        var from = _month.AddMonths(-1);
-        var to = _month.AddMonths(2);
+        var targetMonth = _month;
+        var (from, to) = CalendarSyncService.DefaultSyncWindow(targetMonth);
+        SetSyncSpinner(true);
+        if (showSkeleton)
+        {
+            ShowMonthLoadingSkeleton(targetMonth);
+        }
+
         try
         {
             var result = await _calendarSync.SyncAsync(from, to, null, token);
             if (result.Succeeded)
             {
-                LoadCachedEvents();
+                _syncedRangeStart = from;
+                _syncedRangeEnd = to;
+                var (loadFrom, loadTo) = CalendarMonthWindow.For(_monthGridStart, _monthLoadedWeeks, _month, _pendingJumpDate);
+                var loaded = await Task.Run(() => _calendarSync.LoadEvents(loadFrom, loadTo), token);
+                _events = loaded;
+                ClearMonthLoadingSkeleton();
                 QueueRefreshIfVisible();
             }
 
@@ -301,6 +454,14 @@ public sealed partial class CalendarWindow : UserControl
         catch (OperationCanceledException)
         {
             // 用户切换月份导致取消，忽略
+        }
+        finally
+        {
+            if (_syncCts?.Token == token)
+            {
+                ClearMonthLoadingSkeleton();
+                SetSyncSpinner(_calendarSync.IsSyncing);
+            }
         }
     }
 
@@ -313,7 +474,7 @@ public sealed partial class CalendarWindow : UserControl
     /// 在某天新建一条 iCloud 日程。表单交给独立的 CalendarEventDialog，
     /// 创建成功后再回写缓存并刷新日历。
     /// </summary>
-    public async Task CreateEventAsync(DateTime date)
+    public async Task CreateEventAsync(DateTime date, DateTime? endDate = null)
     {
         if (_calendarSync is null || _settings is null)
         {
@@ -326,7 +487,7 @@ public sealed partial class CalendarWindow : UserControl
             _calendarSync.Repository.AddLocalSource("我的日历", "#4D8FE3");
         }
 
-        var dialog = new CalendarEventDialog(_settings, _calendarSync, date);
+        var dialog = new CalendarEventDialog(_settings, _calendarSync, date, initialEndDate: endDate);
         dialog.ShowOver(null, topmost: IsHostTopmost?.Invoke() == true);
         var created = await dialog.Result;
         if (!created || dialog.Draft is not { } draft || dialog.TargetCalendarHref is not { } href)
@@ -956,6 +1117,7 @@ public sealed partial class CalendarWindow : UserControl
         var keepExistingBuffer = _pendingJumpDate is null
             && _builtViewMode == CalendarViewMode.Month
             && _monthLoadedWeeks >= 12
+            && _monthLoadedWeeks <= 24
             && _month >= _monthGridStart.AddDays(14)
             && _month <= _monthGridStart.AddDays((_monthLoadedWeeks - 6) * 7);
 
@@ -964,19 +1126,92 @@ public sealed partial class CalendarWindow : UserControl
             var anchor = _pendingJumpDate ?? _month;
             _monthGridStart = CalendarMonthWindow.GridStartFor(anchor);
             _monthLoadedWeeks = CalendarMonthWindow.DefaultWeeks;
+            _restoreScrollOffset = null;
         }
 
         // 左右留白与下边距一致（8）；滚动条已隐藏，不再为它预留额外宽度。
+        // 用 StackPanel 装每一周，向上/向下扩展时只需增删 6 行，不必整表重建导致卡顿。
         var scrollGutter = 8d;
-        var monthGrid = new Grid
+        var monthGrid = new StackPanel
         {
-            RowSpacing = rowSpacing,
-            ColumnSpacing = 4,
+            Spacing = rowSpacing,
             Padding = new Thickness(scrollGutter, 0, scrollGutter, 0),
         };
-        for (var column = 0; column < 7; column++)
+
+        Grid BuildWeekRow(
+            DateTime weekStartDate,
+            Dictionary<DateTime, List<CalendarEntry>> datedMap,
+            double scale,
+            double headerHeight,
+            double laneHeight,
+            double laneStride,
+            int maxLanes)
         {
-            monthGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            // 单日的定时日程不以跨日色条呈现，而是和待办一起按时间排进格子。
+            var barEvents = _events
+                .Where(evt => evt.IsAllDay ||
+                    (evt.EndAt ?? evt.StartAt).Date > evt.StartAt.Date)
+                .ToList();
+            var layout = MonthWeekLayout.Build(barEvents, weekStartDate, maxLanes);
+
+            // 每列实际被事件占掉的槽位：没有日程的天不该为别人的色条空出一行。
+            var lanesByColumn = new int[7];
+            foreach (var weekBar in layout.Bars)
+            {
+                for (var c = weekBar.StartColumn; c < weekBar.StartColumn + weekBar.ColumnSpan && c < 7; c++)
+                {
+                    lanesByColumn[c] = Math.Max(lanesByColumn[c], weekBar.Lane + 1);
+                }
+            }
+
+            var weekGrid = new Grid { Height = rowHeight, ColumnSpacing = 4 };
+            for (var col = 0; col < 7; col++)
+            {
+                weekGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            }
+
+            for (var col = 0; col < 7; col++)
+            {
+                var date = weekStartDate.AddDays(col);
+                var timed = _events
+                    .Where(evt => !evt.IsAllDay &&
+                        evt.StartAt.Date == date &&
+                        (evt.EndAt ?? evt.StartAt).Date == date)
+                    .ToList();
+                var cell = BuildCell(date, datedMap.TryGetValue(date, out var items) ? items : null,
+                    rowHeight, lanesByColumn[col] * laneStride, timed);
+                Grid.SetColumn(cell, col);
+                weekGrid.Children.Add(cell);
+                _cells.Add((date, cell, true));
+            }
+
+            // 叠加层的列必须和 weekGrid 完全一致（含 4px 间距），否则色条会错位。
+            var overlay = new Grid { Background = null, ColumnSpacing = weekGrid.ColumnSpacing };
+            for (var col = 0; col < 7; col++)
+            {
+                overlay.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            }
+
+            overlay.RowDefinitions.Add(new RowDefinition { Height = new GridLength(headerHeight) });
+            for (var lane = 0; lane < layout.UsedLanes; lane++)
+            {
+                overlay.RowDefinitions.Add(new RowDefinition { Height = new GridLength(laneStride) });
+            }
+
+            foreach (var bar in layout.Bars)
+            {
+                var barElement = BuildEventBar(bar, laneHeight, scale);
+                Grid.SetRow(barElement, bar.Lane + 1);
+                Grid.SetColumn(barElement, bar.StartColumn);
+                Grid.SetColumnSpan(barElement, bar.ColumnSpan);
+                overlay.Children.Add(barElement);
+            }
+
+            Grid.SetRow(overlay, 0);
+            Grid.SetColumn(overlay, 0);
+            Grid.SetColumnSpan(overlay, 7);
+            weekGrid.Children.Add(overlay);
+            return weekGrid;
         }
 
         void AppendWeeks(int startWeekIndex, int weekCount, Dictionary<DateTime, List<CalendarEntry>> datedMap)
@@ -989,80 +1224,23 @@ public sealed partial class CalendarWindow : UserControl
 
             for (var w = 0; w < weekCount; w++)
             {
-                var rowIndex = startWeekIndex + w;
-                monthGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(rowHeight) });
+                var weekStartDate = _monthGridStart.AddDays((startWeekIndex + w) * 7);
+                monthGrid.Children.Add(BuildWeekRow(weekStartDate, datedMap, scale, headerHeight, laneHeight, laneStride, maxLanes));
+            }
+        }
 
-                var weekStartDate = _monthGridStart.AddDays(rowIndex * 7);
-                // 单日的定时日程不以跨日色条呈现，而是和待办一起按时间排进格子。
-                var barEvents = _events
-                    .Where(evt => evt.IsAllDay ||
-                        (evt.EndAt ?? evt.StartAt).Date > evt.StartAt.Date)
-                    .ToList();
-                var layout = MonthWeekLayout.Build(barEvents, weekStartDate, maxLanes);
+        void PrependWeeks(int weekCount, Dictionary<DateTime, List<CalendarEntry>> datedMap)
+        {
+            var scale = GetUiScale();
+            var headerHeight = Math.Round(21 * scale);
+            var laneHeight = Math.Round(15 * scale);
+            var laneStride = laneHeight + Math.Round(2 * scale);
+            var maxLanes = Math.Clamp((int)Math.Floor((rowHeight - headerHeight - 22 * scale) / laneStride), 0, 3);
 
-                // 每列实际被事件占掉的槽位：没有日程的天不该为别人的色条空出一行。
-                var lanesByColumn = new int[7];
-                foreach (var weekBar in layout.Bars)
-                {
-                    for (var c = weekBar.StartColumn; c < weekBar.StartColumn + weekBar.ColumnSpan && c < 7; c++)
-                    {
-                        lanesByColumn[c] = Math.Max(lanesByColumn[c], weekBar.Lane + 1);
-                    }
-                }
-
-                var weekGrid = new Grid { ColumnSpacing = 4 };
-                for (var col = 0; col < 7; col++)
-                {
-                    weekGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                }
-
-                for (var col = 0; col < 7; col++)
-                {
-                    var date = weekStartDate.AddDays(col);
-                    var timed = _events
-                        .Where(evt => !evt.IsAllDay &&
-                            evt.StartAt.Date == date &&
-                            (evt.EndAt ?? evt.StartAt).Date == date)
-                        .ToList();
-                    var cell = BuildCell(date, datedMap.TryGetValue(date, out var items) ? items : null,
-                        rowHeight, lanesByColumn[col] * laneStride, timed);
-                    Grid.SetColumn(cell, col);
-                    weekGrid.Children.Add(cell);
-                    _cells.Add((date, cell, true));
-                }
-
-                // 叠加层的列必须和 weekGrid 完全一致（含 4px 间距），否则色条会错位。
-                var overlay = new Grid { Background = null, ColumnSpacing = weekGrid.ColumnSpacing };
-                for (var col = 0; col < 7; col++)
-                {
-                    overlay.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                }
-
-
-                overlay.RowDefinitions.Add(new RowDefinition { Height = new GridLength(headerHeight) });
-                for (var lane = 0; lane < layout.UsedLanes; lane++)
-                {
-                    overlay.RowDefinitions.Add(new RowDefinition { Height = new GridLength(laneStride) });
-                }
-
-                foreach (var bar in layout.Bars)
-                {
-                    var barElement = BuildEventBar(bar, laneHeight, scale);
-                    Grid.SetRow(barElement, bar.Lane + 1);
-                    Grid.SetColumn(barElement, bar.StartColumn);
-                    Grid.SetColumnSpan(barElement, bar.ColumnSpan);
-                    overlay.Children.Add(barElement);
-                }
-
-                Grid.SetRow(overlay, 0);
-                Grid.SetColumn(overlay, 0);
-                Grid.SetColumnSpan(overlay, 7);
-                weekGrid.Children.Add(overlay);
-
-                Grid.SetRow(weekGrid, rowIndex);
-                Grid.SetColumn(weekGrid, 0);
-                Grid.SetColumnSpan(weekGrid, 7);
-                monthGrid.Children.Add(weekGrid);
+            for (var w = 0; w < weekCount; w++)
+            {
+                var weekStartDate = _monthGridStart.AddDays(w * 7);
+                monthGrid.Children.Insert(w, BuildWeekRow(weekStartDate, datedMap, scale, headerHeight, laneHeight, laneStride, maxLanes));
             }
         }
 
@@ -1126,6 +1304,13 @@ public sealed partial class CalendarWindow : UserControl
                 MonthTitle.Text = FormatHeaderTitle();
                 Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(MonthTitle, MonthTitle.Text);
                 UpdateSelectionVisuals();
+                // 滚到已同步窗口之外时防抖触发动态补拉，不要求用户手动点同步。
+                if (_syncedRangeEnd == DateTime.MinValue ||
+                    _month < _syncedRangeStart.AddMonths(1) ||
+                    _month >= _syncedRangeEnd.AddMonths(-1))
+                {
+                    ScheduleScrollSync();
+                }
             }
 
             if (args.IsIntermediate || extendQueued)
@@ -1158,7 +1343,6 @@ public sealed partial class CalendarWindow : UserControl
             if (scroll.VerticalOffset < _monthRowStride * 2.5)
             {
                 extendQueued = true;
-                var oldOffset = scroll.VerticalOffset;
                 DispatcherQueue.TryEnqueue(() =>
                 {
                     extendQueued = false;
@@ -1167,10 +1351,16 @@ public sealed partial class CalendarWindow : UserControl
                         return;
                     }
 
+                    var oldOffset = scroll.VerticalOffset;
                     _monthGridStart = _monthGridStart.AddDays(-42);
                     _monthLoadedWeeks += 6;
-                    _restoreScrollOffset = oldOffset + 6 * _monthRowStride;
-                    Refresh();
+                    LoadCachedEvents();
+                    var currentDated = BuildDatedLookup();
+                    PrependWeeks(6, currentDated);
+                    UpdateSelectionVisuals();
+                    _suppressScrollSync = true;
+                    scroll.ChangeView(null, oldOffset + 6 * _monthRowStride, null, disableAnimation: true);
+                    _suppressScrollSync = false;
                 });
             }
         };
@@ -1253,13 +1443,16 @@ public sealed partial class CalendarWindow : UserControl
 
             if (isToday)
             {
-                dateStack.Children.Add(new Border
+                var pill = new Grid();
+                pill.Children.Add(new Microsoft.UI.Xaml.Shapes.Rectangle
                 {
-                    Padding = new Thickness(7, 2, 7, 2),
-                    CornerRadius = new CornerRadius(10),
-                    Background = (Brush)Application.Current.Resources["AccentBrush"],
-                    Child = dateText,
+                    RadiusX = 10,
+                    RadiusY = 10,
+                    Fill = (Brush)Application.Current.Resources["AccentBrush"],
                 });
+                dateText.Margin = new Thickness(7, 2, 7, 2);
+                pill.Children.Add(dateText);
+                dateStack.Children.Add(pill);
             }
             else
             {
@@ -1808,34 +2001,41 @@ public sealed partial class CalendarWindow : UserControl
         {
             Text = dayText,
             FontSize = Math.Round(10.5 * scale, 1),
-            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(2, 0, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Center,
             Foreground = isToday
-                ? new SolidColorBrush(Colors.White)
+                ? (Brush)Application.Current.Resources["AccentBrush"]
                 : (Brush)Application.Current.Resources[inMonth ? "TextPrimaryBrush" : "TextMutedBrush"],
-            FontWeight = (isToday || isSelected)
-                ? Microsoft.UI.Text.FontWeights.SemiBold
-                : Microsoft.UI.Text.FontWeights.Normal,
+            FontWeight = isToday
+                ? Microsoft.UI.Text.FontWeights.Bold
+                : isSelected
+                    ? Microsoft.UI.Text.FontWeights.SemiBold
+                    : Microsoft.UI.Text.FontWeights.Normal,
         };
 
         if (isToday)
         {
-            var badgeSize = Math.Round(18 * scale);
-            dayHeader.Children.Add(new Border
+            // 用「主题色加粗数字 + 今天」标识当前日期，与普通日期同高，不占额外空间也不贴边。
+            var todayRow = new StackPanel
             {
-                MinWidth = badgeSize,
-                Height = badgeSize,
-                // 徽标比普通日期文字高，用负外边距抵消，今天的日期头不会撑高格子内容。
-                Margin = new Thickness(0, -Math.Round(1.5 * scale), 0, -Math.Round(1.5 * scale)),
-                Padding = date.Day == 1 ? new Thickness(4, 0, 4, 0) : new Thickness(0),
-                CornerRadius = new CornerRadius(badgeSize / 2),
-                Background = (Brush)Application.Current.Resources["AccentBrush"],
-                Child = dayNumberText,
+                Orientation = Orientation.Horizontal,
+                Spacing = Math.Round(4 * scale),
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            todayRow.Children.Add(dayNumberText);
+            todayRow.Children.Add(new TextBlock
+            {
+                Text = "今天",
+                FontSize = Math.Round(9.5 * scale, 1),
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = (Brush)Application.Current.Resources["AccentBrush"],
+                Opacity = 0.85,
             });
+            dayHeader.Children.Add(todayRow);
         }
         else
         {
-            dayNumberText.Margin = new Thickness(2, 0, 0, 0);
             dayHeader.Children.Add(dayNumberText);
         }
 
@@ -1895,10 +2095,11 @@ public sealed partial class CalendarWindow : UserControl
         var cell = new Border
         {
             CornerRadius = new CornerRadius(6),
-            Padding = new Thickness(5, 4, 5, 4),
-            BorderThickness = new Thickness(1),
+            // BorderThickness + Padding 恒为 (6,5,6,5)，切换选中态时不抖动，也不浪费垂直空间。
+            Padding = isSelected ? new Thickness(4, 3, 4, 3) : new Thickness(5, 4, 5, 4),
+            BorderThickness = new Thickness(isSelected ? 2 : 1),
             Background = GetCellBackground(isSelected, inMonth),
-            BorderBrush = GetCellBorderBrush(isSelected, isToday, inMonth),
+            BorderBrush = GetCellBorderBrush(isSelected, inMonth),
             Opacity = inMonth || isSelected ? 1 : 0.62,
             Child = content,
             AllowDrop = true,
@@ -2055,6 +2256,23 @@ public sealed partial class CalendarWindow : UserControl
             ?? Color.FromArgb(0xFF, 0x4D, 0x8F, 0xE3);
     }
 
+    /// <summary>侧栏右键弹出「创建日程 / 创建待办」菜单；条目自身已处理的右键不会冒泡到这里。</summary>
+    private void RightPanel_RightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        if (e.Handled || sender is not FrameworkElement anchor)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        var flyout = new MenuFlyout();
+        AppendCreateItems(flyout, _selected);
+        flyout.ShowAt(anchor, new Microsoft.UI.Xaml.Controls.Primitives.FlyoutShowOptions
+        {
+            Position = e.GetPosition(anchor),
+        });
+    }
+
     /// <summary>「创建日程 / 创建待办」两项，格子右键菜单和日视图加号共用。</summary>
     private void AppendCreateItems(MenuFlyout flyout, DateTime date)
     {
@@ -2130,6 +2348,9 @@ public sealed partial class CalendarWindow : UserControl
     private bool IsInCurrentScope(DateTime date) =>
         _viewMode != CalendarViewMode.Month || date.Month == _month.Month;
 
+    private DateTime? _rangeDragStart;
+    private DateTime? _rangeDragEnd;
+
     private void AttachCellInteractions(Border cell, DateTime date, bool selectable)
     {
         var normalBrush = selectable
@@ -2139,6 +2360,43 @@ public sealed partial class CalendarWindow : UserControl
         cell.Tag = date;
         if (selectable)
         {
+            cell.PointerPressed += (_, args) =>
+            {
+                if (_viewMode != CalendarViewMode.Month)
+                {
+                    return;
+                }
+
+                if (args.GetCurrentPoint(cell).Properties.IsLeftButtonPressed)
+                {
+                    _rangeDragStart = date;
+                    _rangeDragEnd = date;
+                }
+            };
+
+            cell.PointerReleased += (_, _) =>
+            {
+                if (_rangeDragStart is not { } start || _rangeDragEnd is not { } end)
+                {
+                    return;
+                }
+
+                _rangeDragStart = null;
+                _rangeDragEnd = null;
+                if (start == end)
+                {
+                    UpdateSelectionVisuals();
+                    return;
+                }
+
+                var from = start < end ? start : end;
+                var to = start < end ? end : start;
+                _selected = from;
+                UpdateSelectionVisuals();
+                // 等本次 PointerReleased 结束、日历窗完成聚焦后再弹新建框，避免新建框被日历窗压到后面。
+                DispatcherQueue.TryEnqueue(() => _ = CreateEventAsync(from, to));
+            };
+
             cell.Tapped += (sender, _) =>
             {
                 if (sender is not FrameworkElement { Tag: DateTime tapped })
@@ -2165,17 +2423,37 @@ public sealed partial class CalendarWindow : UserControl
 
             cell.ContextFlyout = BuildCellCreateFlyout(date);
 
-            cell.PointerEntered += (_, _) =>
+            cell.PointerEntered += (_, args) =>
             {
                 if (_viewMode == CalendarViewMode.Day)
                 {
                     return;
                 }
 
+                if (_rangeDragStart is not null)
+                {
+                    if (args.GetCurrentPoint(cell).Properties.IsLeftButtonPressed)
+                    {
+                        _rangeDragEnd = date;
+                        UpdateSelectionVisuals();
+                        return;
+                    }
+
+                    // 鼠标在窗口外松开了，清掉残留的框选态。
+                    _rangeDragStart = null;
+                    _rangeDragEnd = null;
+                    UpdateSelectionVisuals();
+                }
+
                 cell.Background = (Brush)Application.Current.Resources["HoverBrush"];
             };
             cell.PointerExited += (_, _) =>
             {
+                if (_rangeDragStart is not null)
+                {
+                    return;
+                }
+
                 cell.Background = _viewMode == CalendarViewMode.Day
                     ? GetDayRowBackground(date == _selected)
                     : GetCellBackground(date == _selected, IsInCurrentScope(date));
@@ -2328,10 +2606,21 @@ public sealed partial class CalendarWindow : UserControl
 
     private void UpdateSelectionVisuals()
     {
+        var hasDragRange = _rangeDragStart is { } rs && _rangeDragEnd is { } re && rs != re;
+        var rangeMin = hasDragRange ? (_rangeDragStart!.Value < _rangeDragEnd!.Value ? _rangeDragStart.Value : _rangeDragEnd.Value) : DateTime.MinValue;
+        var rangeMax = hasDragRange ? (_rangeDragStart!.Value < _rangeDragEnd!.Value ? _rangeDragEnd.Value : _rangeDragStart.Value) : DateTime.MinValue;
+        SolidColorBrush? rangeFill = null;
+        if (hasDragRange && Application.Current.Resources["AccentBrush"] is SolidColorBrush accent)
+        {
+            var c = accent.Color;
+            rangeFill = new SolidColorBrush(Color.FromArgb(0x36, c.R, c.G, c.B));
+        }
+
         foreach (var (date, cell, _) in _cells)
         {
             var inScope = IsInCurrentScope(date);
             var isSelected = date == _selected;
+            var inDragRange = hasDragRange && date >= rangeMin && date <= rangeMax;
 
             // 日视图的行不是卡片：只有选中态给淡底色，不画边框、不改透明度。
             if (_viewMode == CalendarViewMode.Day)
@@ -2342,10 +2631,14 @@ public sealed partial class CalendarWindow : UserControl
                 continue;
             }
 
-            var isToday = date == DateTime.Today;
-            cell.Background = GetCellBackground(isSelected, inScope);
-            cell.BorderBrush = GetCellBorderBrush(isSelected, isToday, inScope);
-            cell.Opacity = inScope || isSelected ? 1 : 0.62;
+            var highlighted = isSelected || inDragRange;
+            cell.Background = inDragRange && rangeFill is not null
+                ? rangeFill
+                : GetCellBackground(isSelected, inScope);
+            cell.BorderBrush = GetCellBorderBrush(highlighted, inScope);
+            cell.BorderThickness = new Thickness(highlighted ? 2 : 1);
+            cell.Padding = highlighted ? new Thickness(4, 3, 4, 3) : new Thickness(5, 4, 5, 4);
+            cell.Opacity = inScope || highlighted ? 1 : 0.62;
         }
     }
 
@@ -2363,9 +2656,16 @@ public sealed partial class CalendarWindow : UserControl
         (Brush)Application.Current.Resources[
             selected ? "SegmentSelectedBrush" : inMonth ? "ItemCardBrush" : "TransparentBrush"];
 
-    private static Brush GetCellBorderBrush(bool selected, bool isToday, bool inMonth) =>
-        (Brush)Application.Current.Resources[
-            selected || isToday ? "AccentBrush" : inMonth ? "ItemCardStrokeBrush" : "TransparentBrush"];
+    private static Brush GetCellBorderBrush(bool selected, bool inMonth)
+    {
+        if (selected && Application.Current.Resources["AccentBrush"] is SolidColorBrush accent)
+        {
+            var c = accent.Color;
+            return new SolidColorBrush(Color.FromArgb(0xCC, c.R, c.G, c.B));
+        }
+
+        return (Brush)Application.Current.Resources[inMonth ? "ItemCardStrokeBrush" : "TransparentBrush"];
+    }
 
     /// <summary>
     /// 格子里的定时日程：用「淡色填充 + 细圆头色条」的胶囊，和待办的空心圆区分开，
@@ -4108,7 +4408,8 @@ public sealed partial class CalendarWindow : UserControl
         flyout.ShowAt(MonthTitleButton);
     }
 
-    private void Today_Click(object sender, RoutedEventArgs e)
+    /// <summary>定位并选中今天（日历窗口重新打开或点击「今天」时调用）。</summary>
+    public void JumpToToday()
     {
         _selected = DateTime.Today;
         _month = new DateTime(_selected.Year, _selected.Month, 1);
@@ -4116,6 +4417,8 @@ public sealed partial class CalendarWindow : UserControl
         _pendingJumpDate = _viewMode == CalendarViewMode.Month ? _month : _selected;
         Refresh();
     }
+
+    private void Today_Click(object sender, RoutedEventArgs e) => JumpToToday();
 
     private void NewTask_Click(object sender, RoutedEventArgs e)
     {

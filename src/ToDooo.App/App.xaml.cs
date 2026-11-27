@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.Windows.AppLifecycle;
@@ -47,6 +47,8 @@ public partial class App : Application
         Repository = new TodoRepository(AppPaths.DatabasePath, AppPaths.BackupDir);
         Repository.Initialize();
         Settings = new SettingsService();
+        // 地点联想的数据源来自设置（Nominatim / Photon / 高德），先应用再建窗口。
+        PlaceSearchService.Configure(Settings.Current.PlaceSearchProvider, Settings.Current.PlaceSearchAmapKey);
         Notifier = new Notifier();
         Notifier.Initialize();
 

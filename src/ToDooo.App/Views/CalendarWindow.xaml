@@ -265,7 +265,8 @@
                     Background="{ThemeResource ItemCardBrush}"
                     BorderBrush="{ThemeResource ItemCardStrokeBrush}"
                     BorderThickness="1"
-                    CornerRadius="8">
+                    CornerRadius="8"
+                    RightTapped="RightPanel_RightTapped">
                     <Grid RowSpacing="6">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />

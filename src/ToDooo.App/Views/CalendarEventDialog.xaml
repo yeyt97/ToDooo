@@ -13,7 +13,8 @@
         x:Name="Root"
         Background="Transparent"
         KeyboardAcceleratorPlacementMode="Hidden"
-        Loaded="Root_Loaded">
+        Loaded="Root_Loaded"
+        PointerPressed="Root_PointerPressed">
         <Grid.Resources>
             <Style x:Key="RowLabel" TargetType="TextBlock">
                 <Setter Property="Width" Value="44" />
@@ -275,10 +276,11 @@
                         <Grid>
                             <TextBox
                                 x:Name="LocationBox"
-                                Padding="10,8,34,8"
+                                Padding="10,8,52,8"
                                 AutomationProperties.Name="地点"
                                 CornerRadius="6"
                                 GotFocus="LocationBox_GotFocus"
+                                LostFocus="LocationBox_LostFocus"
                                 PlaceholderText="地点"
                                 PreviewKeyDown="LocationBox_PreviewKeyDown"
                                 TextChanged="LocationBox_TextChanged" />
@@ -286,7 +288,7 @@
                                 x:Name="PlaceSearchProgress"
                                 Width="14"
                                 Height="14"
-                                Margin="0,0,10,0"
+                                Margin="0,0,34,0"
                                 HorizontalAlignment="Right"
                                 VerticalAlignment="Center"
                                 IsActive="False"
@@ -349,7 +351,19 @@
                 </StackPanel>
             </Button>
         </Grid>
-        <!-- 跨窗口地点联想浮层：ShouldConstrainToRootBounds=False 允许跳出弹窗底边完整显示 -->
+        <!--  焦点接收器：点空白处时把焦点从输入框挪到这里，光标才会真的消失  -->
+        <ContentControl
+            x:Name="FocusSink"
+            Width="0"
+            Height="0"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
+            IsHitTestVisible="False"
+            IsTabStop="True"
+            Opacity="0"
+            TabIndex="99" />
+        <!-- 跨窗口地点联想浮层：ShouldConstrainToRootBounds=False 允许跳出弹窗底边完整显示；
+             IsLightDismissEnabled 保持 False，避免弹层打开时抢走 LocationBox 焦点触发 LostFocus 秒关 -->
         <Popup
             x:Name="PlaceSuggestionsPopup"
             IsLightDismissEnabled="False"

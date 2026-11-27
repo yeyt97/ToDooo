@@ -139,7 +139,7 @@ public sealed partial class MainWindow : Window
         _dispatcher.TryEnqueue(() =>
         {
             RestoreVisibleStickyNotes();
-            if (_settings.Current.CalendarOpen)
+            if (_settings.Current.CalendarOpen || _settings.Current.CalendarOpenOnStartup)
             {
                 SetCalendarExpanded(true);
             }
@@ -200,7 +200,8 @@ public sealed partial class MainWindow : Window
             try
             {
                 var today = DateTime.Today;
-                await _calendarSync.SyncAsync(today.AddMonths(-1), today.AddMonths(2));
+                var (from, to) = CalendarSyncService.DefaultSyncWindow(DateTime.Today);
+            await _calendarSync.SyncAsync(from, to);
             }
             catch
             {
@@ -222,7 +223,8 @@ public sealed partial class MainWindow : Window
         var today = DateTime.Today;
         try
         {
-            await _calendarSync.SyncAsync(today.AddMonths(-1), today.AddMonths(2));
+            var (from, to) = CalendarSyncService.DefaultSyncWindow(DateTime.Today);
+            await _calendarSync.SyncAsync(from, to);
         }
         catch
         {
@@ -331,7 +333,8 @@ public sealed partial class MainWindow : Window
                     }
 
                     var today = DateTime.Today;
-                    await _calendarSync.SyncAsync(today.AddMonths(-1), today.AddMonths(2));
+                    var (from, to) = CalendarSyncService.DefaultSyncWindow(DateTime.Today);
+                    await _calendarSync.SyncAsync(from, to);
                 });
             };
         }

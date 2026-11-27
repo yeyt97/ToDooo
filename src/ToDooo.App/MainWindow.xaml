@@ -37,10 +37,11 @@
                 </Grid.RowDefinitions>
 
                 <!--  顶栏：中性图标 + 标题，去掉强调色方块  -->
-                <Grid Height="50" Padding="14,0,8,0" ColumnSpacing="8">
+                <Grid Height="50" Padding="14,0,8,0" ColumnSpacing="6">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
@@ -72,9 +73,46 @@
                                 VerticalAlignment="Center" />
                         </StackPanel>
                     </Grid>
+                    <!--  有新版本时在日历左侧显示胶囊提示，不打扰使用，点一下直接更新  -->
+                    <Button
+                        x:Name="UpdatePillButton"
+                        Grid.Column="2"
+                        MinWidth="0"
+                        MinHeight="0"
+                        Margin="0,0,2,0"
+                        Padding="0"
+                        VerticalAlignment="Center"
+                        AutomationProperties.Name="有新版本可更新"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Click="UpdatePillButton_Click"
+                        CornerRadius="12"
+                        Visibility="Collapsed">
+                        <Border
+                            Height="24"
+                            Padding="8,0,9,0"
+                            Background="{ThemeResource LayerFillSecondaryBrush}"
+                            BorderBrush="{ThemeResource LayerStrokeBrush}"
+                            BorderThickness="1"
+                            CornerRadius="12">
+                            <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                <FontIcon
+                                    x:Name="UpdatePillIcon"
+                                    FontSize="10.5"
+                                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                    Glyph="&#xE896;" />
+                                <TextBlock
+                                    x:Name="UpdatePillText"
+                                    FontSize="11.5"
+                                    FontWeight="SemiBold"
+                                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                    Text="更新" />
+                            </StackPanel>
+                        </Border>
+                    </Button>
                     <Button
                         x:Name="CalendarButton"
-                        Grid.Column="2"
+                        Grid.Column="3"
                         AutomationProperties.Name="日历"
                         Style="{StaticResource FlatIconButtonStyle}"
                         Click="CalendarButton_Click">
@@ -82,7 +120,7 @@
                     </Button>
                     <Button
                         x:Name="StickyButton"
-                        Grid.Column="3"
+                        Grid.Column="4"
                         AutomationProperties.Name="便签"
                         Click="StickyButton_Click"
                         Style="{StaticResource FlatIconButtonStyle}"
@@ -91,7 +129,7 @@
                     </Button>
                     <Button
                         x:Name="SettingsButton"
-                        Grid.Column="4"
+                        Grid.Column="5"
                         AutomationProperties.Name="设置"
                         Style="{StaticResource FlatIconButtonStyle}"
                         Click="SettingsButton_Click">

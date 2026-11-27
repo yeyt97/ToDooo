@@ -59,7 +59,8 @@ public sealed partial class CalendarEventDialog : Window
         CalendarEvent? editing = null,
         string titleSuffix = "",
         bool allowRepeatEdit = false,
-        bool lockCalendar = false)
+        bool lockCalendar = false,
+        DateTime? initialEndDate = null)
     {
         _settings = settings;
         _calendarSync = calendarSync;
@@ -78,8 +79,11 @@ public sealed partial class CalendarEventDialog : Window
         ConfigureWindow();
         ApplyWindowMaterial();
 
+        var hasMultiDayRange = editing is null && initialEndDate is { } endDay && endDay.Date > initialDate.Date;
         HeaderTitle.Text = (editing is null
-            ? $"{initialDate:M 月 d 日} 新建日程"
+            ? hasMultiDayRange
+                ? $"{initialDate:M月d日} – {initialEndDate!.Value:M月d日} 新建日程"
+                : $"{initialDate:M 月 d 日} 新建日程"
             : "编辑日程") + titleSuffix;
         SaveButton.Content = BuildCreateButtonContent(editing is null ? "创建" : "保存");
 
@@ -89,8 +93,13 @@ public sealed partial class CalendarEventDialog : Window
         var start = initialDate.Date.AddHours(9);
         StartDate.Date = new DateTimeOffset(start.Date);
         SetTime(start: true, start.TimeOfDay);
-        EndDate.Date = new DateTimeOffset(start.Date);
+        EndDate.Date = new DateTimeOffset(hasMultiDayRange ? initialEndDate!.Value.Date : start.Date);
         SetTime(start: false, start.TimeOfDay + DefaultDuration);
+        if (hasMultiDayRange)
+        {
+            AllDayToggle.IsOn = true;
+            _endTouched = true;
+        }
 
         PriorityBox.SelectedIndex = 0;
 
@@ -102,6 +111,51 @@ public sealed partial class CalendarEventDialog : Window
         CalendarBox.SelectionChanged += (_, _) => UpdateColorStripe();
 
         Closed += OnClosed;
+        Activated += OnWindowActivated;
+    }
+
+    /// <summary>切到别的窗口时把焦点挪走，免得输入框里的光标跟着窗口一起留到后台。</summary>
+    private void OnWindowActivated(object sender, WindowActivatedEventArgs args)
+    {
+        if (args.WindowActivationState == WindowActivationState.Deactivated)
+        {
+            FocusSink.Focus(FocusState.Programmatic);
+            HidePlaceSuggestions();
+        }
+    }
+
+    /// <summary>
+    /// 点在非输入区（卡片、空白）时把焦点从输入框撤走，光标才会消失；
+    /// 点在输入框上是要放光标，别抢。
+    /// </summary>
+    private void Root_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (e.OriginalSource is DependencyObject source &&
+            (FindAncestor<TextBox>(source) is not null || IsInside(source, PlaceSuggestionsCard)))
+        {
+            return;
+        }
+
+        var focused = FocusManager.GetFocusedElement(Root.XamlRoot) as DependencyObject;
+        if (focused is TextBox or RichEditBox or PasswordBox)
+        {
+            FocusSink.Focus(FocusState.Pointer);
+        }
+    }
+
+    private static T? FindAncestor<T>(DependencyObject? node) where T : DependencyObject
+    {
+        while (node is not null)
+        {
+            if (node is T match)
+            {
+                return match;
+            }
+
+            node = VisualTreeHelper.GetParent(node);
+        }
+
+        return null;
     }
 
     /// <summary>true 表示已创建；关闭窗口时给出。</summary>
@@ -670,6 +724,42 @@ public sealed partial class CalendarEventDialog : Window
                 ShowPlaceSuggestions();
             }
         }
+    }
+
+    /// <summary>焦点离开地点输入框就收起候选，免得弹层一直挂在那儿。</summary>
+    private void LocationBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        // 点候选条目时焦点会先离开输入框：等一帧再判断，避免弹层在点击生效前被收掉。
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!PlaceSuggestionsPopup.IsOpen)
+            {
+                return;
+            }
+
+            var focused = FocusManager.GetFocusedElement(Root.XamlRoot) as DependencyObject;
+            if (focused is not null &&
+                (ReferenceEquals(focused, LocationBox) || IsInside(focused, PlaceSuggestionsCard)))
+            {
+                return;
+            }
+
+            HidePlaceSuggestions();
+        });
+    }
+
+    /// <summary>node 是否在 container 的子树里（含自身）。</summary>
+    private static bool IsInside(DependencyObject node, DependencyObject container)
+    {
+        for (var current = node; current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (ReferenceEquals(current, container))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private async void LocationBox_TextChanged(object sender, TextChangedEventArgs e)

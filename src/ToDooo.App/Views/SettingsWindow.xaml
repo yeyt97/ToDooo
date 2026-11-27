@@ -628,6 +628,31 @@
                     Visibility="Collapsed"
                     VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="0,0,12,0">
+                        <!--  启动时默认展开日历  -->
+                        <Border Style="{StaticResource SettingCard}">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Spacing="3">
+                                    <TextBlock Style="{StaticResource LabelText}" Text="启动时默认打开日历" />
+                                    <TextBlock
+                                        Style="{StaticResource HintText}"
+                                        Text="开启后，每次启动 ToDooo 会自动展开日历窗口。" />
+                                </StackPanel>
+                                <ToggleSwitch
+                                    x:Name="CalendarOpenOnStartupToggle"
+                                    Grid.Column="1"
+                                    MinWidth="0"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.Name="启动时默认打开日历"
+                                    OffContent=""
+                                    OnContent=""
+                                    Toggled="CalendarOpenOnStartup_Toggled" />
+                            </Grid>
+                        </Border>
+
                         <!--  日历条目字号  -->
                         <Border Style="{StaticResource SettingCard}">
                             <Grid ColumnSpacing="16">
@@ -662,6 +687,73 @@
                                         TextAlignment="Right" />
                                 </StackPanel>
                             </Grid>
+                        </Border>
+
+                        <!--  地点联想的在线数据源：国内网络连不上 OSM 时可以换一家  -->
+                        <Border Style="{StaticResource SettingCard}">
+                            <StackPanel Spacing="8">
+                                <StackPanel Spacing="3">
+                                    <TextBlock Style="{StaticResource LabelText}" Text="地点搜索" />
+                                    <TextBlock
+                                        Style="{StaticResource HintText}"
+                                        Text="新建日程时，地点输入框的联想来自这里。默认使用百度地图（国内直连免 Key），也可以切换高德或海外 OpenStreetMap。" />
+                                </StackPanel>
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ComboBox
+                                        x:Name="PlaceSourceBox"
+                                        HorizontalAlignment="Stretch"
+                                        AutomationProperties.Name="地点数据源"
+                                        SelectionChanged="PlaceSourceBox_SelectionChanged">
+                                        <ComboBoxItem Content="百度地图（默认，国内免 Key）" />
+                                        <ComboBoxItem Content="高德地图（国内稳定，需 Key）" />
+                                        <ComboBoxItem Content="OpenStreetMap（海外，免 Key）" />
+                                        <ComboBoxItem Content="Photon（OSM 海外，免 Key）" />
+                                    </ComboBox>
+                                    <Button
+                                        x:Name="PlaceTestButton"
+                                        Grid.Column="1"
+                                        MinWidth="76"
+                                        AutomationProperties.Name="测试地点数据源"
+                                        Click="PlaceTest_Click"
+                                        Content="测试" />
+                                </Grid>
+                                <StackPanel
+                                    x:Name="PlaceAmapPanel"
+                                    Spacing="6"
+                                    Visibility="Collapsed">
+                                    <TextBox
+                                        x:Name="PlaceAmapKeyBox"
+                                        AutomationProperties.Name="高德 Key"
+                                        PlaceholderText="粘贴高德 Web 服务 Key"
+                                        TextChanged="PlaceAmapKeyBox_TextChanged" />
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button
+                                            Padding="0,2"
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            Click="OpenAmapConsole_Click">
+                                            <TextBlock
+                                                FontSize="12"
+                                                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                                Text="去高德控制台申请（免费）" />
+                                        </Button>
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            FontSize="12"
+                                            Foreground="{ThemeResource TextMutedBrush}"
+                                            Text="Key 只发往高德，用来换地名。" />
+                                    </StackPanel>
+                                </StackPanel>
+                                <TextBlock
+                                    x:Name="PlaceTestResult"
+                                    Style="{StaticResource HintText}"
+                                    Text=""
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
                         </Border>
 
                         <!--  总开关：关掉就是纯离线，只用本地日历数据  -->

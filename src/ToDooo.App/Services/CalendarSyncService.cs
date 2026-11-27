@@ -154,6 +154,16 @@ public sealed class CalendarSyncService
     }
 
     /// <summary>
+    /// 默认同步窗口：以锚点所在月 1 号为基准，向前 12 个月、向后 12 个月，
+    /// 覆盖一整年历史与未来日程，翻月时无需反复等待网络。
+    /// </summary>
+    public static (DateTime From, DateTime To) DefaultSyncWindow(DateTime anchor)
+    {
+        var monthStart = new DateTime(anchor.Year, anchor.Month, 1);
+        return (monthStart.AddMonths(-12), monthStart.AddMonths(12));
+    }
+
+    /// <summary>
     /// 同步 [from, to) 窗口：刷新集合列表与可见性之外的元数据，逐集合整体替换缓存事件。
     /// 并发调用会被串行化，界面反复触发刷新也不会互相踩。
     /// </summary>
@@ -166,10 +176,8 @@ public sealed class CalendarSyncService
             return CalendarSyncResult.Fail("尚未配置日历账号。");
         }
 
-        if (!await _gate.WaitAsync(0, token).ConfigureAwait(false))
-        {
-            return new CalendarSyncResult(true, 0, 0, "正在同步，请稍候。");
-        }
+        // 串行等待上一次同步（或刚被取消的旧窗口同步）退出，避免快速翻月时新窗口被直接丢弃。
+        await _gate.WaitAsync(token).ConfigureAwait(false);
 
         SetSyncing(true);
         try
@@ -196,6 +204,7 @@ public sealed class CalendarSyncService
                 try
                 {
                     var raw = await client.QueryEventsAsync(calendar.Href, from, to, token).ConfigureAwait(false);
+                    ReconcilePendingCreatesWithServer(calendar.Href, raw);
                     _repository.ReplaceMasters(calendar.Href, raw);
                     var expanded = ExpandItems(raw, from, to);
                     _repository.ReplaceEvents(calendar.Href, expanded);
@@ -236,6 +245,55 @@ public sealed class CalendarSyncService
             if (_repository.PendingCount() > 0)
             {
                 ScheduleDeferredPush();
+            }
+        }
+    }
+
+    /// <summary>
+    /// 如果某条待补传的 create 其实已经被服务器收下（例如上次 PUT 超时但服务端已落盘），
+    /// 且服务器返回的 resource_href 与本地预测路径不一致，就清掉这条重复的待补传与本地占位母事件，
+    /// 避免同一 UID 在本地出现两份。
+    /// </summary>
+    private void ReconcilePendingCreatesWithServer(string calendarHref, IReadOnlyList<RawCalendarItem> serverItems)
+    {
+        if (serverItems.Count == 0)
+        {
+            return;
+        }
+
+        var serverUids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in serverItems)
+        {
+            foreach (var evt in IcsCalendar.ParseEvents(item.Ics))
+            {
+                if (!string.IsNullOrWhiteSpace(evt.Uid))
+                {
+                    serverUids.Add(evt.Uid);
+                }
+            }
+        }
+
+        if (serverUids.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var pending in _repository.GetPending())
+        {
+            if (!string.Equals(pending.Kind, "create", StringComparison.Ordinal) ||
+                !string.Equals(pending.CalendarHref, calendarHref, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var pendingUid = IcsCalendar.ParseEvents(pending.Payload)
+                .Select(e => e.Uid)
+                .FirstOrDefault(u => !string.IsNullOrWhiteSpace(u));
+            if (pendingUid is not null && serverUids.Contains(pendingUid))
+            {
+                _repository.RemovePending(pending.ResourceHref, pending.Payload);
+                _repository.RemoveMaster(pending.ResourceHref);
+                _repository.RemoveEventsByResource(pending.ResourceHref);
             }
         }
     }
@@ -437,8 +495,22 @@ public sealed class CalendarSyncService
             masters.Select(m => m.ResourceHref), StringComparer.OrdinalIgnoreCase);
         var legacy = _repository.GetEventsInRange(from, to, colors)
             .Where(e => !withMaster.Contains(e.ResourceHref));
-        return expanded
-            .Concat(legacy)
+
+        // 按 (CalendarHref, Uid, StartAt) 去重兜底，防止同一 UID 因不同 resource_href 重复展示。
+        var seenKeys = new HashSet<(string, string, DateTime)>();
+        var deduped = new List<CalendarEvent>(expanded.Count);
+        foreach (var item in expanded.Concat(legacy))
+        {
+            if (!string.IsNullOrWhiteSpace(item.Uid) &&
+                !seenKeys.Add((item.CalendarHref.ToLowerInvariant(), item.Uid.ToLowerInvariant(), item.StartAt)))
+            {
+                continue;
+            }
+
+            deduped.Add(item);
+        }
+
+        return deduped
             .OrderBy(e => e.StartAt)
             .ThenBy(e => e.Summary, StringComparer.CurrentCulture)
             .ToList();
@@ -1143,6 +1215,13 @@ public sealed class CalendarSyncService
         _repository.RemoveMaster(calendarEvent.ResourceHref);
         _repository.RemoveEventsByResource(calendarEvent.ResourceHref);
         EventsChanged?.Invoke(this, EventArgs.Empty);
+
+        // 从未成功上传到云端的待补传新建：直接撤掉队里的 create 即可，不要再往云端发 DELETE。
+        if (_repository.HasPending(calendarEvent.ResourceHref, "create"))
+        {
+            _repository.RemovePending(calendarEvent.ResourceHref);
+            return;
+        }
 
         // 本地日历：删本地就够了，云端没有对应资源。
         if (CalendarRepository.IsLocalHref(calendarEvent.CalendarHref))

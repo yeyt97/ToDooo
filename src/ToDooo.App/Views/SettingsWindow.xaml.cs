@@ -114,6 +114,7 @@ public sealed partial class SettingsWindow : Window
         BuildTagNameEditors();
         LeadBox.SelectedIndex = Math.Max(0, Array.IndexOf(LeadOptions, settings.Current.ReminderLeadMinutes));
         LoadCalendarSettings();
+        LoadPlaceSettings();
 
         // 后台检查发现过新版本时，进设置就能看到，不用再点一次检查。
         if (!string.IsNullOrWhiteSpace(settings.Current.PendingUpdateVersion))
@@ -1493,6 +1494,107 @@ public sealed partial class SettingsWindow : Window
         _settingsChanged();
     }
 
+    // ---- 地点搜索数据源 ------------------------------------------------------
+
+    private bool _placeReady;
+
+    private void LoadPlaceSettings()
+    {
+        _placeReady = false;
+        CalendarOpenOnStartupToggle.IsOn = _settings.Current.CalendarOpenOnStartup;
+        PlaceSourceBox.SelectedIndex = Math.Clamp(_settings.Current.PlaceSearchProvider, 0, 3);
+        PlaceAmapKeyBox.Text = _settings.Current.PlaceSearchAmapKey;
+        UpdatePlaceSourceVisibility();
+        PlaceTestResult.Text = string.Empty;
+        _placeReady = true;
+    }
+
+    private void CalendarOpenOnStartup_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (!_placeReady)
+        {
+            return;
+        }
+
+        _settings.Current.CalendarOpenOnStartup = CalendarOpenOnStartupToggle.IsOn;
+        _settings.Save();
+    }
+
+    private void UpdatePlaceSourceVisibility()
+    {
+        PlaceAmapPanel.Visibility = PlaceSourceBox.SelectedIndex == (int)PlaceSource.Amap
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private void ApplyPlaceSourceSettings()
+    {
+        _settings.Current.PlaceSearchProvider = Math.Clamp(PlaceSourceBox.SelectedIndex, 0, 3);
+        _settings.Current.PlaceSearchAmapKey = PlaceAmapKeyBox.Text.Trim();
+        _settings.Save();
+        PlaceSearchService.Configure(_settings.Current.PlaceSearchProvider, _settings.Current.PlaceSearchAmapKey);
+    }
+
+    private void PlaceSourceBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        UpdatePlaceSourceVisibility();
+        if (!_placeReady)
+        {
+            return;
+        }
+
+        ApplyPlaceSourceSettings();
+        PlaceTestResult.Text = string.Empty;
+    }
+
+    private void PlaceAmapKeyBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!_placeReady)
+        {
+            return;
+        }
+
+        ApplyPlaceSourceSettings();
+    }
+
+    private async void PlaceTest_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_placeReady)
+        {
+            return;
+        }
+
+        ApplyPlaceSourceSettings();
+        PlaceTestButton.IsEnabled = false;
+        var original = PlaceTestButton.Content;
+        PlaceTestButton.Content = "测试中…";
+        PlaceTestResult.Text = "正在连接…";
+        try
+        {
+            var result = await PlaceSearchService.TestAsync(
+                Math.Clamp(PlaceSourceBox.SelectedIndex, 0, 3), PlaceAmapKeyBox.Text);
+            PlaceTestResult.Text = result.Success ? $"✓ {result.Message}" : $"⚠ {result.Message}";
+        }
+        finally
+        {
+            PlaceTestButton.Content = original;
+            PlaceTestButton.IsEnabled = true;
+        }
+    }
+
+    private async void OpenAmapConsole_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await Windows.System.Launcher.LaunchUriAsync(
+                new Uri("https://console.amap.com/dev/key/app"));
+        }
+        catch
+        {
+            // 打不开浏览器就算了，用户可以自己搜「高德开放平台」
+        }
+    }
+
     private void LoadCalendarSettings()
     {
         if (_calendarSync is null)
@@ -1578,7 +1680,8 @@ public sealed partial class SettingsWindow : Window
 
         // 先同步一次，本地才有云端日程可用来判断「同一条谁赢」。
         var now = DateTime.Today;
-        var sync = await _calendarSync.SyncAsync(now.AddMonths(-1), now.AddMonths(2));
+        var (from, to) = CalendarSyncService.DefaultSyncWindow(DateTime.Today);
+        var sync = await _calendarSync.SyncAsync(from, to);
 
         var dialog = new CalendarMergeDialog(_settings, merge, choices, cloudSources);
         dialog.ShowOver(_appWindow);
@@ -1882,7 +1985,8 @@ public sealed partial class SettingsWindow : Window
             CalendarStatusText.Text = result.Message + " 正在同步…";
 
             var now = DateTime.Today;
-            var sync = await _calendarSync.SyncAsync(now.AddMonths(-1), now.AddMonths(2));
+            var (from, to) = CalendarSyncService.DefaultSyncWindow(DateTime.Today);
+            var sync = await _calendarSync.SyncAsync(from, to);
             UpdateCalendarStatus();
             if (sync.Succeeded)
             {
@@ -1937,7 +2041,8 @@ public sealed partial class SettingsWindow : Window
         try
         {
             var now = DateTime.Today;
-            var result = await _calendarSync.SyncAsync(now.AddMonths(-1), now.AddMonths(2));
+            var (from, to) = CalendarSyncService.DefaultSyncWindow(DateTime.Today);
+            var result = await _calendarSync.SyncAsync(from, to);
             UpdateCalendarStatus();
             if (!result.Succeeded)
             {

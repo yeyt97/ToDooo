@@ -140,6 +140,7 @@ public sealed partial class CalendarHostWindow : Window
 
     public void ShowNextTo(AppWindow owner, Action? onShown = null)
     {
+        CalendarPane.JumpToToday();
         var scale = DpiScale.ForOwner(owner, _hwnd);
         var ownerHwnd = Win32Interop.GetWindowFromWindowId(owner.Id);
         NativeMethods.RECT ownerRect;
